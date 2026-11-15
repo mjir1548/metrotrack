@@ -1,0 +1,12 @@
+# Configuration locale (non versionnée) : copier config.example.json
+config.json
+
+# Base de données et fichiers de travail SQLite
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Secrets de développement (clés de lecteurs)
+dev/
+*.key

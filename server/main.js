@@ -1,5 +1,5 @@
 // Point d'entrée en ligne de commande.
-//   node server/main.js serve     démarre le serveur HTTP (boucle locale uniquement à l'étape 1)
+//   node server/main.js serve     démarre le serveur HTTPS (TLS obligatoire)
 //   node server/main.js dev-seed  crée des données de démonstration (base vide uniquement)
 // Configuration : config.json à la racine du projet, ou chemin donné par METROTRACK_CONFIG.
 
@@ -10,9 +10,6 @@ import { openDb } from './db.js';
 import { createFrameServer } from './http.js';
 
 const PROJECT_ROOT = resolve(import.meta.dirname, '..');
-// Étape 1 : pas de TLS, donc écoute limitée à la boucle locale (le simulateur).
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
-const LOOPBACK_ADDRESSES = new Set(['127.0.0.1', '::1']);
 
 function loadConfig() {
   const configPath = resolve(process.env.METROTRACK_CONFIG ?? join(PROJECT_ROOT, 'config.json'));
@@ -23,8 +20,9 @@ function loadConfig() {
     throw new Error(`lecture de la configuration ${configPath} impossible : ${err.message}`);
   }
   if (typeof config.dbPath !== 'string' || config.dbPath === '') throw new Error('config : dbPath manquant');
-  // dbPath relatif = relatif au dossier du fichier de configuration.
-  return { ...config, configDir: dirname(configPath), dbPath: resolve(dirname(configPath), config.dbPath) };
+  // Chemins relatifs (dbPath, tls.*) = relatifs au dossier du fichier de configuration.
+  const configDir = dirname(configPath);
+  return { ...config, configDir, dbPath: resolve(configDir, config.dbPath) };
 }
 
 function openConfiguredDb(config) {
@@ -32,24 +30,45 @@ function openConfiguredDb(config) {
   return openDb(config.dbPath);
 }
 
+// Lit le certificat et la clé TLS ; sans eux le serveur ne démarre pas (aucun repli en clair).
+function loadTls(config) {
+  const { tls } = config;
+  if (typeof tls?.certPath !== 'string' || typeof tls?.keyPath !== 'string') {
+    throw new Error('config : tls.certPath et tls.keyPath obligatoires (aucun serveur en clair)');
+  }
+  const read = (name, path) => {
+    const full = resolve(config.configDir, path);
+    try {
+      return readFileSync(full);
+    } catch (err) {
+      throw new Error(`config : ${name} illisible (${full}) : ${err.message}`);
+    }
+  };
+  return { cert: read('tls.certPath', tls.certPath), key: read('tls.keyPath', tls.keyPath) };
+}
+
 function serve() {
   const config = loadConfig();
   const { host, port } = config;
-  if (!LOOPBACK_HOSTS.has(host)) {
-    throw new Error(`host "${host}" refusé : à cette étape (sans TLS), seules 127.0.0.1, ::1 et localhost sont autorisées`);
-  }
+  if (typeof host !== 'string' || host === '') throw new Error('config : host manquant');
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('config : port invalide');
+  const tls = loadTls(config);
 
   const db = openConfiguredDb(config);
-  const server = createFrameServer(db);
-  server.listen(port, host, () => {
-    const { address } = server.address();
-    // Double contrôle : « localhost » doit bien avoir été résolu vers une adresse de boucle.
-    if (!LOOPBACK_ADDRESSES.has(address)) {
-      console.error(`adresse d'écoute ${address} hors boucle locale : arrêt`);
+  const server = createFrameServer(db, { tls });
+  // Avant l'écoute (port occupé, adresse invalide...) : arrêt. Après : simple journal,
+  // une erreur ponctuelle (ex. EMFILE à l'acceptation) ne doit pas arrêter le serveur.
+  let listening = false;
+  server.on('error', (err) => {
+    if (!listening) {
+      console.error(`erreur : écoute impossible sur ${host}:${port} : ${err.message}`);
       process.exit(1);
     }
-    console.log(`MetroTrack : écoute sur http://${host}:${port} (base ${config.dbPath})`);
+    console.error(`erreur du serveur : ${err.code ?? err.message}`);
+  });
+  server.listen(port, host, () => {
+    listening = true;
+    console.log(`MetroTrack : écoute sur https://${host}:${port} (base ${config.dbPath})`);
   });
 
   const stop = () => {

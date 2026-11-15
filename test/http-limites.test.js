@@ -1,4 +1,4 @@
-// Cas limites HTTP contre un vrai serveur (port éphémère, base temporaire sur disque) :
+// Cas limites HTTPS contre un vrai serveur (port éphémère, base temporaire sur disque, certificats de test) :
 // tailles extrêmes, Content-Type, lecteur désactivé, ordre des compteurs, envois concurrents,
 // et uniformité des réponses de rejet.
 import { test, before, after } from 'node:test';
@@ -6,25 +6,27 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { request, Agent } from 'node:http';
+import { request, Agent } from 'node:https';
 import { openDb } from '../server/db.js';
 import { createFrameServer } from '../server/http.js';
 import { encodeFrame } from '../server/protocol.js';
+import { makeTestCerts } from './tls-fixture.js';
 
 const KEY = Buffer.alloc(32, 0x11);
 const KEY2 = Buffer.alloc(32, 0x22);
 const NOW = '2026-11-15T10:00:00.000Z';
 const UID = Buffer.from('04A1B2C3D4E5F6', 'hex');
-let dir, db, server, port;
+let dir, db, server, port, certs;
 const logs = [];
 
 before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'metrotrack-limites-'));
+  certs = makeTestCerts(dir);
   db = openDb(join(dir, 'test.db'));
   db.prepare("INSERT INTO stations (id, name, created_at) VALUES (1, 'Poste 1', ?)").run(NOW);
   db.prepare('INSERT INTO readers (id, station_id, aead_key, created_at) VALUES (1, 1, ?, ?), (2, 1, ?, ?)').run(KEY, NOW, KEY2, NOW);
   db.prepare("INSERT INTO items (id, uid_nfc, name, created_at, updated_at) VALUES (1, '04A1B2C3D4E5F6', 'Multimètre', ?, ?)").run(NOW, NOW);
-  server = createFrameServer(db, { log: (line) => logs.push(line) });
+  server = createFrameServer(db, { tls: { cert: certs.cert, key: certs.key }, log: (line) => logs.push(line) });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   port = server.address().port;
 });
@@ -42,7 +44,7 @@ const maxCounter = (readerId = 1) =>
   db.prepare('SELECT COALESCE(MAX(counter), 0) AS c FROM scans WHERE reader_id = ?').get(readerId).c;
 
 /**
- * POST brut via node:http. headers null = aucun en-tête ajouté (ni Content-Type).
+ * POST brut via node:https (certificat vérifié avec la CA de test). headers null = aucun en-tête ajouté (ni Content-Type).
  * Renvoie le code, le corps et les en-têtes (hors Date).
  */
 function post(body, { contentType = 'application/octet-stream', agent = false, chunked = false } = {}) {
@@ -50,7 +52,7 @@ function post(body, { contentType = 'application/octet-stream', agent = false, c
     const headers = {};
     if (contentType !== null) headers['Content-Type'] = contentType;
     if (!chunked) headers['Content-Length'] = body.length;
-    const req = request({ host: '127.0.0.1', port, path: '/api/frames', method: 'POST', headers, agent }, (res) => {
+    const req = request({ host: '127.0.0.1', port, path: '/api/frames', method: 'POST', headers, agent, ca: certs.ca }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
@@ -153,7 +155,7 @@ test('rejets identiques (code, corps vide, en-têtes hors Date) avec un client s
 // Avec une connexion keep-alive, tous les rejets doivent être identiques, en-têtes compris
 // (http.js ferme la connexion sur tout rejet ; protocole.md §5, cadrage §4).
 test('rejets identiques avec un client keep-alive (en-tête Connection compris)', async () => {
-  const agent = new Agent({ keepAlive: true, maxSockets: 1 });
+  const agent = new Agent({ keepAlive: true, maxSockets: 1, ca: certs.ca });
   try {
     const unknownReader = await post(frame(1, { readerId: 99 }), { agent });
     const badType = await post(frame(1), { agent, contentType: 'text/plain' });

@@ -87,3 +87,19 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
   - toute exception dans le gestionnaire HTTP donne un 500 sans corps, sans jamais arrêter le serveur.
 - **Alternative écartée** : garder la connexion ouverte après un rejet. Les en-têtes différeraient alors selon la cause (rejet précoce ou non).
 - **Raison** : ne rien révéler à l'émetteur ; garder le traitement indépendant du transport ; résister aux requêtes mal formées.
+
+## D-009 — Politique TLS du serveur
+
+- **Date** : 2026-11-15 · **Statut** : Proposée
+- **Décision** :
+  - HTTPS uniquement (`node:https`), aucun port en clair ; le serveur refuse de démarrer sans certificat ni clé ;
+  - TLS 1.2 au minimum. En TLS 1.2, seulement les suites ECDHE + AEAD (AES-GCM, ChaCha20-Poly1305). En TLS 1.3, les suites par défaut ;
+  - pas de renégociation initiée par le client ni de tickets de session TLS 1.2 (leur clé ne serait jamais renouvelée) ;
+  - au plus 256 connexions simultanées ; les échecs de poignée de main sont journalisés (code d'erreur seulement) ;
+  - HSTS sur toutes les réponses ;
+  - en développement, une CA locale générée par `tools/devcert.sh` (OpenSSL), restreinte par contrainte de nom à la boucle locale ; le boîtier épingle la CA ;
+  - la clé privée du serveur est protégée par les droits du système de fichiers (ACL sous Windows), point à présenter à la SSI ;
+  - l'adresse d'écoute devient configurable (127.0.0.1 par défaut).
+- **Alternatives écartées** : TLS 1.3 seul (risque d'incompatibilité avec le client TLS du firmware ESP32, à revoir avec Yanis) ; certificats de test versionnés (des clés privées dans le dépôt).
+- **Raison** : CLAUDE.md §4 ; recommandations courantes de l'ANSSI pour TLS.
+- **À voir** : la PKI du site pilote (CA ONERA ?) et le mTLS pour le boîtier mère.

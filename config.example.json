@@ -1,5 +1,9 @@
 {
   "host": "127.0.0.1",
-  "port": 8080,
-  "dbPath": "data/metrotrack.db"
+  "port": 8443,
+  "dbPath": "data/metrotrack.db",
+  "tls": {
+    "certPath": "dev/tls/server.crt",
+    "keyPath": "dev/tls/server.key"
+  }
 }

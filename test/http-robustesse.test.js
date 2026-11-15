@@ -1,4 +1,4 @@
-// Robustesse du transport HTTP face à des requêtes malformées envoyées en octets bruts (TCP) :
+// Robustesse du transport HTTPS face à des requêtes malformées envoyées en octets bruts (dans TLS) :
 // cibles invalides, en-têtes invalides, ambiguïtés de longueur, connexions coupées.
 // Critère : le processus survit (une exception non capturée ferait échouer ce fichier),
 // aucune requête malformée n'ajoute de scan, et une trame valide est acceptée ensuite.
@@ -7,22 +7,24 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { connect } from 'node:net';
+import { connect } from 'node:tls';
 import { openDb } from '../server/db.js';
 import { createFrameServer } from '../server/http.js';
 import { encodeFrame } from '../server/protocol.js';
+import { makeTestCerts } from './tls-fixture.js';
 
 const KEY = Buffer.alloc(32, 0x44);
 const NOW = '2026-11-15T10:00:00.000Z';
-let dir, db, server, port;
+let dir, db, server, port, certs;
 const logs = [];
 
 before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'metrotrack-robustesse-'));
+  certs = makeTestCerts(dir);
   db = openDb(join(dir, 'test.db'));
   db.prepare("INSERT INTO stations (id, name, created_at) VALUES (1, 'Poste 1', ?)").run(NOW);
   db.prepare('INSERT INTO readers (id, station_id, aead_key, created_at) VALUES (1, 1, ?, ?)').run(KEY, NOW);
-  server = createFrameServer(db, { log: (line) => logs.push(line) });
+  server = createFrameServer(db, { tls: { cert: certs.cert, key: certs.key }, log: (line) => logs.push(line) });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   port = server.address().port;
 });
@@ -41,7 +43,7 @@ const maxCounter = () => db.prepare('SELECT COALESCE(MAX(counter), 0) AS c FROM 
 /** Envoie des octets bruts ; renvoie le code HTTP de la réponse, ou null si aucune réponse. */
 function raw(bytes, { cutAfterMs = null } = {}) {
   return new Promise((resolve) => {
-    const socket = connect(port, '127.0.0.1');
+    const socket = connect({ port, host: '127.0.0.1', ca: certs.ca });
     let data = '';
     const done = () => {
       const m = /^HTTP\/1\.1 (\d{3})/.exec(data);

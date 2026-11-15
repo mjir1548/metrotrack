@@ -1,7 +1,8 @@
-// Transport HTTP : extrait les octets de la trame et appelle ingestFrame.
-// Aucune logique métier ici. TLS arrive à l'étape 2 (écoute en boucle locale d'ici là).
+// Transport HTTPS : extrait les octets de la trame et appelle ingestFrame.
+// Aucune logique métier ici. Il n'existe aucun serveur en clair.
 
-import { createServer } from 'node:http';
+import { createServer } from 'node:https';
+import { constants } from 'node:crypto';
 import { ingestFrame } from './ingest.js';
 
 const FRAMES_PATH = '/api/frames';
@@ -9,13 +10,51 @@ const FRAMES_PATH = '/api/frames';
 // et on rejette, pour qu'un émetteur ne puisse pas faire consommer de mémoire.
 const MAX_BODY_BYTES = 64;
 
+// Politique TLS (protocole.md §4) :
+// - TLS 1.2 minimum : SSLv3, TLS 1.0 et 1.1 sont refusés à la négociation.
+// - TLS 1.2 : uniquement des suites à échange de clés ECDHE (confidentialité persistante)
+//   et chiffrement AEAD (AES-GCM, ChaCha20-Poly1305). Ni RSA statique, ni CBC, ni SHA-1.
+// - TLS 1.3 : suites par défaut d'OpenSSL (toutes ECDHE/DHE + AEAD par construction).
+//   L'option « ciphers » ne contient que des noms TLS 1.2 : Node laisse alors les
+//   suites TLS 1.3 à leur valeur par défaut.
+const TLS12_CIPHERS = [
+  'ECDHE-ECDSA-AES128-GCM-SHA256',
+  'ECDHE-RSA-AES128-GCM-SHA256',
+  'ECDHE-ECDSA-AES256-GCM-SHA384',
+  'ECDHE-RSA-AES256-GCM-SHA384',
+  'ECDHE-ECDSA-CHACHA20-POLY1305',
+  'ECDHE-RSA-CHACHA20-POLY1305',
+].join(':');
+// HSTS : un navigateur qui a vu le site en HTTPS refusera ensuite tout accès en clair.
+const HSTS = 'max-age=31536000';
+// Plafond de connexions simultanées (anti-saturation) : largement suffisant pour quelques
+// dizaines de boîtiers et de navigateurs. Au-delà, les nouvelles connexions sont fermées.
+const MAX_CONNECTIONS = 256;
+
 /**
  * @param {import('node:sqlite').DatabaseSync} db
- * @param {{log?: (line:string) => void}} [options] log : destination du journal (console par défaut)
+ * @param {{tls: {cert: Buffer|string, key: Buffer|string}, log?: (line:string) => void, maxConnections?: number}} options
+ *   tls : certificat et clé privée du serveur (PEM), OBLIGATOIRES ;
+ *   log : destination du journal (console par défaut) ;
+ *   maxConnections : réservé aux tests (petite valeur) ; pas un paramètre de configuration.
  */
-export function createFrameServer(db, { log = console.log } = {}) {
-  // connectionsCheckingInterval : fréquence de contrôle de requestTimeout / headersTimeout.
-  const server = createServer({ connectionsCheckingInterval: 1000 }, (req, res) => {
+export function createFrameServer(db, { tls, log = console.log, maxConnections = MAX_CONNECTIONS } = {}) {
+  if (!tls?.cert || !tls?.key) throw new Error('certificat et clé TLS obligatoires');
+  const options = {
+    cert: tls.cert,
+    key: tls.key,
+    minVersion: 'TLSv1.2',
+    ciphers: TLS12_CIPHERS,
+    honorCipherOrder: true,
+    // Pas de renégociation initiée par le client (TLS 1.2 ; coût CPU, historique de failles).
+    // Pas de tickets de session TLS 1.2 : leur clé de chiffrement n'est jamais renouvelée
+    // par le serveur, ce qui affaiblirait la confidentialité persistante.
+    secureOptions: constants.SSL_OP_NO_RENEGOTIATION | constants.SSL_OP_NO_TICKET,
+    handshakeTimeout: 5_000, // poignée de main TLS incomplète : connexion fermée
+    connectionsCheckingInterval: 1000, // fréquence de contrôle de requestTimeout / headersTimeout
+  };
+  const server = createServer(options, (req, res) => {
+    res.setHeader('Strict-Transport-Security', HSTS);
     // Toute exception (y compris dans les callbacks 'data' / 'end') est capturée :
     // une requête malformée ne doit jamais pouvoir arrêter le processus.
     const fail = (err) => {
@@ -35,6 +74,10 @@ export function createFrameServer(db, { log = console.log } = {}) {
   // Limite le temps laissé à un client pour envoyer sa requête complète.
   server.requestTimeout = 10_000;
   server.headersTimeout = 5_000;
+  server.maxConnections = maxConnections;
+  server.on('drop', () => log(`connexion refusée : plafond de ${maxConnections} connexions atteint`));
+  // Échec de poignée de main (version, suite, certificat client...) : code seul, pour le diagnostic.
+  server.on('tlsClientError', (err) => log(`TLS refusé : ${err.code}`));
   return server;
 }
 

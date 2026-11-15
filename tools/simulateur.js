@@ -1,11 +1,16 @@
-// Simulateur de boîtier lecteur : construit une trame v0 et l'envoie au serveur.
+// Simulateur de boîtier lecteur : construit une trame v0 et l'envoie au serveur en HTTPS.
 // Usage :
 //   node tools/simulateur.js --reader 1 --key-file dev/reader-1.key --uid 04A1B2C3D4E5F6 --counter 1
-//                            [--url http://127.0.0.1:8080/api/frames]
-// Sécurité : la clé n'est acceptée QUE via un fichier (jamais en argument, pour
-// qu'elle n'apparaisse ni dans l'historique du shell ni dans la liste des processus).
+//                            --ca dev/tls/ca.crt [--url https://127.0.0.1:8443/api/frames]
+// Sécurité :
+// - la clé n'est acceptée QUE via un fichier (jamais en argument, pour qu'elle
+//   n'apparaisse ni dans l'historique du shell ni dans la liste des processus) ;
+// - le certificat du serveur est TOUJOURS vérifié (CA donnée par --ca, sinon les CA
+//   intégrées à Node) ; il n'existe volontairement aucune option pour désactiver cette
+//   vérification. node:https est utilisé car fetch n'accepte pas de CA personnalisée.
 
 import { readFileSync } from 'node:fs';
+import { request } from 'node:https';
 import { parseArgs } from 'node:util';
 import { encodeFrame } from '../server/protocol.js';
 
@@ -22,9 +27,10 @@ try {
       'key-file': { type: 'string' },
       uid: { type: 'string' },
       counter: { type: 'string' },
-      url: { type: 'string', default: 'http://127.0.0.1:8080/api/frames' },
+      ca: { type: 'string' },
+      url: { type: 'string', default: 'https://127.0.0.1:8443/api/frames' },
     },
-    strict: true, // toute option inconnue (ex. --key) est refusée
+    strict: true, // toute option inconnue (ex. --key, --insecure) est refusée
   }));
 } catch (err) {
   fail(err.message);
@@ -58,14 +64,36 @@ const frame = encodeFrame({
   key: Buffer.from(keyHex, 'hex'),
 });
 
+let url;
 try {
-  const response = await fetch(values.url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/octet-stream' },
-    body: frame,
-  });
-  console.log(`HTTP ${response.status}`);
-  process.exit(response.status === 204 ? 0 : 1);
-} catch (err) {
-  fail(`envoi impossible : ${err.message}`);
+  url = new URL(values.url);
+} catch {
+  fail('--url invalide');
 }
+if (url.protocol !== 'https:') fail('--url : https:// obligatoire');
+let ca;
+if (values.ca) {
+  try {
+    ca = readFileSync(values.ca);
+  } catch (err) {
+    fail(`lecture du fichier de CA impossible : ${err.message}`);
+  }
+}
+
+const req = request(url, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': frame.length },
+  ca, // undefined = CA intégrées à Node
+  // Explicite, et donc prioritaire sur la variable d'environnement NODE_TLS_REJECT_UNAUTHORIZED=0 :
+  // la vérification du certificat du serveur ne peut être désactivée par aucun moyen.
+  rejectUnauthorized: true,
+  agent: false,
+}, (res) => {
+  res.resume();
+  res.on('end', () => {
+    console.log(`HTTP ${res.statusCode}`);
+    process.exit(res.statusCode === 204 ? 0 : 1);
+  });
+});
+req.on('error', (err) => fail(`envoi impossible : ${err.message}`));
+req.end(frame);

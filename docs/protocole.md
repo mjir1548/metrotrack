@@ -104,7 +104,10 @@ Content-Length: 36
 
 - La cible de requête doit être le chemin `/api/frames` (pas d'URL absolue `http://hôte/...`), sinon la réponse est 404.
 - **HTTPS** (TLS 1.2 au minimum). Le boîtier vérifie le certificat du serveur grâce à une CA locale embarquée dans le firmware.
-- Pendant l'étape 1 du plan, le serveur écoute en HTTP sur une adresse de boucle locale seulement (`127.0.0.1`, `::1` ou `localhost`, avec contrôle de l'adresse réelle après démarrage), pour le simulateur. Le TLS arrive à l'étape 2.
+- Depuis l'étape 2 du plan, le serveur n'écoute **qu'en HTTPS** (aucun port en clair, en-tête HSTS) :
+  - TLS 1.2 minimum ; en TLS 1.2, uniquement des suites ECDHE + AEAD (AES-GCM, ChaCha20-Poly1305) ; TLS 1.3 avec ses suites par défaut ;
+  - en développement, la CA et le certificat serveur (clés EC P-256, SAN `localhost`, `127.0.0.1`, `::1`) sont générés par `tools/devcert.sh` dans `dev/tls/` (non versionné) ;
+  - le boîtier (ou la mère) **épingle la CA** : il n'accepte que les certificats signés par elle, et ne désactive jamais la vérification du certificat. Le simulateur fait de même (`--ca dev/tls/ca.crt`).
 - ⚠️ À VALIDER (Yanis) :
   - le prototype sait-il faire un client HTTPS (ESP-IDF `esp_http_client` / mbedTLS) avec une CA épinglée ?
   - qu'envoie-t-il aujourd'hui (format, protocole), pour estimer l'écart avec ce document ?
@@ -204,7 +207,7 @@ Limite connue (v0) : une trame retardée puis dépassée par une trame plus réc
 | Compromission du boîtier mère | Aucune clé de boîtier fille : il peut bloquer ou retarder, pas lire ni fabriquer. |
 | Réutilisation de nonce (bug firmware) | Compteur persistant ; nouvelle clé à chaque reprovisionnement. Le serveur rejette tout compteur non croissant (le symptôme est visible) mais ne peut pas annuler l'émission. |
 | Clonage de l'UID d'une puce NFC | **Limite intrinsèque** : l'UID n'est pas un secret, et une puce « magique » peut usurper un UID, d'où une fausse localisation. Accepté pour un inventaire (ce n'est pas du contrôle d'accès). À signaler à la SSI. |
-| Saturation (flot de trames) | Hors périmètre v0. Un rejet coûte peu : contrôle de taille, recherche du lecteur, AES. |
+| Saturation (flot de trames) | Pas de limitation de débit en v0. Un rejet coûte peu : contrôle de taille, recherche du lecteur, AES. Au plus 256 connexions simultanées, délais courts (poignée de main TLS 5 s, en-têtes 5 s, requête 10 s), et une saturation des connexions n'arrête pas le serveur. |
 | Observation du temps de réponse | Un rejet précoce (taille, lecteur inconnu) répond plus vite qu'un rejet sur tag invalide, ce qui révèle si un `reader_id` existe. Accepté : `reader_id` circule déjà en clair. |
 
 ---

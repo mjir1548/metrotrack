@@ -115,7 +115,7 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
 
 - **Date** : 2026-11-17 · **Statut** : Proposée
 - **Décision** :
-  - argon2id (`node:crypto`), m = 19 456 Kio, t = 2, p = 1, sel de 16 octets, empreinte de 32 octets, format PHC. Ce sont les paramètres minimaux recommandés par l'OWASP. Les calculs argon2 passent un par un dans une file unique et **bornée à 16** calculs en attente ou en cours. Au-delà, le serveur répond 503 sans calcul. Si le client a déjà coupé, aucun calcul n'est lancé. Ainsi la mémoire et le CPU restent bornés (revue de l'étape 3, B1). Effets : plus de 16 tentatives de connexion simultanées reçoivent 503 ; un attaquant peut occuper la file en continu, ce qui est accepté sur réseau local pour le MVP ;
+  - argon2id (`node:crypto`), m = 19 456 Kio, t = 2, p = 1, sel de 16 octets, empreinte de 32 octets, format PHC. Ce sont les paramètres minimaux recommandés par l'OWASP. Les calculs argon2 passent un par un dans une file unique et **bornée à 16** calculs en attente ou en cours. Au-delà, le serveur répond 503 sans calcul. Si le client a déjà coupé, aucun calcul n'est lancé. Ainsi la mémoire et le CPU restent bornés (revue de l'étape 3, B1). Le 503 réaffiche la page de connexion avec un message, et ferme la connexion : les requêtes enchaînées derrière lui sur la même connexion ne reçoivent pas de réponse (étape 4). Effets : plus de 16 tentatives de connexion simultanées reçoivent 503 ; un attaquant peut occuper la file en continu, ce qui est accepté sur réseau local pour le MVP ;
   - mot de passe d'au moins 12 caractères ; identifiant limité à `[A-Za-z0-9._-]`, de 1 à 64 caractères, pour qu'il puisse s'afficher sans échappement à l'étape 3 ;
   - session : jeton aléatoire de 32 octets dans le cookie `__Host-mt_session` (`HttpOnly; Secure; SameSite=Strict; Path=/`), seul son SHA-256 est stocké ; durée absolue de 8 h, sans prolongation ; nouveau jeton à chaque connexion ;
   - CSRF : tout POST de l'interface exige un en-tête `Origin` égal à `https://` + `Host`, et un jeton. Avec une session, le jeton est HMAC-SHA256(jeton de session, « csrf »), il n'est donc pas stocké. Pour le formulaire de connexion, c'est un cookie court `__Host-mt_login_csrf` comparé au champ du formulaire (double soumission) ;
@@ -134,3 +134,11 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
   - l'objectif devient un logiciel fonctionnel, visuellement correct, qui respecte toutes les exigences techniques déjà fixées (CLAUDE.md §4 et §5, D-002 à D-011). Elles restent toutes en vigueur : HTTPS, AEAD, aucune ressource externe, zéro dépendance, journaux ;
   - la qualité visuelle de l'interface devient un critère de réussite de chaque étape qui touche à l'interface (3 à 7).
 - **Raison** : priorité de l'humain. L'ONERA reste un pilote possible plus tard.
+
+## D-013 — Calcul de la localisation par sous-requête indexée
+
+- **Date** : 2026-11-17 · **Statut** : Proposée
+- **Décision** : la vue `item_locations` (D-006) est réécrite par la migration 003. Pour chaque objet, une sous-requête corrélée lit le dernier scan de sa puce dans l'index `scans_by_uid`, au lieu d'un `row_number()` sur tous les scans. La sémantique et les colonnes sont identiques, ainsi que le départage (heure de réception, puis id). L'équivalence est testée.
+- **Raison** : mesure de la revue sécurité. Avec 300 000 scans, la liste passait de 1,9 s à 44 ms et la fiche de 1,9 s à 0,2 ms. `node:sqlite` est synchrone : une vue lente bloquait tout le serveur, réception des trames comprise.
+- **Pour l'étape 5** : garder cette forme, avec une sous-requête pour le dernier scan, une pour la dernière correction manuelle, et la plus récente des deux l'emporte.
+- **Alternative écartée** : une colonne de localisation stockée sur la fiche. Elle serait un doublon (CLAUDE.md §5.3).

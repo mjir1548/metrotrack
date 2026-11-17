@@ -2,7 +2,7 @@
 // expiration absolue, compte désactivé, suppression, jeton CSRF dérivé.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -36,9 +36,13 @@ test('migration 002 appliquée sur une base existante en version 1, données con
   v1.prepare("INSERT INTO stations (name, created_at) VALUES ('Poste existant', ?)").run(NOW);
   v1.close();
 
+  // Les migrations suivantes (003...) s'appliquent aussi : version finale = dernière migration.
+  const latest = Math.max(...readdirSync(join(import.meta.dirname, '..', 'server', 'migrations'))
+    .filter((f) => /^\d{3}_/.test(f)).map((f) => Number(f.slice(0, 3))));
+  assert.ok(latest >= 2);
   const migrated = openDb(path);
   try {
-    assert.equal(migrated.prepare('PRAGMA user_version').get().user_version, 2);
+    assert.equal(migrated.prepare('PRAGMA user_version').get().user_version, latest);
     assert.equal(migrated.prepare('SELECT name FROM stations').get().name, 'Poste existant');
     assert.equal(migrated.prepare('SELECT COUNT(*) AS n FROM users').get().n, 0);
     assert.equal(migrated.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 0);
@@ -47,7 +51,7 @@ test('migration 002 appliquée sur une base existante en version 1, données con
   }
   // Réouverture : aucune migration rejouée.
   const again = openDb(path);
-  assert.equal(again.prepare('PRAGMA user_version').get().user_version, 2);
+  assert.equal(again.prepare('PRAGMA user_version').get().user_version, latest);
   again.close();
 });
 

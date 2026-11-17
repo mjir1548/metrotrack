@@ -108,6 +108,15 @@ test('dev-seed, serve HTTPS, simulateur avec la CA : 204, localisation « Poste 
   const seed = runMain('dev-seed', config);
   assert.equal(seed.status, 0, seed.stderr);
   assert.ok(existsSync(join(dir, 'dev', 'reader-1.key')));
+  // Étape 4 : objets de démonstration (avec et sans puce) et un second poste ; aucun scan ni
+  // compte ; le lecteur 1 (Poste 1) et le Multimètre démo restent ceux du simulateur.
+  assert.equal(readDb('SELECT COUNT(*) AS n FROM scans')[0].n, 0);
+  assert.equal(readDb('SELECT COUNT(*) AS n FROM users')[0].n, 0);
+  assert.deepEqual(readDb('SELECT name FROM stations ORDER BY id').map((r) => r.name), ['Poste 1', 'Poste 2']);
+  assert.deepEqual(readDb('SELECT r.id, s.name FROM readers r JOIN stations s ON s.id = r.station_id').map((r) => ({ ...r })), [{ id: 1, name: 'Poste 1' }]);
+  assert.deepEqual(readDb("SELECT name FROM items WHERE uid_nfc = '04A1B2C3D4E5F6'").map((r) => r.name), ['Multimètre démo']);
+  assert.ok(readDb('SELECT COUNT(*) AS n FROM items WHERE uid_nfc IS NULL')[0].n >= 1);
+  assert.ok(readDb('SELECT COUNT(*) AS n FROM items WHERE uid_nfc IS NOT NULL')[0].n >= 2);
   // Un second dev-seed est refusé (base non vide).
   assert.equal(runMain('dev-seed', config).status, 1);
 

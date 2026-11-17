@@ -18,6 +18,17 @@
   --couleur-erreur: #a11d1d;
   --couleur-erreur-fond: #fdeeee;
   --couleur-erreur-bordure: #e9b4b4;
+  --couleur-survol-ligne: #f5f8fc;
+  --couleur-entete-tableau: #f7f9fb;
+  /* États de localisation (contraste du texte sur son fond ≥ 4,5:1) */
+  --couleur-poste: #146c3c;
+  --couleur-poste-fond: #e7f5ed;
+  --couleur-poste-bordure: #b4dcc4;
+  --couleur-inconnue: #7a4a00;
+  --couleur-inconnue-fond: #fff4dc;
+  --couleur-inconnue-bordure: #efd29b;
+  --couleur-jamais: #5a6676;
+  --couleur-jamais-fond: #f1f3f6;
 
   /* Espacements (échelle de 4 px) */
   --espace-1: 0.25rem;
@@ -30,6 +41,7 @@
 
   /* Typographie : polices du système */
   --police: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --police-mono: ui-monospace, "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, "Liberation Mono", monospace;
   --taille-petite: 0.875rem;
   --taille-normale: 1rem;
   --taille-titre: 1.375rem;
@@ -222,7 +234,7 @@ input:focus-visible { border-color: var(--couleur-focus); }
   font-size: var(--taille-petite);
   color: var(--couleur-texte-doux);
 }
-.session strong { color: var(--couleur-texte); }
+.session strong { color: var(--couleur-texte); overflow-wrap: anywhere; }
 .session form { margin: 0; }
 
 .contenu {
@@ -240,6 +252,256 @@ input:focus-visible { border-color: var(--couleur-focus); }
 .panneau > :last-child { margin-bottom: 0; }
 
 .texte-doux { color: var(--couleur-texte-doux); }
+
+/* Texte réservé aux lecteurs d'écran (libellé du champ de recherche). */
+.visuellement-cache {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Bandeau : marque et navigation ---------- */
+
+.barre-gauche {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espace-5);
+}
+
+.navigation { display: flex; gap: var(--espace-1); }
+
+.navigation a {
+  padding: var(--espace-1) var(--espace-3);
+  font-size: var(--taille-petite);
+  font-weight: 600;
+  color: var(--couleur-texte-doux);
+  text-decoration: none;
+  border-radius: var(--rayon-petit);
+}
+.navigation a:hover { color: var(--couleur-texte); background: var(--couleur-fond); }
+.navigation a.actif { color: var(--couleur-primaire); background: #e8eef7; }
+
+/* ---------- En-têtes de page ---------- */
+
+.entete-page { margin-bottom: var(--espace-4); }
+.entete-page h1 { margin: 0; overflow-wrap: anywhere; }
+
+.retour { margin-bottom: var(--espace-3); font-size: var(--taille-petite); }
+.retour a { font-weight: 600; text-decoration: none; }
+.retour a:hover { text-decoration: underline; }
+
+/* ---------- Recherche ---------- */
+
+.recherche {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--espace-2);
+  max-width: 40rem;
+  margin-bottom: var(--espace-3);
+}
+.recherche input { flex: 1 1 10rem; min-width: 0; }
+
+.resultats {
+  margin-bottom: var(--espace-4);
+  overflow-wrap: anywhere; /* saisie réaffichée, éventuellement sans espace */
+  font-size: var(--taille-petite);
+  color: var(--couleur-texte-doux);
+}
+.resultats a { font-weight: 600; }
+
+/* Inventaire vide, aucun résultat, fiche introuvable. */
+.vide {
+  padding: var(--espace-6) var(--espace-5);
+  overflow-wrap: anywhere;
+  text-align: center;
+  color: var(--couleur-texte-doux);
+  background: var(--couleur-surface);
+  border: 1px dashed var(--couleur-bordure-forte);
+  border-radius: var(--rayon);
+}
+.vide h1 { color: var(--couleur-texte); }
+.vide > :last-child { margin-bottom: 0; }
+
+/* ---------- Tableaux ---------- */
+
+.panneau-tableau {
+  overflow: hidden;
+  background: var(--couleur-surface);
+  border: 1px solid var(--couleur-bordure);
+  border-radius: var(--rayon);
+}
+
+.tableau { width: 100%; border-collapse: collapse; }
+
+.tableau th {
+  padding: var(--espace-3) var(--espace-4);
+  font-size: var(--taille-petite);
+  font-weight: 600;
+  text-align: left;
+  color: var(--couleur-texte-doux);
+  background: var(--couleur-entete-tableau);
+  border-bottom: 1px solid var(--couleur-bordure);
+}
+
+.tableau td {
+  padding: var(--espace-3) var(--espace-4);
+  vertical-align: middle;
+  overflow-wrap: anywhere; /* noms saisis sans espace : passent à la ligne au lieu de déborder */
+  border-bottom: 1px solid var(--couleur-bordure);
+}
+.tableau tbody tr:last-child td { border-bottom: 0; }
+.tableau tbody tr:hover { background: var(--couleur-survol-ligne); }
+
+/* Largeurs fixes : un contenu long dans une colonne ne peut pas écraser les autres. */
+.tableau-inventaire, .tableau-scans { table-layout: fixed; }
+.tableau-inventaire th:nth-child(2) { width: 38%; }
+.tableau-inventaire th:nth-child(3) { width: 11rem; }
+.tableau-scans th:nth-child(2) { width: 13rem; }
+
+.lien-objet { font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.lien-objet:hover { text-decoration: underline; }
+
+/* UID de puce : police à chasse fixe. */
+.uid {
+  font-family: var(--police-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.03em;
+  color: var(--couleur-texte-doux);
+}
+.cellule-objet .uid { display: block; margin-top: 0.125rem; }
+.proprietes .uid { color: var(--couleur-texte); font-size: var(--taille-petite); }
+
+time { white-space: nowrap; }
+
+/* ---------- Puce d'état de la localisation ---------- */
+
+.etat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espace-2);
+  max-width: 100%;
+  padding: 0.125rem 0.625rem;
+  font-size: var(--taille-petite);
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+  overflow-wrap: anywhere; /* nom de poste long sans espace : passe à la ligne dans la puce */
+  border: 1px solid;
+  border-radius: 0.875rem; /* pilule sur une ligne, reste lisible sur deux */
+}
+.etat::before {
+  content: "";
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: currentColor;
+  border-radius: 50%;
+}
+.etat-poste { color: var(--couleur-poste); background: var(--couleur-poste-fond); border-color: var(--couleur-poste-bordure); }
+.etat-inconnue { color: var(--couleur-inconnue); background: var(--couleur-inconnue-fond); border-color: var(--couleur-inconnue-bordure); }
+/* Jamais localisé : style atténué (cercle vide, italique). */
+.etat-jamais {
+  font-weight: 500;
+  font-style: italic;
+  color: var(--couleur-jamais);
+  background: var(--couleur-jamais-fond);
+  border-color: var(--couleur-bordure);
+}
+.etat-jamais::before { background: transparent; border: 1.5px solid currentColor; }
+
+/* ---------- Fiche objet : cartes ---------- */
+
+.fiche {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--espace-4);
+}
+
+.fiche-carte {
+  min-width: 0;
+  padding: var(--espace-5);
+  background: var(--couleur-surface);
+  border: 1px solid var(--couleur-bordure);
+  border-radius: var(--rayon);
+}
+.fiche-carte > :last-child { margin-bottom: 0; }
+.fiche-large { grid-column: 1 / -1; }
+
+.fiche-carte h2 {
+  margin: 0 0 var(--espace-3);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--couleur-texte-doux);
+}
+
+.fiche-carte .etat { font-size: var(--taille-normale); padding: var(--espace-1) var(--espace-3); }
+.localisation-detail { font-size: var(--taille-petite); color: var(--couleur-texte-doux); overflow-wrap: anywhere; }
+
+.proprietes { margin: 0; }
+.proprietes > div {
+  display: grid;
+  grid-template-columns: minmax(6rem, 35%) minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--espace-3);
+  padding: var(--espace-2) 0;
+  border-bottom: 1px solid var(--couleur-bordure);
+}
+.proprietes > div:first-child { padding-top: 0; }
+.proprietes > div:last-child { padding-bottom: 0; border-bottom: 0; }
+.proprietes dt { font-size: var(--taille-petite); font-weight: 600; color: var(--couleur-texte-doux); overflow-wrap: anywhere; }
+/* Valeurs de propriété : retours à la ligne saisis conservés, comme les notes. */
+.proprietes dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Notes : les retours à la ligne saisis sont conservés. */
+.notes { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.fiche-carte .tableau th:first-child, .fiche-carte .tableau td:first-child { padding-left: 0; }
+.fiche-carte .tableau th:last-child, .fiche-carte .tableau td:last-child { padding-right: 0; }
+.fiche-carte .tableau th { background: none; }
+
+/* ---------- Tableaux et fiche sur petit écran : lignes empilées ---------- */
+
+@media (max-width: 40rem) {
+  .fiche { grid-template-columns: minmax(0, 1fr); }
+
+  .tableau thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .tableau, .tableau tbody, .tableau tr, .tableau td { display: block; width: 100%; }
+  .tableau tr { padding: var(--espace-3) var(--espace-4); border-bottom: 1px solid var(--couleur-bordure); }
+  .tableau tbody tr:last-child { border-bottom: 0; }
+  .tableau td { padding: var(--espace-1) 0; border-bottom: 0; }
+  .tableau td[data-label] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--espace-3);
+  }
+  /* Libellé de colonne affiché devant chaque valeur (attr() : aucun style en ligne). */
+  .tableau td[data-label]::before {
+    content: attr(data-label);
+    flex: none;
+    font-size: var(--taille-petite);
+    font-weight: 600;
+    color: var(--couleur-texte-doux);
+  }
+  .tableau td[data-label] > * { min-width: 0; }
+  .fiche-carte .tableau tr { padding-left: 0; padding-right: 0; }
+}
 
 /* ---------- Petits écrans ---------- */
 

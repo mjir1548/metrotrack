@@ -25,7 +25,15 @@ Dernière mise à jour : 2026-11-17
   - Revue sécurité finale : **OK pour commit**, sans bloquant ni point important.
   - Commitée avec l'accord de l'humain. **Prochaine étape : 3 (comptes et connexion)**, à lancer sur son feu vert.
   - À garder en tête pour l'étape 3 : les navigateurs ignorent HSTS sur une adresse IP, il faudra un nom d'hôte. L'option `maxConnections` de `createFrameServer` est réservée aux tests et ne doit pas être branchée sur `config.json` sans nouvelle décision.
-- **Étape 3 (comptes et connexion)** : terminée et validée par le testeur et la revue (151 tests verts). **En attente de l'accord de l'humain pour le commit.** Sans rôles (D-010) ; paramètres d'authentification en D-011 (Proposée, à faire valider).
+- **Étape 3 (comptes et connexion)** : terminée, commitée (`9eb48ec`) avec l'accord de l'humain. 151 tests verts. Sans rôles (D-010) ; paramètres d'authentification en D-011 (**Proposée**, reste à faire valider explicitement par l'humain ; le silence ne vaut pas validation).
+- **Étape 4 (inventaire en lecture)** : terminée et validée par le testeur et la revue (241 tests verts). **En attente de l'accord de l'humain pour le commit.** Questions à lui soumettre :
+  - D-011 et D-013 (Proposées) ;
+  - le pipelining des trames après un rejet (protocole).
+- **Pour l'étape 5** :
+  - borner la longueur des textes saisis (nom, notes, propriétés) ;
+  - filtrer les caractères bidi des noms à la saisie ;
+  - adapter le libellé de la source de localisation (scan ou correction manuelle) ;
+  - garder la forme de vue de D-013.
 - **Étapes suivantes** du plan (`docs/cadrage.md` §4) :
   - 3 : comptes et connexion ;
   - 4 : inventaire en lecture ;
@@ -161,3 +169,83 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
   - Points de conception signalés : la page 503 est vide (page blanche) ; un attaquant seul peut occuper la file en continu ; le journal grossit sous attaque.
 - Vérification de l'orchestrateur : `node --test` → 151/151 verts. Aucune clé ni donnée personnelle dans les fichiers à commiter, `package.json` toujours sans dépendance.
 - **Étape 3 terminée, en attente de l'accord de l'humain pour le commit** (aller-retour 2/3). `PROMPT-REPRISE.md` est exclu du commit.
+- Accord de l'humain → commit `9eb48ec` « Étape 3 : comptes et connexion ». Les fichiers ont été ajoutés nommément ; `PROMPT-REPRISE.md` reste non versionné.
+
+### 2026-11-17 — Étape 4 lancée (inventaire en lecture)
+- Lancée selon CLAUDE.md §9 (après un commit, on passe à l'étape suivante).
+- Contenu :
+  - liste des objets avec localisation et ancienneté, recherche par nom ou UID ;
+  - fiche objet avec propriétés, notes, localisation et derniers scans ;
+  - fonction d'échappement HTML et gabarit à échappement automatique, testés ;
+  - bandeau de navigation commun ;
+  - page 503 de connexion lisible.
+- Agent `dev` lancé (aller-retour 1/3).
+- Rapport de `dev` : étape 4 implémentée, 205 tests verts, aucune dépendance.
+  - Nouveaux fichiers : `server/html.js` (gabarit à échappement automatique ; `sendHtml` refuse tout HTML qui n'en vient pas), `dates.js`, `inventory.js`, `views.js`.
+  - dev-seed ajoute « Poste 2 » et 5 objets de démonstration.
+  - Captures vérifiées par l'orchestrateur (liste et fiche, bureau) : rendu propre.
+  - 3 tests existants adaptés : corps du 503, regex `href="/"`, pipelining. Pour ce dernier, les 503 désormais plus volumineux font couper la connexion par Node (`HPE_PAUSED`).
+  - Limite relevée : la recherche par nom tient compte des accents et de la casse hors ASCII (« étuve » ne trouve pas « Étuve »). À corriger au prochain aller-retour (friction minimale).
+- Testeur et revue sécurité lancés en parallèle.
+- Rapport de la revue sécurité : **OK pour commit**, aucun bloquant. XSS, SQL, contrôle d'accès, en-têtes, page 503, dev-seed et non-régression sont jugés conformes.
+  - I1 : la vue `item_locations` est entièrement matérialisée à chaque page (`row_number`). Mesure : 555 ms pour 300 000 scans, et `node:sqlite` est synchrone, donc tout le serveur bloque.
+    - Proposition : réécrire la vue avec une sous-requête corrélée sur l'index (migration 003), mêmes colonnes et mêmes résultats, 20 ms environ.
+    - L'orchestrateur la traite comme une optimisation, pas comme un changement de modèle : la sémantique de D-006 est inchangée. Elle est signalée à l'humain.
+  - I2 : `raw()` est du code mort, à supprimer.
+  - I3 : un mot court en lettres hexadécimales (`de`, `a`) remonte des UID ; ne chercher dans les UID qu'à partir de 4 caractères hexadécimaux ou s'il y a un chiffre.
+  - Suggestions :
+    - libellé de la source de localisation (pour l'étape 5) ;
+    - ordre des propriétés ;
+    - pas de pagination ;
+    - recherche sans accents : coût à surveiller ;
+    - D-011 ne doit pas être considérée comme validée par le silence (SUIVI corrigé) ;
+    - test de pipelining à préciser.
+- Rapport du testeur : les 11 critères tiennent sur le serveur réel, sans bogue de sécurité. 223 tests (221 verts, 2 todo).
+  - Ajouts : `test/inventaire-verif.test.js`, `test/inventaire-charge.test.js`.
+  - Défaut moyen : un nom de poste long sans espace déborde (puce `.etat`, 375 px et bureau).
+  - Défaut faible : un NUL dans `q` fausse le LIKE.
+  - Confirme la lenteur de la vue (I1).
+  - Remarques cosmétiques : RLO dans un nom, `dd` sans `pre-wrap`, texte d'aide rogné à 375 px.
+- Retour à `dev` (aller-retour 2/3) :
+  - vue réécrite (migration 003, sous-requête corrélée, mêmes résultats, test d'équivalence) ;
+  - suppression de `raw()` ;
+  - recherche insensible aux accents et à la casse ;
+  - UID cherché seulement à partir de 4 caractères hexadécimaux ;
+  - caractères de contrôle retirés de `q` ;
+  - débordements CSS et `pre-wrap` sur `dd` ;
+  - commentaire corrigé, test de pipelining précisé, todo retirés.
+- Rapport de `dev` (aller-retour 2/3) : tout est corrigé, 233 tests verts, aucun todo.
+  - Migration 003 : avec 300 000 scans, la liste passe de 1,9 s à 44 ms et la fiche de 1,9 s à 0,2 ms. Équivalence avec l'ancienne vue testée.
+  - Recherche filtrée en JS par `fold` : plus de LIKE.
+  - Règle UID : au moins 4 caractères hexadécimaux, dont un chiffre.
+  - Changement non demandé : un seul 503 par connexion dans `web.js`.
+  - Capture du poste long à 375 px vérifiée par l'orchestrateur : plus de débordement.
+- Re-vérification par le testeur et re-relecture par la revue lancées en parallèle.
+- Re-relecture par la revue : **OK pour commit**. Ancien I1 (vue), I2 (`raw`), I3 (UID) et le « 503 unique » sont jugés sûrs ; la vue est équivalente sur 300 000 scans.
+  - Nouveau I1 : caractères bidi invisibles écrits littéralement dans une regex de `inventory.js:24` (motif « Trojan Source ») → les remplacer par des échappements `\u`.
+  - Nouveau I2 : cadrage §3 et D-006 montrent encore l'ancienne vue → faits par l'orchestrateur (note dans cadrage.md, D-013 « Proposée », complément à D-011 sur le 503).
+  - Suggestions :
+    - S1 : retrouver un UID complet sans chiffre (8 caractères hexadécimaux ou plus) ;
+    - S2 : borner la longueur des textes à l'étape 5 ;
+    - S3 : libellé de la source de localisation à l'étape 5 ;
+    - S5 : une recherche vide une fois normalisée équivaut à une recherche vide.
+- Re-vérification du testeur : les 8 points sont vérifiés, 236 tests verts.
+  - Migration 003 testée sur une vraie base en version 2 (issue de 9eb48ec) : localisations identiques.
+  - Charge : 300 000 scans → liste en 30 ms et fiche en 3 ms ; `/api/frames` reste réactif.
+  - **Point remonté à l'humain (protocole, hérité de l'étape 1)** : sur une connexion avec pipelining, des trames valides envoyées après un rejet sont enregistrées, mais leur réponse est perdue (à cause de `Connection: close` sur le rejet). Sans effet pour le prototype Wi-Fi (une trame par requête) ; cela compte pour le futur boîtier mère. Deux options : une règle dans `protocole.md` (« ne pas enchaîner ») ou un changement côté serveur.
+- Retour à `dev` (aller-retour 3/3, le dernier) :
+  - caractères bidi écrits en échappements, avec un test anti-caractères invisibles ;
+  - un UID complet sans chiffre est trouvable ;
+  - une recherche vide après normalisation équivaut à une recherche vide ;
+  - espace insécable dans le résumé de recherche.
+- Rapport de `dev` (aller-retour 3/3) : les 4 retouches sont faites, 241 tests verts.
+  - L'outil d'écriture de `dev` avait converti des échappements `\u` en caractères réels, y compris dans 3 fichiers de test. Tout est corrigé.
+  - Nouveau test anti-caractères invisibles : `test/sources-invisibles.test.js`.
+  - L'orchestrateur a vérifié : 241/241, aucun caractère invisible dans `server/`, `web/`, `test/` ni `docs/`.
+- Vérification ciblée par le testeur et relecture ciblée par la revue lancées en parallèle.
+- Relecture finale par la revue : **OK pour commit**. Le problème des caractères invisibles est fermé, sans régression ; les fichiers du cœur sont identiques à HEAD. Deux suggestions mineures :
+  - étendre le contrôle anti-caractères invisibles à `tools/` et `docs/` ;
+  - remettre D-013 après D-012 (fait par l'orchestrateur).
+- Vérification finale du testeur : ✅ sur les 4 retouches et la non-régression. Il reste une capture périmée (cosmétique) et le point de protocole sur le pipelining.
+- Vérification de l'orchestrateur : 241/241, `package.json` toujours sans dépendance.
+- **Étape 4 terminée, en attente de l'accord de l'humain pour le commit** (3 allers-retours sur 3). `PROMPT-REPRISE.md` est exclu du commit.

@@ -154,7 +154,8 @@ test('pages sans aucune ressource externe ni script ou style inline', async () =
   for (const [name, html] of Object.entries(pages)) {
     assert.ok(html.length > 100, name);
     for (const [, url] of html.matchAll(/\b(?:src|href|action)\s*=\s*"([^"]*)"/gi)) {
-      assert.match(url, /^\/[^/]/, `${name} : URL non locale ${url}`);
+      // Chemin local : commence par une seule « / » (« / » seul accepté : lien vers l'inventaire).
+      assert.match(url, /^\/(?!\/)/, `${name} : URL non locale ${url}`);
     }
     assert.doesNotMatch(html, /https?:|\/\//i, name);
     assert.doesNotMatch(html, /<script|<style|\sstyle\s*=|\son[a-z]+\s*=/i, name);

@@ -1,13 +1,11 @@
-// Interface web : connexion, déconnexion, page protégée, feuille de style (étape 3).
+// Interface web : connexion, déconnexion, inventaire en lecture (liste et fiche), feuille de style.
 // HTML rendu côté serveur, sans JavaScript côté client, sans ressource externe.
 //
-// ÉCHAPPEMENT : ce module n'a pas encore de fonction d'échappement HTML (prévue à l'étape 4).
-// Les seules valeurs variables insérées dans les pages sont donc limitées par construction
-// à des caractères sans signification en HTML :
-//   - l'identifiant du compte : [A-Za-z0-9._-]{1,64}, vérifié à la création (user-add),
-//     par un CHECK en base, et de nouveau juste avant l'affichage ;
-//   - les jetons CSRF : base64url ([A-Za-z0-9_-]).
-// Aucune donnée saisie par le visiteur n'est réaffichée (pas même l'identifiant tapé).
+// ÉCHAPPEMENT : toutes les pages sont produites par les gabarits de server/views.js, écrits
+// avec html`...` (server/html.js), qui échappe automatiquement chaque valeur interpolée.
+// sendHtml n'accepte qu'un fragment produit par ce gabarit : une chaîne construite à la main
+// ne peut pas être envoyée par erreur.
+// Le formulaire de connexion ne réaffiche aucune saisie (pas même l'identifiant tapé).
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -15,6 +13,11 @@ import { verifyPassword, DUMMY_HASH, USERNAME_FORMAT } from './password.js';
 import {
   SESSION_COOKIE, createSession, findSession, deleteSession, csrfTokenFor, newToken, isTokenFormat, safeEqual,
 } from './sessions.js';
+import { isSafeHtml } from './html.js';
+import { listItems, getItem, recentScans, parseItemId, normalizeQuery } from './inventory.js';
+import {
+  loginPage as loginView, forbiddenPage, inventoryPage, itemPage as itemView, itemNotFoundPage, BUSY_MESSAGE,
+} from './views.js';
 
 // Délai avant la réponse à un échec de connexion (ralentit les essais successifs ; la
 // réponse est différée par setTimeout, le serveur n'est pas bloqué).
@@ -25,6 +28,9 @@ const LOGIN_CSRF_MAX_AGE_S = 600;
 // largement. Au-delà, on cesse de lire (pas de consommation mémoire à la demande d'un client).
 const MAX_FORM_BYTES = 4096;
 const GENERIC_LOGIN_ERROR = 'Identifiant ou mot de passe incorrect.';
+// Connexions (sockets) sur lesquelles un 503 « Connection: close » est déjà en file : Node
+// les fermera après cette réponse. Références faibles : aucune fuite mémoire.
+const closingConnections = new WeakSet();
 
 // Feuille de style lue UNE fois au démarrage et servie depuis la mémoire : aucun chemin de
 // fichier n'est dérivé de l'URL (pas de traversée de répertoire possible).
@@ -55,11 +61,15 @@ const clearCookie = (name) => `${name}=; ${COOKIE_ATTRIBUTES}; Max-Age=0`;
 
 // Table des routes : chemin exact → méthode → gestionnaire.
 const ROUTES = {
-  '/': { GET: home },
+  '/': { GET: inventory },
   '/login': { GET: loginPage, POST: login },
   '/logout': { POST: logout },
   '/static/style.css': { GET: styleSheet },
 };
+// Fiche d'un objet : /items/<segment>. Le segment est validé par le gestionnaire (entier
+// strict) ; un chemin plus profond (/items/1/x) n'est pas une route.
+const ITEM_PREFIX = '/items/';
+const ITEM_ROUTE = { GET: itemPage };
 
 /**
  * Point d'entrée de l'interface web (toute requête qui n'est pas POST /api/frames).
@@ -69,22 +79,39 @@ const ROUTES = {
 export function handleWeb(ctx, path, req, res) {
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
   // Object.hasOwn : un chemin comme « /__proto__ » ou « constructor » ne résout rien d'hérité.
-  const route = Object.hasOwn(ROUTES, path) ? ROUTES[path] : null;
+  let route = Object.hasOwn(ROUTES, path) ? ROUTES[path] : null;
+  if (!route && path.startsWith(ITEM_PREFIX) && !path.includes('/', ITEM_PREFIX.length)) route = ITEM_ROUTE;
   if (!route) return sendStatus(res, 404);
   const handler = Object.hasOwn(route, req.method) ? route[req.method] : null;
   if (!handler) {
     res.setHeader('Allow', Object.keys(route).join(', '));
     return sendStatus(res, 405);
   }
-  handler(ctx, req, res);
+  handler(ctx, req, res, path);
 }
 
 // ---------------------------------------------------------------- gestionnaires
 
-function home(ctx, req, res) {
+// Liste de l'inventaire, avec recherche facultative (?q=).
+function inventory(ctx, req, res) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  sendHtml(res, 200, homeHtml(session));
+  const query = normalizeQuery(queryParam(req, 'q'));
+  const items = listItems(ctx.db, query);
+  sendHtml(res, 200, inventoryPage(pageUser(session), { query, items, now: Date.now() }));
+}
+
+// Fiche d'un objet. La session est vérifiée AVANT l'identifiant : sans session, toute adresse
+// /items/... redirige vers la connexion, sans révéler si la fiche existe.
+function itemPage(ctx, req, res, path) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const id = parseItemId(path.slice(ITEM_PREFIX.length));
+  const item = id === null ? null : getItem(ctx.db, id);
+  if (!item) return sendHtml(res, 404, itemNotFoundPage(user));
+  const scans = item.uid_nfc === null ? [] : recentScans(ctx.db, item.uid_nfc);
+  sendHtml(res, 200, itemView(user, { item, scans, now: Date.now() }));
 }
 
 function loginPage(ctx, req, res) {
@@ -93,7 +120,7 @@ function loginPage(ctx, req, res) {
   // formé (plusieurs onglets restent valides), sinon nouveau. Durée de validité renouvelée.
   const existing = readCookies(req).get(LOGIN_CSRF_COOKIE);
   const csrf = isTokenFormat(existing) ? existing : newToken();
-  sendHtml(res, 200, loginHtml(csrf, false), [loginCsrfCookie(csrf)]);
+  sendHtml(res, 200, loginView(csrf, null), [loginCsrfCookie(csrf)]);
 }
 
 function login(ctx, req, res) {
@@ -134,13 +161,25 @@ function login(ctx, req, res) {
       if (req.socket.destroyed) return; // client parti : rien à lui répondre
       setTimeout(ctx.guard(() => {
         // Un seul message générique, quelle que soit la cause ; l'identifiant n'est pas réaffiché.
-        sendHtml(res, 401, loginHtml(csrfCookie, true), [loginCsrfCookie(csrfCookie)]);
+        sendHtml(res, 401, loginView(csrfCookie, GENERIC_LOGIN_ERROR), [loginCsrfCookie(csrfCookie)]);
       }), ctx.loginFailureDelayMs);
     }).catch((err) => {
       // File argon2 pleine (password.js, MAX_PENDING_ARGON2) : refus immédiat, sans calcul.
+      // La page de connexion est réaffichée avec un message, statut 503 et connexion fermée.
+      // Aucun cookie n'est posé : le formulaire réutilise le jeton CSRF de connexion de la
+      // requête, déjà vérifié ci-dessus (format et égalité avec le champ).
       if (err.code === 'ARGON2_BUSY') {
         ctx.log(`connexion refusée : file argon2 pleine, depuis ${remote}`);
-        return sendStatus(res, 503);
+        // Un seul 503 par connexion. Les requêtes enchaînées APRÈS lui sur la même connexion ne
+        // reçoivent aucune réponse : HTTP/1.1, après une réponse « Connection: close », le
+        // serveur ferme et le client ne doit pas en attendre d'autres. (Les requêtes reçues
+        // AVANT lui gardent leur réponse : Node envoie les réponses dans l'ordre, puis ferme.)
+        // Sans cela, chaque requête ajouterait une page 503 au tampon d'écriture, derrière les
+        // 401 retardés, et Node finirait par couper la connexion par son propre 400.
+        if (closingConnections.has(req.socket)) return;
+        closingConnections.add(req.socket);
+        res.setHeader('Connection', 'close');
+        return sendHtml(res, 503, loginView(csrfCookie, BUSY_MESSAGE));
       }
       ctx.fail(err); // chemin asynchrone : toute autre erreur donne un 500, jamais un arrêt
     });
@@ -170,6 +209,22 @@ function styleSheet(ctx, req, res) {
 
 function currentSession(ctx, req) {
   return findSession(ctx.db, readCookies(req).get(SESSION_COOKIE));
+}
+
+/**
+ * Compte affiché dans le bandeau, avec le jeton CSRF du formulaire de déconnexion.
+ * Défense en profondeur : l'identifiant est échappé par le gabarit, mais il doit en plus
+ * respecter le format imposé à la création (sinon exception → 500, rien n'est affiché).
+ */
+function pageUser(session) {
+  if (!USERNAME_FORMAT.test(session.username)) throw new Error('identifiant de compte hors format');
+  return { username: session.username, csrf: csrfTokenFor(session.token) };
+}
+
+/** Première valeur d'un paramètre de la chaîne de requête, ou null. Décodage tolérant (jamais d'exception). */
+function queryParam(req, name) {
+  const start = req.url.indexOf('?');
+  return start < 0 ? null : new URLSearchParams(req.url.slice(start + 1)).get(name);
 }
 
 /** En-tête Cookie → Map nom → valeur (première occurrence d'un nom). */
@@ -231,12 +286,14 @@ function readForm(ctx, req, res, onForm) {
 
 // ---------------------------------------------------------------- réponses
 
-function sendHtml(res, status, html, cookies = []) {
+// page : fragment produit par html`...` UNIQUEMENT (toute autre valeur : exception → 500).
+function sendHtml(res, status, page, cookies = []) {
+  if (!isSafeHtml(page)) throw new TypeError('page HTML non produite par le gabarit html');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store'); // pages avec données de session : jamais en cache
   if (cookies.length > 0) res.setHeader('Set-Cookie', cookies);
   res.writeHead(status);
-  res.end(html);
+  res.end(page.toString());
 }
 
 // Redirections vers des chemins fixes du site uniquement : aucune cible fournie par le
@@ -262,77 +319,5 @@ function sendStatus(res, status) {
 function forbidden(ctx, res, cause, remote) {
   ctx.log(`requête refusée : ${cause}, depuis ${remote}`);
   res.setHeader('Connection', 'close');
-  sendHtml(res, 403, cardLayout('Requête refusée', `<h1>Requête refusée</h1>
-<p class="sous-titre">La page a peut-être expiré. Rechargez-la puis recommencez.</p>
-<a class="bouton" href="/login">Revenir à la connexion</a>`));
-}
-
-// ---------------------------------------------------------------- pages
-// Gabarits : uniquement du texte constant, plus les valeurs sûres décrites en tête de fichier.
-// Aucun attribut style ni balise <style>/<script> : la CSP les bloquerait (tout est dans style.css).
-
-const BRAND = '<span class="marque"><span class="marque-logo" aria-hidden="true">MT</span>MetroTrack</span>';
-
-function document(title, bodyClass, body) {
-  return `<!doctype html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title} · MetroTrack</title>
-<link rel="stylesheet" href="/static/style.css">
-</head>
-<body class="${bodyClass}">
-${body}
-</body>
-</html>
-`;
-}
-
-// Page hors session (connexion, refus) : une carte centrée.
-function cardLayout(title, content) {
-  return document(title, 'page-connexion', `<main class="carte">
-${BRAND}
-${content}
-</main>`);
-}
-
-function loginHtml(csrf, failed) {
-  const error = failed ? `<p class="erreur" role="alert">${GENERIC_LOGIN_ERROR}</p>\n` : '';
-  return cardLayout('Connexion', `<h1>Connexion</h1>
-<p class="sous-titre">Inventaire du matériel</p>
-${error}<form class="formulaire" method="post" action="/login">
-<input type="hidden" name="csrf" value="${csrf}">
-<div class="champ">
-<label for="username">Identifiant</label>
-<input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required autofocus>
-</div>
-<div class="champ">
-<label for="password">Mot de passe</label>
-<input id="password" name="password" type="password" autocomplete="current-password" required>
-</div>
-<button class="bouton" type="submit">Se connecter</button>
-</form>`);
-}
-
-function homeHtml(session) {
-  // Défense en profondeur : l'identifiant est affiché sans échappement, il doit donc
-  // respecter le format sûr (sinon exception → 500, rien n'est affiché).
-  if (!USERNAME_FORMAT.test(session.username)) throw new Error('identifiant de compte hors format');
-  return document('Accueil', 'page-app', `<header class="barre">
-<div class="barre-interieur">
-${BRAND}
-<div class="session">
-<span>Connecté en tant que <strong>${session.username}</strong></span>
-<form method="post" action="/logout">
-<input type="hidden" name="csrf" value="${csrfTokenFor(session.token)}">
-<button class="bouton bouton-secondaire" type="submit">Se déconnecter</button>
-</form>
-</div>
-</div>
-</header>
-<main class="contenu">
-<h1>Accueil</h1>
-<p class="texte-doux">Vous êtes connecté.</p>
-</main>`);
+  sendHtml(res, 403, forbiddenPage());
 }

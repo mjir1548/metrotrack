@@ -155,6 +155,11 @@ CREATE TRIGGER scans_no_delete     BEFORE DELETE ON scans     BEGIN SELECT RAISE
 CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log BEGIN SELECT RAISE(ABORT, 'audit_log: append-only'); END;
 CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log BEGIN SELECT RAISE(ABORT, 'audit_log: append-only'); END;
 
+-- ⚠️ Forme de calcul REMPLACÉE par la migration 003 (D-013) : la version ci-dessous, avec row_number()
+-- sur tous les événements, est matérialisée en entier à chaque lecture (environ 1,9 s pour 300 000 scans).
+-- L'implémentation réelle utilise une sous-requête corrélée par objet sur l'index scans_by_uid.
+-- L'étape 5 doit garder cette forme : une sous-requête pour le dernier scan, une pour la dernière
+-- correction, et la plus récente des deux l'emporte. La sémantique ci-dessous reste la référence.
 -- Localisation actuelle : événement le plus récent (scan de la puce de l'objet, ou correction manuelle).
 -- Un objet absent de la vue n'a jamais été localisé. station_id NULL = scanné sur un lecteur non affecté.
 CREATE VIEW item_locations AS

@@ -329,7 +329,9 @@ test('50 POST /login abandonnés aussitôt : au plus 16 calculs argon2, puis ser
   assert.ok(!logs.some((l) => l.startsWith('erreur interne')));
 });
 
-test('file argon2 pleine : 503 sans corps, Connection: close, aucun calcul, journal avec la seule adresse', async () => {
+// Étape 4 : le 503 n'est plus sans corps (page blanche) ; il réaffiche la page de connexion
+// avec un message, sans poser de cookie, avec le jeton CSRF déjà présenté.
+test('file argon2 pleine : 503 avec la page de connexion et son message, Connection: close, aucun cookie, aucun calcul, journal avec la seule adresse', async () => {
   await waitArgon2Idle();
   const csrf = await loginCsrf();
   // Remplit la file depuis le test (même module que le serveur) : un premier calcul lent
@@ -346,7 +348,13 @@ test('file argon2 pleine : 503 sans corps, Connection: close, aucun calcul, jour
       body: form({ csrf, username: 'alice', password: PASSWORD }),
     });
     assert.equal(res.status, 503);
-    assert.equal(res.body, '');
+    assert.equal(res.headers['content-type'], 'text/html; charset=utf-8');
+    assert.equal(res.headers['cache-control'], 'no-store');
+    assert.ok(res.body.includes('<p class="erreur" role="alert">Trop de connexions en cours. Réessayez dans un instant.</p>'));
+    assert.ok(res.body.includes('<form class="formulaire" method="post" action="/login">'));
+    // Le formulaire réaffiché reprend le jeton CSRF de la requête ; aucun cookie n'est posé.
+    assert.ok(res.body.includes(`<input type="hidden" name="csrf" value="${csrf}">`));
+    assert.equal(res.headers['set-cookie'], undefined);
     assert.equal(res.headers.connection, 'close');
     assert.equal(cookieValue(res, '__Host-mt_session'), undefined);
     assert.match(logs.at(-1), /^connexion refusée : file argon2 pleine, depuis [0-9a-f.:]+$/);

@@ -112,8 +112,20 @@ function devSeed() {
     const station = db.prepare('INSERT INTO stations (name, created_at) VALUES (?, ?)').run('Poste 1', now);
     db.prepare('INSERT INTO readers (id, station_id, aead_key, created_at) VALUES (1, ?, ?, ?)')
       .run(station.lastInsertRowid, key, now);
+    // « Multimètre démo » (UID 04A1B2C3D4E5F6) et le lecteur 1 : inchangés, le simulateur et
+    // les tests en dépendent.
     db.prepare('INSERT INTO items (uid_nfc, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
       .run('04A1B2C3D4E5F6', 'Multimètre démo', now, now);
+    db.prepare('INSERT INTO stations (name, description, created_at) VALUES (?, ?, ?)')
+      .run('Poste 2', 'Banc de mesure électrique', now);
+    // Objets de démonstration pour la liste : puces jamais scannées, et objets sans puce.
+    // Aucun scan ni aucun compte n'est créé.
+    const insertItem = db.prepare(
+      'INSERT INTO items (uid_nfc, name, properties, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    for (const [uid, name, properties, notes] of DEMO_ITEMS) {
+      insertItem.run(uid, name, JSON.stringify(properties), notes, now, now);
+    }
     mkdirSync(dirname(keyPath), { recursive: true });
     // flag 'wx' : ne jamais écraser une clé existante. Mode 0o600 : lisible par le
     // seul propriétaire (sans effet réel sous Windows, où les ACL s'appliquent).
@@ -127,8 +139,26 @@ function devSeed() {
   } finally {
     db.close();
   }
-  console.log(`dev-seed : poste "Poste 1", lecteur 1 (clé dans ${keyPath}), objet "Multimètre démo" (UID 04A1B2C3D4E5F6)`);
+  console.log(`dev-seed : poste "Poste 1", lecteur 1 (clé dans ${keyPath}), objet "Multimètre démo" (UID 04A1B2C3D4E5F6), `
+    + `poste "Poste 2" et ${DEMO_ITEMS.length} autres objets de démonstration`);
 }
+
+// Objets de démonstration de dev-seed : [UID ou null, nom, propriétés, notes].
+const DEMO_ITEMS = [
+  ['04B7C2D91A3E80', 'Oscilloscope Tektronix MDO34',
+    { Marque: 'Tektronix', Modèle: 'MDO34', 'N° de série': 'C012345', Bande: '200 MHz' },
+    'Sondes rangées dans la sacoche grise.\nNe pas débrancher pendant une acquisition longue.'],
+  ['A1B2C3D4', 'Pied à coulisse numérique 150 mm',
+    { Marque: 'Mitutoyo', Résolution: '0,01 mm' },
+    'Pile CR2032 remplacée en octobre.'],
+  ['04C8D1E2F3A4B5', 'Caméra thermique FLIR E8',
+    { Marque: 'FLIR', Modèle: 'E8-XT' },
+    ''],
+  [null, 'Alimentation de laboratoire 30 V / 5 A',
+    { Marque: 'Rohde & Schwarz', Modèle: 'HMC8041' },
+    'Puce NFC à poser.'],
+  [null, 'Clé dynamométrique 5–60 N·m', {}, ''],
+];
 
 // Création d'un compte (D-010 : seul moyen de créer un compte ; aucun compte par défaut).
 // Le mot de passe et son empreinte ne sont jamais affichés ni journalisés.

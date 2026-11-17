@@ -1,0 +1,251 @@
+/* MetroTrack : feuille de style locale.
+   Aucune ressource distante : polices du système uniquement, aucune image, aucune importation.
+   Les variables ci-dessous (couleurs, espacements, rayons, ombres) sont la base commune
+   des pages des étapes suivantes : les réutiliser plutôt que d'écrire des valeurs en dur. */
+
+:root {
+  /* Couleurs */
+  --couleur-texte: #1b2430;
+  --couleur-texte-doux: #5a6676;
+  --couleur-fond: #eef1f5;
+  --couleur-surface: #ffffff;
+  --couleur-bordure: #d3d9e1;
+  --couleur-bordure-forte: #9aa6b5;
+  --couleur-primaire: #1d4f91;
+  --couleur-primaire-survol: #163d72;
+  --couleur-primaire-texte: #ffffff;
+  --couleur-focus: #2f7de1;
+  --couleur-erreur: #a11d1d;
+  --couleur-erreur-fond: #fdeeee;
+  --couleur-erreur-bordure: #e9b4b4;
+
+  /* Espacements (échelle de 4 px) */
+  --espace-1: 0.25rem;
+  --espace-2: 0.5rem;
+  --espace-3: 0.75rem;
+  --espace-4: 1rem;
+  --espace-5: 1.5rem;
+  --espace-6: 2rem;
+  --espace-7: 3rem;
+
+  /* Typographie : polices du système */
+  --police: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --taille-petite: 0.875rem;
+  --taille-normale: 1rem;
+  --taille-titre: 1.375rem;
+
+  /* Formes */
+  --rayon: 0.5rem;
+  --rayon-petit: 0.375rem;
+  --ombre: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 16px rgba(16, 24, 40, 0.08);
+  --largeur-contenu: 64rem;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--police);
+  font-size: var(--taille-normale);
+  line-height: 1.5;
+  color: var(--couleur-texte);
+  background: var(--couleur-fond);
+}
+
+h1 {
+  margin: 0 0 var(--espace-2);
+  font-size: var(--taille-titre);
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+p { margin: 0 0 var(--espace-4); }
+
+a { color: var(--couleur-primaire); }
+a:hover { color: var(--couleur-primaire-survol); }
+
+/* ---------- Marque (texte seul, sans image) ---------- */
+
+.marque {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espace-2);
+  font-weight: 700;
+  font-size: 1.125rem;
+  letter-spacing: 0.01em;
+  color: var(--couleur-texte);
+}
+
+.marque-logo {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--rayon-petit);
+  background: var(--couleur-primaire);
+  color: var(--couleur-primaire-texte);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Page de connexion : carte centrée ---------- */
+
+.page-connexion {
+  display: grid;
+  place-items: center;
+  padding: var(--espace-5) var(--espace-4);
+}
+
+.carte {
+  width: 100%;
+  max-width: 24rem;
+  padding: var(--espace-6);
+  background: var(--couleur-surface);
+  border: 1px solid var(--couleur-bordure);
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+}
+
+.carte .marque { margin-bottom: var(--espace-5); }
+
+.sous-titre {
+  margin-bottom: var(--espace-5);
+  color: var(--couleur-texte-doux);
+  font-size: var(--taille-petite);
+}
+
+/* ---------- Formulaires ---------- */
+
+.formulaire { display: grid; gap: var(--espace-4); }
+
+.champ { display: grid; gap: var(--espace-1); }
+
+label {
+  font-size: var(--taille-petite);
+  font-weight: 600;
+}
+
+input {
+  width: 100%;
+  min-height: 2.75rem; /* cible tactile confortable */
+  padding: var(--espace-2) var(--espace-3);
+  font: inherit;
+  color: inherit;
+  background: var(--couleur-surface);
+  border: 1px solid var(--couleur-bordure-forte);
+  border-radius: var(--rayon-petit);
+}
+
+input:hover { border-color: var(--couleur-texte-doux); }
+
+/* Focus toujours visible (clavier) : contour épais et contrasté. */
+input:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--couleur-focus);
+  outline-offset: 2px;
+}
+input:focus-visible { border-color: var(--couleur-focus); }
+
+.bouton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: var(--espace-2) var(--espace-5);
+  font: inherit;
+  font-weight: 600;
+  color: var(--couleur-primaire-texte);
+  background: var(--couleur-primaire);
+  border: 1px solid var(--couleur-primaire);
+  border-radius: var(--rayon-petit);
+  text-decoration: none; /* aussi pour un lien présenté en bouton */
+  cursor: pointer;
+}
+.bouton:hover {
+  color: var(--couleur-primaire-texte);
+  background: var(--couleur-primaire-survol);
+  border-color: var(--couleur-primaire-survol);
+}
+
+.formulaire .bouton { width: 100%; margin-top: var(--espace-2); }
+
+.bouton-secondaire {
+  min-height: 2.25rem;
+  padding: var(--espace-1) var(--espace-4);
+  color: var(--couleur-texte);
+  background: var(--couleur-surface);
+  border-color: var(--couleur-bordure-forte);
+}
+.bouton-secondaire:hover { color: var(--couleur-texte); background: var(--couleur-fond); border-color: var(--couleur-texte-doux); }
+
+/* ---------- Messages ---------- */
+
+.erreur {
+  margin: 0 0 var(--espace-5);
+  padding: var(--espace-3) var(--espace-4);
+  color: var(--couleur-erreur);
+  font-weight: 600;
+  background: var(--couleur-erreur-fond);
+  border: 1px solid var(--couleur-erreur-bordure);
+  border-left: 4px solid var(--couleur-erreur);
+  border-radius: var(--rayon-petit);
+}
+
+/* ---------- Pages de l'application : barre du haut + contenu ---------- */
+
+.barre {
+  background: var(--couleur-surface);
+  border-bottom: 1px solid var(--couleur-bordure);
+}
+
+.barre-interieur {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--espace-3);
+  max-width: var(--largeur-contenu);
+  margin: 0 auto;
+  padding: var(--espace-3) var(--espace-5);
+}
+
+.session {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espace-3);
+  font-size: var(--taille-petite);
+  color: var(--couleur-texte-doux);
+}
+.session strong { color: var(--couleur-texte); }
+.session form { margin: 0; }
+
+.contenu {
+  max-width: var(--largeur-contenu);
+  margin: 0 auto;
+  padding: var(--espace-6) var(--espace-5);
+}
+
+.panneau {
+  padding: var(--espace-5);
+  background: var(--couleur-surface);
+  border: 1px solid var(--couleur-bordure);
+  border-radius: var(--rayon);
+}
+.panneau > :last-child { margin-bottom: 0; }
+
+.texte-doux { color: var(--couleur-texte-doux); }
+
+/* ---------- Petits écrans ---------- */
+
+@media (max-width: 30rem) {
+  .page-connexion { place-items: start center; padding: var(--espace-4) var(--espace-3); }
+  .carte { padding: var(--espace-5) var(--espace-4); box-shadow: none; }
+  .barre-interieur, .contenu { padding-left: var(--espace-4); padding-right: var(--espace-4); }
+  .contenu { padding-top: var(--espace-5); }
+}

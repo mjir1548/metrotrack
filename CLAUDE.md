@@ -8,6 +8,8 @@ MetroTrack est un logiciel d'inventaire de matériel basé sur des puces NFC et 
 
 **Principe directeur : friction minimale.** L'utilisation doit être un plaisir, pas une corvée. Chaque écran, chaque étape, chaque champ obligatoire doit justifier son existence.
 
+**Objectif actuel** : un logiciel fonctionnel, visuellement soigné, qui respecte toutes les exigences techniques de ce fichier. La qualité visuelle de l'interface fait partie des critères de réussite de chaque étape qui la touche.
+
 ## 2. Périmètre du MVP (strict)
 
 Dans le périmètre :
@@ -38,7 +40,7 @@ Le projet s'est dispersé dans ces sujets par le passé. Si une demande ou une i
 
 ## 4. Contraintes de sécurité (non négociables)
 
-Premier site pilote : l'ONERA, environnement très sécurisé. L'ensemble doit pouvoir être audité et validé par une équipe SSI.
+Cible : des environnements très sécurisés. Aucun site pilote n'est au plan pour l'instant (l'ONERA est une piste pour plus tard, voir D-012). Ces contraintes restent toutes en vigueur : l'ensemble doit pouvoir être audité et validé par une équipe SSI.
 
 - **Hébergement 100 % local, aucune dépendance à Internet à l'exécution** : pas de CDN, pas de polices ou scripts distants, pas de télémétrie, pas d'appel sortant. Tous les assets sont servis localement.
 - **Échanges authentifiés et chiffrés** sur tous les liens :

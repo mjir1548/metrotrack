@@ -1,6 +1,6 @@
 ---
 name: revue-securite
-description: Relit le code de MetroTrack sous l'angle sécurité, simplicité et respect du périmètre MVP, comme le ferait l'équipe SSI du site pilote (ONERA). À utiliser après le testeur, avant chaque commit. Lecture seule.
+description: Relit le code de MetroTrack sous l'angle sécurité, simplicité et respect du périmètre MVP, comme le ferait une équipe SSI exigeante. À utiliser après le testeur, avant chaque commit. Lecture seule.
 tools: Read, Glob, Grep, Bash
 ---
 

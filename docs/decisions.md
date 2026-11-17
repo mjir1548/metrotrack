@@ -103,3 +103,34 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
 - **Alternatives écartées** : TLS 1.3 seul (risque d'incompatibilité avec le client TLS du firmware ESP32, à revoir avec Yanis) ; certificats de test versionnés (des clés privées dans le dépôt).
 - **Raison** : CLAUDE.md §4 ; recommandations courantes de l'ANSSI pour TLS.
 - **À voir** : la PKI du site pilote (CA ONERA ?) et le mTLS pour le boîtier mère.
+
+## D-010 — Aucun rôle utilisateur dans le MVP
+
+- **Date** : 2026-11-17 · **Statut** : Validée (2026-11-17)
+- **Décision** : tout compte actif peut tout faire, y compris gérer les postes, les lecteurs et leurs clés. Les comptes sont créés uniquement en ligne de commande (`user-add`), sur le serveur.
+- **Alternative écartée** : un rôle « administrateur » séparé. Il faudrait des contrôles d'accès sur chaque route et leurs tests, pour une équipe pilote réduite.
+- **Raison** : principe « la version la plus simple d'abord ». La création de comptes reste réservée à qui a accès au serveur. À rouvrir si la SSI l'exige.
+
+## D-011 — Authentification des utilisateurs : paramètres
+
+- **Date** : 2026-11-17 · **Statut** : Proposée
+- **Décision** :
+  - argon2id (`node:crypto`), m = 19 456 Kio, t = 2, p = 1, sel de 16 octets, empreinte de 32 octets, format PHC. Ce sont les paramètres minimaux recommandés par l'OWASP. Les calculs argon2 passent un par un dans une file unique et **bornée à 16** calculs en attente ou en cours. Au-delà, le serveur répond 503 sans calcul. Si le client a déjà coupé, aucun calcul n'est lancé. Ainsi la mémoire et le CPU restent bornés (revue de l'étape 3, B1). Effets : plus de 16 tentatives de connexion simultanées reçoivent 503 ; un attaquant peut occuper la file en continu, ce qui est accepté sur réseau local pour le MVP ;
+  - mot de passe d'au moins 12 caractères ; identifiant limité à `[A-Za-z0-9._-]`, de 1 à 64 caractères, pour qu'il puisse s'afficher sans échappement à l'étape 3 ;
+  - session : jeton aléatoire de 32 octets dans le cookie `__Host-mt_session` (`HttpOnly; Secure; SameSite=Strict; Path=/`), seul son SHA-256 est stocké ; durée absolue de 8 h, sans prolongation ; nouveau jeton à chaque connexion ;
+  - CSRF : tout POST de l'interface exige un en-tête `Origin` égal à `https://` + `Host`, et un jeton. Avec une session, le jeton est HMAC-SHA256(jeton de session, « csrf »), il n'est donc pas stocké. Pour le formulaire de connexion, c'est un cookie court `__Host-mt_login_csrf` comparé au champ du formulaire (double soumission) ;
+  - mot de passe normalisé en NFC avant le hachage et la vérification ; formulaire refusé si son `charset` n'est pas UTF-8 ; requêtes refusées journalisées avec seulement la cause et l'adresse ;
+  - échec de connexion : message générique, réponse retardée d'1 s (ce délai ralentit chaque réponse mais ne limite pas le débit global d'essais, environ 50 par seconde ; pas de verrouillage de compte, acceptable avec 12 caractères minimum), et calcul argon2 sur une empreinte factice si le compte n'existe pas ou est désactivé (pas d'énumération des comptes par le temps de réponse) ;
+  - `POST /api/frames` n'est pas concerné (boîtiers authentifiés par l'AEAD, D-004) ;
+  - `Referrer-Policy: same-origin` et non `no-referrer` : avec `no-referrer`, les navigateurs envoient `Origin: null` sur un POST de formulaire, et le contrôle d'`Origin` refuserait toute connexion. `same-origin` n'envoie aucun Referer vers un autre site.
+- **Alternatives écartées** : paramètres argon2 RFC 9106 (64 Mio, p = 4), plus coûteux en mémoire par tentative ; jeton CSRF stocké en base, une colonne de plus pour le même effet ; expiration glissante, plus de code.
+- **Raison** : CLAUDE.md §4, cadrage.md §4 étape 3.
+
+## D-012 — Recentrage : un logiciel fonctionnel et soigné, sans préparation du pilote
+
+- **Date** : 2026-11-17 · **Statut** : Validée (2026-11-17, demande de l'humain)
+- **Décision** :
+  - l'étape 8 « Préparation du pilote » (cadrage.md §4 : dossier SSI, installation hors ligne, systemd) sort du plan pour l'instant ;
+  - l'objectif devient un logiciel fonctionnel, visuellement correct, qui respecte toutes les exigences techniques déjà fixées (CLAUDE.md §4 et §5, D-002 à D-011). Elles restent toutes en vigueur : HTTPS, AEAD, aucune ressource externe, zéro dépendance, journaux ;
+  - la qualité visuelle de l'interface devient un critère de réussite de chaque étape qui touche à l'interface (3 à 7).
+- **Raison** : priorité de l'humain. L'ONERA reste un pilote possible plus tard.

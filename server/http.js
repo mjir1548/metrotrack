@@ -1,9 +1,11 @@
-// Transport HTTPS : extrait les octets de la trame et appelle ingestFrame.
-// Aucune logique métier ici. Il n'existe aucun serveur en clair.
+// Transport HTTPS : extrait les octets de la trame et appelle ingestFrame ; toute autre
+// requête est confiée à l'interface web (web.js). Aucune logique métier ici.
+// Il n'existe aucun serveur en clair.
 
 import { createServer } from 'node:https';
 import { constants } from 'node:crypto';
 import { ingestFrame } from './ingest.js';
+import { handleWeb, LOGIN_FAILURE_DELAY_MS } from './web.js';
 
 const FRAMES_PATH = '/api/frames';
 // Plafond de lecture du corps : une trame fait 36 octets. Au-delà, on cesse de lire
@@ -32,13 +34,17 @@ const HSTS = 'max-age=31536000';
 const MAX_CONNECTIONS = 256;
 
 /**
+ * Serveur HTTPS unique : POST /api/frames (boîtiers) et interface web (navigateurs).
  * @param {import('node:sqlite').DatabaseSync} db
- * @param {{tls: {cert: Buffer|string, key: Buffer|string}, log?: (line:string) => void, maxConnections?: number}} options
+ * @param {{tls: {cert: Buffer|string, key: Buffer|string}, log?: (line:string) => void, maxConnections?: number, loginFailureDelayMs?: number}} options
  *   tls : certificat et clé privée du serveur (PEM), OBLIGATOIRES ;
  *   log : destination du journal (console par défaut) ;
- *   maxConnections : réservé aux tests (petite valeur) ; pas un paramètre de configuration.
+ *   maxConnections, loginFailureDelayMs : réservés aux tests (petites valeurs) ; pas des
+ *   paramètres de configuration.
  */
-export function createFrameServer(db, { tls, log = console.log, maxConnections = MAX_CONNECTIONS } = {}) {
+export function createFrameServer(db, {
+  tls, log = console.log, maxConnections = MAX_CONNECTIONS, loginFailureDelayMs = LOGIN_FAILURE_DELAY_MS,
+} = {}) {
   if (!tls?.cert || !tls?.key) throw new Error('certificat et clé TLS obligatoires');
   const options = {
     cert: tls.cert,
@@ -69,7 +75,8 @@ export function createFrameServer(db, { tls, log = console.log, maxConnections =
         fail(err);
       }
     };
-    guard(handleRequest)(db, log, req, res, guard);
+    const web = { db, log, loginFailureDelayMs, guard, fail };
+    guard(handleRequest)(db, log, req, res, guard, web);
   });
   // Limite le temps laissé à un client pour envoyer sa requête complète.
   server.requestTimeout = 10_000;
@@ -81,11 +88,13 @@ export function createFrameServer(db, { tls, log = console.log, maxConnections =
   return server;
 }
 
-function handleRequest(db, log, req, res, guard) {
+function handleRequest(db, log, req, res, guard, web) {
   // Comparaison textuelle du chemin, sans analyse d'URL : une cible invalide
-  // (ex. « //[ ») est simplement un autre chemin, donc 404.
+  // (ex. « //[ ») est simplement un autre chemin, donc 404 (dans web.js).
   const path = req.url.split('?')[0];
-  if (path !== FRAMES_PATH) return sendEmpty(res, 404, true);
+  // Interface web : sessions, CSRF et en-têtes propres (web.js). La route des trames
+  // ci-dessous n'en dépend pas : les boîtiers sont authentifiés par l'AEAD (D-004).
+  if (path !== FRAMES_PATH) return handleWeb(web, path, req, res);
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return sendEmpty(res, 405, true);

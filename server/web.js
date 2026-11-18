@@ -1,4 +1,5 @@
-// Interface web : connexion, déconnexion, inventaire en lecture (liste et fiche), feuille de style.
+// Interface web : connexion, déconnexion, inventaire (liste et fiche), édition des fiches
+// (création, modification, suppression, correction de localisation), feuille de style.
 // HTML rendu côté serveur, sans JavaScript côté client, sans ressource externe.
 //
 // ÉCHAPPEMENT : toutes les pages sont produites par les gabarits de server/views.js, écrits
@@ -16,7 +17,11 @@ import {
 import { isSafeHtml } from './html.js';
 import { listItems, getItem, recentScans, parseItemId, normalizeQuery } from './inventory.js';
 import {
+  validateItemInput, createItem, updateItem, deleteItem, correctLocation, listStations, itemHistory, MAX_PROPERTIES,
+} from './items.js';
+import {
   loginPage as loginView, forbiddenPage, inventoryPage, itemPage as itemView, itemNotFoundPage, BUSY_MESSAGE,
+  itemFormPage, deleteItemPage as deleteView, locationPage as locationView,
 } from './views.js';
 
 // Délai avant la réponse à un échec de connexion (ralentit les essais successifs ; la
@@ -27,6 +32,31 @@ const LOGIN_CSRF_MAX_AGE_S = 600;
 // Plafond du corps d'un formulaire : identifiant + mot de passe (≤ 1 Kio) + jeton tiennent
 // largement. Au-delà, on cesse de lire (pas de consommation mémoire à la demande d'un client).
 const MAX_FORM_BYTES = 4096;
+// Plafond du corps des formulaires d'édition (fiche, suppression, localisation). Au-delà :
+// 413 sans corps, comme /login, et la lecture s'arrête.
+// - Une fiche remplie au maximum en texte courant (nom 200, notes 10 000, 50 propriétés de
+//   1 100 caractères ; accents et ponctuation encodés en %XX, 6 à 9 octets par caractère)
+//   tient sous ce plafond.
+// - LIMITE ACCEPTÉE : une fiche presque entièrement accentuée, en écriture non latine ou en
+//   emoji peut le dépasser une fois encodée (jusqu'à 9 octets par unité UTF-16). Elle reçoit
+//   alors un 413 et la saisie est perdue. C'est rare et n'ouvre aucune faille.
+// - Mémoire par requête : le corps brut (au plus ce plafond), sa copie décodée en texte, puis
+//   la page éventuellement réaffichée, elle-même bornée par MAX_FORM_ROWS. Soit quelques fois
+//   le plafond par requête, et non un total garanti pour le serveur.
+export const MAX_EDIT_FORM_BYTES = 256 * 1024;
+// Lignes de propriété vides ajoutées au formulaire (affichage initial, « Ajouter des lignes »).
+const BLANK_ROWS = 3;
+// Nombre maximal de lignes de propriété (prop_key, comme prop_value) qu'un formulaire de
+// l'application peut afficher, donc renvoyer : MAX_PROPERTIES lignes remplies + BLANK_ROWS
+// lignes vides. Toutes les pages respectent ce total :
+//   - modification : propriétés enregistrées (au plus MAX_PROPERTIES, validées) + 3 vides ;
+//   - saisie refusée : lignes reçues non vides (≤ MAX_FORM_ROWS) + vides jusqu'au total ;
+//   - « Ajouter des lignes » : 3 vides de plus, sans jamais dépasser le total.
+// Au-delà, la requête ne vient pas de nos pages : 400 sans corps, sans réaffichage (une page
+// de 24 000 lignes serait sinon produite à partir d'un corps de 256 Kio).
+export const MAX_FORM_ROWS = MAX_PROPERTIES + BLANK_ROWS;
+// Valeur du bouton « Ajouter des lignes » : réaffiche le formulaire, sans rien enregistrer.
+const ADD_ROWS_ACTION = 'lignes';
 const GENERIC_LOGIN_ERROR = 'Identifiant ou mot de passe incorrect.';
 // Connexions (sockets) sur lesquelles un 503 « Connection: close » est déjà en file : Node
 // les fermera après cette réponse. Références faibles : aucune fuite mémoire.
@@ -65,11 +95,31 @@ const ROUTES = {
   '/login': { GET: loginPage, POST: login },
   '/logout': { POST: logout },
   '/static/style.css': { GET: styleSheet },
+  '/items/new': { GET: newItemPage, POST: createItemAction },
 };
-// Fiche d'un objet : /items/<segment>. Le segment est validé par le gestionnaire (entier
-// strict) ; un chemin plus profond (/items/1/x) n'est pas une route.
+// Pages d'une fiche : /items/<id> et /items/<id>/<action>. Le segment <id> est validé par le
+// gestionnaire (entier strict) ; tout autre chemin sous /items/ (/items/1/x, /items/1/,
+// /items/1/edit/2...) n'est pas une route.
 const ITEM_PREFIX = '/items/';
-const ITEM_ROUTE = { GET: itemPage };
+const ITEM_ROUTES = {
+  '': { GET: itemPage },
+  edit: { GET: editItemPage, POST: updateItemAction },
+  delete: { GET: deleteItemPage, POST: deleteItemAction },
+  location: { GET: locationPage, POST: correctLocationAction },
+};
+
+/** Chemin → {route, idText} (idText : segment <id> brut, non validé, ou null), ou null si aucune route. */
+function resolveRoute(path) {
+  // Object.hasOwn : un chemin comme « /__proto__ » ou « constructor » ne résout rien d'hérité.
+  if (Object.hasOwn(ROUTES, path)) return { route: ROUTES[path], idText: null };
+  if (!path.startsWith(ITEM_PREFIX)) return null;
+  const parts = path.slice(ITEM_PREFIX.length).split('/');
+  if (parts.length === 1) return { route: ITEM_ROUTES[''], idText: parts[0] };
+  if (parts.length === 2 && parts[1] !== '' && Object.hasOwn(ITEM_ROUTES, parts[1])) {
+    return { route: ITEM_ROUTES[parts[1]], idText: parts[0] };
+  }
+  return null;
+}
 
 /**
  * Point d'entrée de l'interface web (toute requête qui n'est pas POST /api/frames).
@@ -78,16 +128,15 @@ const ITEM_ROUTE = { GET: itemPage };
  */
 export function handleWeb(ctx, path, req, res) {
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
-  // Object.hasOwn : un chemin comme « /__proto__ » ou « constructor » ne résout rien d'hérité.
-  let route = Object.hasOwn(ROUTES, path) ? ROUTES[path] : null;
-  if (!route && path.startsWith(ITEM_PREFIX) && !path.includes('/', ITEM_PREFIX.length)) route = ITEM_ROUTE;
-  if (!route) return sendStatus(res, 404);
+  const resolved = resolveRoute(path);
+  if (!resolved) return sendStatus(res, 404);
+  const { route, idText } = resolved;
   const handler = Object.hasOwn(route, req.method) ? route[req.method] : null;
   if (!handler) {
     res.setHeader('Allow', Object.keys(route).join(', '));
     return sendStatus(res, 405);
   }
-  handler(ctx, req, res, path);
+  handler(ctx, req, res, idText);
 }
 
 // ---------------------------------------------------------------- gestionnaires
@@ -98,20 +147,165 @@ function inventory(ctx, req, res) {
   if (!session) return redirect(res, '/login');
   const query = normalizeQuery(queryParam(req, 'q'));
   const items = listItems(ctx.db, query);
-  sendHtml(res, 200, inventoryPage(pageUser(session), { query, items, now: Date.now() }));
+  sendHtml(res, 200, inventoryPage(pageUser(session), { query, items, now: Date.now(), notice: queryParam(req, 'ok') }));
 }
 
 // Fiche d'un objet. La session est vérifiée AVANT l'identifiant : sans session, toute adresse
 // /items/... redirige vers la connexion, sans révéler si la fiche existe.
-function itemPage(ctx, req, res, path) {
+// ?ok= : code de confirmation, affiché seulement s'il est connu (views.js, ITEM_NOTICES).
+function itemPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
   const user = pageUser(session);
-  const id = parseItemId(path.slice(ITEM_PREFIX.length));
-  const item = id === null ? null : getItem(ctx.db, id);
-  if (!item) return sendHtml(res, 404, itemNotFoundPage(user));
+  const item = findItem(ctx, res, user, idText);
+  if (!item) return;
   const scans = item.uid_nfc === null ? [] : recentScans(ctx.db, item.uid_nfc);
-  sendHtml(res, 200, itemView(user, { item, scans, now: Date.now() }));
+  const history = itemHistory(ctx.db, item.id);
+  sendHtml(res, 200, itemView(user, { item, scans, history, now: Date.now(), notice: queryParam(req, 'ok') }));
+}
+
+// ---------------------------------------------------------------- édition des fiches
+// Pages GET : session obligatoire. Envois POST : voir postForm (session, Origin, jeton CSRF).
+// Une saisie invalide réaffiche le formulaire, avec les valeurs saisies et les erreurs, en 400.
+// Une action réussie redirige (303) vers une page fixe avec un code ?ok= constant.
+
+function newItemPage(ctx, req, res) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const form = { name: '', notes: '', rows: [], blankRows: BLANK_ROWS };
+  sendHtml(res, 200, itemFormPage(pageUser(session), { item: null, form, errors: {} }));
+}
+
+function createItemAction(ctx, req, res) {
+  postForm(ctx, req, res, (session, form) => {
+    const valid = submittedItem(ctx, res, pageUser(session), form, null);
+    if (!valid) return;
+    const id = createItem(ctx.db, session.userId, valid);
+    ctx.log(`fiche ${id} créée par ${session.username}`);
+    redirect(res, `/items/${id}?ok=cree`);
+  });
+}
+
+function editItemPage(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const item = findItem(ctx, res, user, idText);
+  if (!item) return;
+  const rows = item.properties.map(([key, value]) => ({ key, value, error: null }));
+  const form = withBlankRows({ name: item.name, notes: item.notes, rows }, BLANK_ROWS);
+  sendHtml(res, 200, itemFormPage(user, { item, form, errors: {} }));
+}
+
+function updateItemAction(ctx, req, res, idText) {
+  postForm(ctx, req, res, (session, form) => {
+    const user = pageUser(session);
+    const item = findItem(ctx, res, user, idText);
+    if (!item) return;
+    const valid = submittedItem(ctx, res, user, form, item);
+    if (!valid) return;
+    const changed = updateItem(ctx.db, session.userId, item.id, valid);
+    if (changed === null) return sendHtml(res, 404, itemNotFoundPage(user));
+    if (changed.length > 0) ctx.log(`fiche ${item.id} modifiée par ${session.username} (${changed.join(', ')})`);
+    redirect(res, `/items/${item.id}?ok=${changed.length > 0 ? 'modifie' : 'inchange'}`);
+  });
+}
+
+function deleteItemPage(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const item = findItem(ctx, res, user, idText);
+  if (!item) return;
+  sendHtml(res, 200, deleteView(user, { item }));
+}
+
+function deleteItemAction(ctx, req, res, idText) {
+  postForm(ctx, req, res, (session) => {
+    const user = pageUser(session);
+    const id = parseItemId(idText);
+    if (id === null || !deleteItem(ctx.db, session.userId, id)) return sendHtml(res, 404, itemNotFoundPage(user));
+    ctx.log(`fiche ${id} supprimée par ${session.username}`);
+    redirect(res, '/?ok=supprime');
+  });
+}
+
+function locationPage(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const item = findItem(ctx, res, user, idText);
+  if (!item) return;
+  sendHtml(res, 200, locationView(user, { item, stations: listStations(ctx.db) }));
+}
+
+function correctLocationAction(ctx, req, res, idText) {
+  postForm(ctx, req, res, (session, form) => {
+    const user = pageUser(session);
+    const item = findItem(ctx, res, user, idText);
+    if (!item) return;
+    // Identifiant de poste : même format strict qu'un identifiant de fiche (entier positif) ;
+    // son existence est vérifiée dans la transaction d'écriture.
+    const selected = form.get('station') ?? '';
+    const outcome = correctLocation(ctx.db, session.userId, item.id, parseItemId(selected));
+    if (outcome === 'no_item') return sendHtml(res, 404, itemNotFoundPage(user));
+    if (outcome === 'no_station') {
+      const error = selected === '' ? 'Choisissez un poste dans la liste.' : 'Ce poste n\'existe pas ou plus. Choisissez un poste dans la liste.';
+      return sendHtml(res, 400, locationView(user, { item, stations: listStations(ctx.db), selected, error }));
+    }
+    ctx.log(`localisation de la fiche ${item.id} corrigée par ${session.username}`);
+    redirect(res, `/items/${item.id}?ok=corrige`);
+  });
+}
+
+/**
+ * Fiche désignée par le segment d'URL, ou null après avoir répondu 404 (identifiant mal
+ * formé ou fiche inexistante : même page, sans distinction).
+ */
+function findItem(ctx, res, user, idText) {
+  const id = parseItemId(idText);
+  const item = id === null ? null : getItem(ctx.db, id);
+  if (!item) sendHtml(res, 404, itemNotFoundPage(user));
+  return item;
+}
+
+/**
+ * Envoi du formulaire de fiche (création : item null ; modification : la fiche). Champs :
+ * name, notes, et prop_key / prop_value répétés, appariés par position.
+ * Renvoie la fiche validée à enregistrer, ou null après avoir répondu :
+ *   - plus de MAX_FORM_ROWS lignes : 400 sans corps, connexion fermée, rien réaffiché ;
+ *   - « Ajouter des lignes » : 200, saisie réaffichée (nettoyée, sans erreurs) avec
+ *     BLANK_ROWS lignes vides de plus, dans la limite de MAX_FORM_ROWS ; rien n'est écrit ;
+ *   - saisie invalide : 400, formulaire réaffiché avec les valeurs et les erreurs.
+ */
+function submittedItem(ctx, res, user, form, item) {
+  const keys = form.getAll('prop_key');
+  const values = form.getAll('prop_value');
+  if (keys.length > MAX_FORM_ROWS || values.length > MAX_FORM_ROWS) {
+    ctx.log(`formulaire de fiche refusé : ${Math.max(keys.length, values.length)} lignes de propriétés (plafond ${MAX_FORM_ROWS})`);
+    sendStatus(res, 400);
+    return null;
+  }
+  const result = validateItemInput({ name: form.get('name'), notes: form.get('notes'), keys, values });
+  if (form.get('action') === ADD_ROWS_ACTION) {
+    const rows = result.form.rows.map((row) => ({ ...row, error: null }));
+    sendHtml(res, 200, itemFormPage(user, { item, form: withBlankRows({ ...result.form, rows }, result.form.blankRows + BLANK_ROWS), errors: {} }));
+    return null;
+  }
+  if (!result.ok) {
+    sendHtml(res, 400, itemFormPage(user, { item, form: withBlankRows(result.form, BLANK_ROWS), errors: result.errors }));
+    return null;
+  }
+  return result.item;
+}
+
+/**
+ * Formulaire avec `wanted` lignes vides après ses lignes remplies, sans dépasser MAX_FORM_ROWS
+ * lignes au total : une page de l'application ne peut ainsi jamais produire un envoi refusé
+ * pour excès de lignes, et « Ajouter des lignes » répété plafonne au même total.
+ */
+function withBlankRows(form, wanted) {
+  return { ...form, blankRows: Math.max(0, Math.min(wanted, MAX_FORM_ROWS - form.rows.length)) };
 }
 
 function loginPage(ctx, req, res) {
@@ -128,7 +322,7 @@ function login(ctx, req, res) {
   // devient indéfini, et l'adresse disparaîtrait du journal.
   const remote = req.socket.remoteAddress ?? '-';
   if (!originMatchesHost(req)) return forbidden(ctx, res, 'origin', remote);
-  readForm(ctx, req, res, (form) => {
+  readForm(ctx, req, res, MAX_FORM_BYTES, (form) => {
     const cookies = readCookies(req);
     const csrfCookie = cookies.get(LOGIN_CSRF_COOKIE);
     // Double soumission : le champ du formulaire doit égaler le cookie __Host- posé par
@@ -189,13 +383,37 @@ function login(ctx, req, res) {
 function logout(ctx, req, res) {
   const remote = req.socket.remoteAddress ?? '-';
   if (!originMatchesHost(req)) return forbidden(ctx, res, 'origin', remote);
-  readForm(ctx, req, res, (form) => {
+  readForm(ctx, req, res, MAX_FORM_BYTES, (form) => {
     const session = currentSession(ctx, req);
     // Sans session valide, aucun jeton CSRF ne peut être valide : 403 comme tout POST non vérifié.
     if (!session || !safeEqual(form.get('csrf'), csrfTokenFor(session.token))) return forbidden(ctx, res, 'csrf', remote);
     deleteSession(ctx.db, session.token); // invalidation côté serveur, pas seulement le cookie
     ctx.log(`déconnexion : compte ${session.username}`);
     redirect(res, '/login', [clearCookie(SESSION_COOKIE)]);
+  });
+}
+
+/**
+ * Envoi d'un formulaire de l'application (POST), dans cet ordre :
+ *   1. session valide, sinon 303 vers /login (corps non lu, rien n'est écrit) ;
+ *   2. CSRF, première barrière : Origin égal à ce serveur, sinon 403 avant de lire le corps ;
+ *   3. corps lu, plafonné à MAX_EDIT_FORM_BYTES (sinon 413) ;
+ *   4. session relue (elle a pu être fermée pendant la lecture), puis jeton CSRF du formulaire
+ *      comparé en temps constant au jeton dérivé de la session (D-011), sinon 403 ;
+ *   5. onForm(session, form) : seule étape qui peut écrire.
+ */
+function postForm(ctx, req, res, onForm) {
+  const remote = req.socket.remoteAddress ?? '-';
+  if (!currentSession(ctx, req)) {
+    res.setHeader('Connection', 'close'); // corps non lu : la connexion n'est pas réutilisée
+    return redirect(res, '/login');
+  }
+  if (!originMatchesHost(req)) return forbidden(ctx, res, 'origin', remote);
+  readForm(ctx, req, res, MAX_EDIT_FORM_BYTES, (form) => {
+    const session = currentSession(ctx, req);
+    if (!session) return redirect(res, '/login');
+    if (!safeEqual(form.get('csrf'), csrfTokenFor(session.token))) return forbidden(ctx, res, 'csrf', remote);
+    onForm(session, form);
   });
 }
 
@@ -250,8 +468,8 @@ function originMatchesHost(req) {
   return typeof origin === 'string' && typeof host === 'string' && host !== '' && origin === `https://${host}`;
 }
 
-/** Lit un corps application/x-www-form-urlencoded plafonné, puis appelle onForm(URLSearchParams). */
-function readForm(ctx, req, res, onForm) {
+/** Lit un corps application/x-www-form-urlencoded plafonné à maxBytes, puis appelle onForm(URLSearchParams). */
+function readForm(ctx, req, res, maxBytes, onForm) {
   const [type, ...params] = (req.headers['content-type'] ?? '').split(';');
   if (type.trim().toLowerCase() !== 'application/x-www-form-urlencoded') return sendStatus(res, 400);
   // Le corps est décodé en UTF-8 : un autre jeu de caractères annoncé est refusé plutôt que
@@ -263,7 +481,7 @@ function readForm(ctx, req, res, onForm) {
     const value = eq < 0 ? '' : param.slice(eq + 1).trim().replace(/^"(.*)"$/, '$1').toLowerCase();
     if (value !== 'utf-8') return sendStatus(res, 400);
   }
-  if (Number(req.headers['content-length']) > MAX_FORM_BYTES) return sendStatus(res, 413);
+  if (Number(req.headers['content-length']) > maxBytes) return sendStatus(res, 413);
   const chunks = [];
   let size = 0;
   let aborted = false;
@@ -271,7 +489,7 @@ function readForm(ctx, req, res, onForm) {
   req.on('data', ctx.guard((chunk) => {
     if (aborted) return;
     size += chunk.length;
-    if (size > MAX_FORM_BYTES) {
+    if (size > maxBytes) {
       aborted = true;
       req.pause(); // on cesse de lire ; la connexion est fermée après la réponse
       return sendStatus(res, 413);

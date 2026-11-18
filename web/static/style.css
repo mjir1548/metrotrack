@@ -141,7 +141,7 @@ label {
   font-weight: 600;
 }
 
-input {
+input, textarea, select {
   width: 100%;
   min-height: 2.75rem; /* cible tactile confortable */
   padding: var(--espace-2) var(--espace-3);
@@ -152,16 +152,24 @@ input {
   border-radius: var(--rayon-petit);
 }
 
-input:hover { border-color: var(--couleur-texte-doux); }
+textarea { min-height: 8rem; resize: vertical; line-height: 1.5; }
+
+input:hover, textarea:hover, select:hover { border-color: var(--couleur-texte-doux); }
 
 /* Focus toujours visible (clavier) : contour épais et contrasté. */
 input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
 button:focus-visible,
 a:focus-visible {
   outline: 3px solid var(--couleur-focus);
   outline-offset: 2px;
 }
-input:focus-visible { border-color: var(--couleur-focus); }
+input:focus-visible, textarea:focus-visible, select:focus-visible { border-color: var(--couleur-focus); }
+
+/* Champ en erreur : bordure rouge (le message est affiché sous le champ). */
+[aria-invalid="true"],
+[aria-invalid="true"]:hover { border-color: var(--couleur-erreur); box-shadow: inset 0 0 0 1px var(--couleur-erreur); }
 
 .bouton {
   display: inline-flex;
@@ -195,6 +203,25 @@ input:focus-visible { border-color: var(--couleur-focus); }
 }
 .bouton-secondaire:hover { color: var(--couleur-texte); background: var(--couleur-fond); border-color: var(--couleur-texte-doux); }
 
+/* Action destructrice confirmée (page de confirmation de suppression). */
+.bouton-danger { background: var(--couleur-erreur); border-color: var(--couleur-erreur); }
+.bouton-danger:hover { background: #7f1414; border-color: #7f1414; }
+
+/* Action destructrice discrète (lien vers la confirmation) et lien « Annuler ». */
+.lien-danger, .lien-annuler {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: var(--espace-1) 0; /* aucun retrait horizontal : aligné à gauche quand il passe à la ligne */
+  font-size: var(--taille-petite);
+  font-weight: 600;
+  border-radius: var(--rayon-petit);
+}
+.lien-danger { color: var(--couleur-erreur); text-decoration: none; }
+.lien-danger:hover { color: var(--couleur-erreur); text-decoration: underline; }
+.lien-annuler { color: var(--couleur-texte-doux); }
+.lien-annuler:hover { color: var(--couleur-texte); }
+
 /* ---------- Messages ---------- */
 
 .erreur {
@@ -207,6 +234,36 @@ input:focus-visible { border-color: var(--couleur-focus); }
   border-left: 4px solid var(--couleur-erreur);
   border-radius: var(--rayon-petit);
 }
+
+/* Confirmation après une action (fiche créée, modifiée...). */
+.succes {
+  margin: 0 0 var(--espace-4);
+  padding: var(--espace-3) var(--espace-4);
+  color: var(--couleur-poste);
+  font-weight: 600;
+  background: var(--couleur-poste-fond);
+  border: 1px solid var(--couleur-poste-bordure);
+  border-left: 4px solid var(--couleur-poste);
+  border-radius: var(--rayon-petit);
+}
+
+/* Message d'erreur sous un champ. */
+.erreur-champ {
+  margin: 0;
+  font-size: var(--taille-petite);
+  font-weight: 600;
+  color: var(--couleur-erreur);
+  overflow-wrap: anywhere;
+}
+
+/* Aide courte sous un champ (format, limites). */
+.aide {
+  margin: 0;
+  font-size: var(--taille-petite);
+  color: var(--couleur-texte-doux);
+}
+
+.obligatoire { font-weight: 400; color: var(--couleur-texte-doux); }
 
 /* ---------- Pages de l'application : barre du haut + contenu ---------- */
 
@@ -293,6 +350,32 @@ input:focus-visible { border-color: var(--couleur-focus); }
 .entete-page { margin-bottom: var(--espace-4); }
 .entete-page h1 { margin: 0; overflow-wrap: anywhere; }
 
+/* Titre et actions de la page sur une ligne ; les actions passent dessous si la place manque. */
+.entete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--espace-3);
+}
+.entete-actions h1 { flex: 1 1 16rem; min-width: 0; }
+
+.actions-page {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espace-2) var(--espace-4);
+}
+.actions-page .bouton-secondaire { min-height: 2.75rem; }
+
+/* Rappel du nom de la fiche sous le titre d'une page d'édition. */
+.sous-titre-page {
+  margin: var(--espace-1) 0 0;
+  color: var(--couleur-texte-doux);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .retour { margin-bottom: var(--espace-3); font-size: var(--taille-petite); }
 .retour a { font-weight: 600; text-decoration: none; }
 .retour a:hover { text-decoration: underline; }
@@ -307,6 +390,7 @@ input:focus-visible { border-color: var(--couleur-focus); }
   margin-bottom: var(--espace-3);
 }
 .recherche input { flex: 1 1 10rem; min-width: 0; }
+.recherche .bouton { min-height: 2.75rem; } /* même hauteur que le champ */
 
 .resultats {
   margin-bottom: var(--espace-4);
@@ -364,6 +448,9 @@ input:focus-visible { border-color: var(--couleur-focus); }
 .tableau-inventaire th:nth-child(2) { width: 38%; }
 .tableau-inventaire th:nth-child(3) { width: 11rem; }
 .tableau-scans th:nth-child(2) { width: 13rem; }
+.tableau-modifications { table-layout: fixed; }
+.tableau-modifications th:nth-child(1) { width: 13rem; }
+.tableau-modifications th:nth-child(2) { width: 12rem; }
 
 .lien-objet { font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
 .lien-objet:hover { text-decoration: underline; }
@@ -468,6 +555,81 @@ time { white-space: nowrap; }
 .fiche-carte .tableau th:last-child, .fiche-carte .tableau td:last-child { padding-right: 0; }
 .fiche-carte .tableau th { background: none; }
 
+/* ---------- Pages d'édition : formulaire de fiche, localisation, suppression ---------- */
+
+.formulaire-page {
+  display: grid;
+  gap: var(--espace-5);
+  max-width: 44rem;
+  padding: var(--espace-5);
+  background: var(--couleur-surface);
+  border: 1px solid var(--couleur-bordure);
+  border-radius: var(--rayon);
+}
+
+.formulaire-page .champ { gap: var(--espace-2); }
+
+/* Propriétés : groupe de champs sans cadre propre (il est déjà dans le panneau). */
+.champ-proprietes {
+  display: grid;
+  gap: var(--espace-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.champ-proprietes legend {
+  padding: 0;
+  margin-bottom: var(--espace-1);
+  font-size: var(--taille-petite);
+  font-weight: 600;
+}
+
+.proprietes-saisie { display: grid; gap: var(--espace-2); }
+
+/* Une ligne = nom et valeur côte à côte, message d'erreur éventuel dessous. */
+.propriete-ligne, .propriete-entete {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--espace-2);
+}
+.propriete-ligne .erreur-champ { grid-column: 1 / -1; }
+.propriete-entete {
+  font-size: var(--taille-petite);
+  font-weight: 600;
+  color: var(--couleur-texte-doux);
+}
+
+.actions-formulaire {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espace-3);
+  padding-top: var(--espace-4);
+  border-top: 1px solid var(--couleur-bordure);
+}
+.panneau-danger .actions-formulaire { margin-top: var(--espace-5); }
+.actions-formulaire .bouton-secondaire { min-height: 2.75rem; }
+
+/* Alerte au-dessus d'un formulaire d'édition : même largeur que le formulaire. */
+.contenu > .erreur { max-width: 44rem; }
+
+.localisation-actuelle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espace-2);
+}
+
+/* Confirmation de suppression : panneau bordé de rouge. */
+.panneau-danger {
+  max-width: 44rem;
+  border-color: var(--couleur-erreur-bordure);
+  border-left: 4px solid var(--couleur-erreur);
+}
+.panneau-danger form { margin: 0; }
+.nom-confirme { overflow-wrap: anywhere; }
+
 /* ---------- Tableaux et fiche sur petit écran : lignes empilées ---------- */
 
 @media (max-width: 40rem) {
@@ -510,4 +672,6 @@ time { white-space: nowrap; }
   .carte { padding: var(--espace-5) var(--espace-4); box-shadow: none; }
   .barre-interieur, .contenu { padding-left: var(--espace-4); padding-right: var(--espace-4); }
   .contenu { padding-top: var(--espace-5); }
+  .formulaire-page { padding: var(--espace-4); }
+  .panneau-danger { padding: var(--espace-4); }
 }

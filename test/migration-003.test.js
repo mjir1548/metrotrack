@@ -7,7 +7,7 @@
 //   scans, aucune matérialisation pour la fiche.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -17,6 +17,8 @@ import { getItem, listItems } from '../server/inventory.js';
 const MIGRATIONS = join(import.meta.dirname, '..', 'server', 'migrations');
 const NOW = '2026-11-17T10:00:00.000Z';
 const KEY = Buffer.alloc(32, 7);
+// Version la plus récente du schéma : les migrations suivantes (004...) s'appliquent aussi.
+const LATEST = Math.max(...readdirSync(MIGRATIONS).filter((f) => /^[0-9]{3}_/.test(f)).map((f) => Number(f.slice(0, 3))));
 
 // Définition de la vue dans la migration 001, recopiée ici comme référence.
 const OLD_VIEW = `CREATE TEMP VIEW old_item_locations AS
@@ -70,7 +72,7 @@ function seed(db) {
   return id;
 }
 
-test('migration 003 : base en version 2 → version 3, données conservées, localisations identiques, aucune migration rejouée', () => {
+test('migration 003 : base en version 2 → dernière version, données conservées, localisations identiques, aucune migration rejouée', () => {
   const dir = mkdtempSync(join(tmpdir(), 'metrotrack-m003-'));
   try {
     const path = join(dir, 'v2.db');
@@ -85,7 +87,7 @@ test('migration 003 : base en version 2 → version 3, données conservées, loc
 
     const db = openDb(path);
     try {
-      assert.equal(db.prepare('PRAGMA user_version').get().user_version, 3);
+      assert.equal(db.prepare('PRAGMA user_version').get().user_version, LATEST);
       assert.deepEqual(rowsOf(db, 'item_locations'), before);
       assert.equal(db.prepare('SELECT COUNT(*) AS n FROM scans').get().n, scans);
       assert.equal(db.prepare('SELECT COUNT(*) AS n FROM items').get().n, 7);
@@ -100,7 +102,7 @@ test('migration 003 : base en version 2 → version 3, données conservées, loc
       db.close();
     }
     const again = openDb(path);
-    assert.equal(again.prepare('PRAGMA user_version').get().user_version, 3);
+    assert.equal(again.prepare('PRAGMA user_version').get().user_version, LATEST);
     again.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });

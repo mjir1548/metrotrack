@@ -26,10 +26,14 @@ Dernière mise à jour : 2026-11-17
   - Commitée avec l'accord de l'humain. **Prochaine étape : 3 (comptes et connexion)**, à lancer sur son feu vert.
   - À garder en tête pour l'étape 3 : les navigateurs ignorent HSTS sur une adresse IP, il faudra un nom d'hôte. L'option `maxConnections` de `createFrameServer` est réservée aux tests et ne doit pas être branchée sur `config.json` sans nouvelle décision.
 - **Étape 3 (comptes et connexion)** : terminée, commitée (`9eb48ec`) avec l'accord de l'humain. 151 tests verts. Sans rôles (D-010) ; paramètres d'authentification en D-011 (**Proposée**, reste à faire valider explicitement par l'humain ; le silence ne vaut pas validation).
-- **Étape 4 (inventaire en lecture)** : terminée et validée par le testeur et la revue (241 tests verts). **En attente de l'accord de l'humain pour le commit.** Questions à lui soumettre :
+- **Étape 4 (inventaire en lecture)** : terminée, commitée (`ced50be`) avec l'accord de l'humain. 241 tests verts. Questions soumises à l'humain, sans réponse pour l'instant :
   - D-011 et D-013 (Proposées) ;
   - le pipelining des trames après un rejet (protocole).
-- **Pour l'étape 5** :
+- **Étape 5 (édition des fiches et journal)** : terminée et validée par le testeur et la revue (315 tests verts). **En attente de l'accord de l'humain pour le commit.** D-014 (AUTOINCREMENT) validée.
+- **Pour l'étape 6** :
+  - message propre au trigger anti-doublon (`scans: duplicate`) ;
+  - suppression d'un poste qui a des corrections : message clair (FOREIGN KEY), pas de 500.
+- **(Historique) Pour l'étape 5** :
   - borner la longueur des textes saisis (nom, notes, propriétés) ;
   - filtrer les caractères bidi des noms à la saisie ;
   - adapter le libellé de la source de localisation (scan ou correction manuelle) ;
@@ -249,3 +253,91 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
 - Vérification finale du testeur : ✅ sur les 4 retouches et la non-régression. Il reste une capture périmée (cosmétique) et le point de protocole sur le pipelining.
 - Vérification de l'orchestrateur : 241/241, `package.json` toujours sans dépendance.
 - **Étape 4 terminée, en attente de l'accord de l'humain pour le commit** (3 allers-retours sur 3). `PROMPT-REPRISE.md` est exclu du commit.
+- Accord de l'humain → commit `ced50be` « Étape 4 : inventaire en lecture seule ».
+
+### 2026-11-17 — Étape 5 lancée (édition des fiches et journal)
+- Contenu :
+  - migration 004 : `location_corrections`, `audit_log` (ajout seul) et vue avec correction manuelle, sous la forme de D-013 ;
+  - créer, modifier et supprimer une fiche ;
+  - corriger la localisation à la main ;
+  - historique des modifications sur la fiche ;
+  - longueurs des textes bornées ; caractères bidi et de contrôle filtrés à la saisie.
+- L'UID ne se modifie pas à cette étape (association de puce : étape 7).
+- Agent `dev` lancé (aller-retour 1/3).
+- Rapport de `dev` (étape 5, aller-retour 1/3) : implémentée, 292 tests verts.
+  - Fichiers : migration 004, `server/items.js` ; routes `/items/new`, `/items/<id>/edit`, `/items/<id>/delete`, `/items/<id>/location` ; postForm commun (session → Origin → corps → CSRF) ; historique sur la fiche.
+  - Écarts signalés :
+    - plafond du corps à 256 Kio (64 Kio ne suffisait pas pour une fiche pleine) ;
+    - index `audit_by_entity` hors cadrage ;
+    - numéros de fiche réutilisés par SQLite (sans AUTOINCREMENT), donc `audit_log.entity_id` ambigu ; contourné à l'affichage.
+  - Capture du formulaire en erreur vérifiée par l'orchestrateur : rendu propre.
+- Testeur et revue sécurité lancés en parallèle. Avis demandé à la revue sur la réutilisation des numéros de fiche (AUTOINCREMENT = changement de modèle, à remonter à l'humain).
+- Rapport de la revue sécurité (étape 5) : **À corriger**.
+  - B1 : le nombre de lignes de propriétés n'est pas borné. Un formulaire de 256 Kio produit une page d'environ 16 Mo (risque mémoire). Correction : refuser plus de `MAX_PROPERTIES + BLANK_ROWS` lignes.
+  - I1 : l'ajout seul se contourne par `INSERT OR REPLACE` (sur `audit_log`, sur `scans` depuis l'étape 1, et sur `location_corrections`). Correction : `PRAGMA recursive_triggers = ON`.
+  - I2 : numéros de fiche réutilisés. Le journal reste ambigu, et un formulaire ouvert peut viser la nouvelle fiche qui a repris le numéro. Recommandation : `items` en AUTOINCREMENT dans la migration 004, avant son commit. **Changement de modèle : question posée à l'humain.**
+  - Suggestions :
+    - S1 : écritures concurrentes, la dernière l'emporte (accepté) ;
+    - S2 : la suppression de poste doit être traitée à l'étape 6 ;
+    - S3 : retirer aussi U+200E, U+200F, U+061C et les caractères invisibles ;
+    - S4 : compter les longueurs en `text.length` et corriger le commentaire du plafond ;
+    - S5 : casse des clés (ß) ;
+    - S6 : documentation (D-014, plafond de 256 Kio, index `audit_by_entity`).
+- Rapport du testeur (étape 5) : fonctionne sur le serveur réel, aucun bogue bloquant ni de sécurité. 302 tests verts ; ajout de `test/edition-verif.test.js`.
+  - Confirme l'ambiguïté des numéros de fiche réutilisés : la fiche 79 a été reprise par 4 fiches pendant les essais.
+  - Défauts mineurs :
+    - nom fait d'un seul U+200B accepté ;
+    - doublons de clés NFC/NFD non détectés ;
+    - ordre des clés numériques non respecté ;
+    - `maxlength` compté en UTF-16 côté navigateur ;
+    - écrasement concurrent possible ;
+    - double clic qui crée deux fiches ;
+    - alignement à 375 px.
+- Retour à `dev` (aller-retour 2/3) :
+  - B1 : lignes de propriétés bornées ;
+  - I1 : `recursive_triggers` et trigger anti-REPLACE sur `location_corrections` ;
+  - caractères invisibles retirés, NFC, casse pliée pour les clés, longueurs en UTF-16 ;
+  - commentaire du plafond, alignement CSS.
+  - AUTOINCREMENT **non** fait, en attente de la décision de l'humain.
+  - Accepté pour le MVP, à documenter : ordre des clés numériques, écrasement concurrent, double clic.
+- **Décision de l'humain (2026-11-18)** : oui à AUTOINCREMENT sur `items` → D-014 (Validée). Limites acceptées pour le MVP consignées dans `decisions.md`.
+- L'agent `dev` (aller-retour 2/3) a été coupé par la limite d'usage avant toute modification. Il est relancé avec les corrections et AUTOINCREMENT.
+- Rapport de `dev` (étape 5, aller-retour 2/3) : tout est corrigé, 310 tests verts.
+  - B1 : au plus 53 lignes de propriétés, sinon 400.
+  - I1 : `recursive_triggers` ; trigger `location_corrections_no_replace`.
+  - Caractères invisibles retirés, NFC, casse pliée pour les clés, longueurs en UTF-16.
+  - AUTOINCREMENT dans la migration 004 (reconstruction de `items`) ; contournement de l'historique supprimé.
+  - Alignement CSS.
+- Re-vérification par le testeur et re-relecture par la revue lancées en parallèle.
+- Re-relecture de la revue (étape 5) : **OK pour commit**. B1, I1 et I2 sont fermés (sondes à l'appui) ; la migration 004 avec reconstruction est atomique et fidèle à 001.
+  - Point I1' : la base de démo a-t-elle déjà reçu l'ancienne migration 004 ? Vérifié par l'orchestrateur, en lisant uniquement le schéma : `data/metrotrack.db` est en version 1 (étape 1). Les migrations 002 à 004 s'y appliqueront au prochain `serve`. **Rien à faire.**
+  - Suggestions :
+    - commentaire sur un numéro libéré avant la migration 004, qui peut resservir une fois ;
+    - nom fait seulement de caractères invisibles légitimes (U+200C, U+200D…) ;
+    - ne pas commiter `PROMPT-REPRISE.md`.
+- Re-vérification du testeur (étape 5) : les 7 points passent sur le serveur réel, 312 tests verts. Points relevés :
+  - **moyen** : le refus de REPLACE sur `scans` et `audit_log` dépend du PRAGMA de la connexion ; un outil externe peut encore écraser une ligne ;
+  - un numéro supprimé avant la migration 004 peut resservir une fois → ajouté dans D-014 ;
+  - noms faits seulement de caractères invisibles encore acceptés (U+2060, U+3164…).
+- Retour à `dev` (aller-retour 3/3, le dernier) :
+  - triggers BEFORE INSERT anti-REPLACE sur `scans` (id et couple lecteur/compteur) et sur `audit_log`, en vérifiant que le rejeu reste un 400 propre dans `ingest.js` ;
+  - règle « au moins un caractère visible » pour le nom et les clés.
+- Rapport de `dev` (étape 5, aller-retour 3/3) : 315 tests verts.
+  - Triggers `audit_log_no_replace` et `scans_no_replace` (indépendants du PRAGMA).
+  - `ingest.js` : le code 1811 (trigger) avec le message `scans: append-only` est traité comme un rejeu, comme le code 2067 (unicité). Le contrat ne change pas.
+  - Règle « au moins un caractère visible » pour le nom et les clés.
+  - Orchestrateur : diff de `ingest.js` relu, 315/315.
+- Vérification ciblée par le testeur et relecture ciblée par la revue lancées (priorité : ingestion).
+- Relecture finale de la revue (étape 5) : **OK pour commit**.
+  - `ingest.js` : diff minimal, ordre normatif intact, contrat inchangé.
+  - Triggers : tous les chemins d'écrasement refusés, pour un coût de 7,5 µs par scan.
+  - Regex : valide.
+  - Suggestion S1 (reportée à l'étape 6, les 3 allers-retours étant épuisés) : message propre au trigger anti-doublon (`scans: duplicate`).
+  - I1' (base de démo) : déjà vérifié par l'orchestrateur, base en version 1.
+- Vérification finale du testeur (étape 5) : tout est ✅, 315/315.
+  - Refus de REPLACE sans le PRAGMA.
+  - Ingestion concurrente : 2 serveurs sur la même base, 200 trames → 30 × 204, 170 × 400, aucun 500, aucun doublon.
+  - Noms invisibles refusés.
+  - Parcours complet et migration v3 → v4 corrects.
+- Vérification de l'orchestrateur : 315/315, aucune dépendance.
+- **Étape 5 terminée, en attente de l'accord de l'humain pour le commit** (3 allers-retours sur 3). `PROMPT-REPRISE.md` est exclu du commit.

@@ -7,7 +7,7 @@ export const RECENT_SCANS = 20;
 
 // Tri alphabétique français insensible à la casse et aux accents (« étuve » avec « Étuve »,
 // avant « Four ») ; numeric : « Poste 2 » avant « Poste 10 ».
-const collator = new Intl.Collator('fr-FR', { sensitivity: 'base', numeric: true });
+export const collator = new Intl.Collator('fr-FR', { sensitivity: 'base', numeric: true });
 
 // Identifiant de fiche dans l'URL : entier strictement positif, 16 chiffres au plus, sans
 // zéro initial ni signe. Tout le reste (vide, « 1.5 », « 0x1 », « 1e3 », encodé...) est refusé.
@@ -18,10 +18,16 @@ export function parseItemId(text) {
   return typeof text === 'string' && ITEM_ID_FORMAT.test(text) ? BigInt(text) : null;
 }
 
-// Caractères retirés de la saisie avant la recherche ET avant son réaffichage : contrôles C0
-// (dont NUL), DEL, contrôles C1, et caractères de mise en forme bidirectionnelle (U+202A à
-// U+202E, U+2066 à U+2069), qui pourraient inverser visuellement le texte réaffiché.
-const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g;
+// Caractères retirés de la saisie (recherche, et nom, clés et valeurs des fiches) avant usage
+// et avant tout réaffichage :
+// - contrôles C0 (dont NUL), DEL, contrôles C1 ;
+// - mise en forme bidirectionnelle (U+202A à U+202E, U+2066 à U+2069, marques U+200E et U+200F,
+//   marque arabe U+061C), qui pourraient inverser visuellement le texte affiché ;
+// - invisibles : espace sans chasse U+200B, indicateur d'ordre U+FEFF, trait d'union
+//   conditionnel U+00AD, séparateurs de ligne et de paragraphe U+2028 et U+2029. Ils
+//   permettraient deux noms identiques à l'œil mais différents (ou un nom vide en apparence).
+// U+200C et U+200D (antiliant, liant) sont GARDÉS : légitimes dans certaines langues et emoji.
+export const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u200B\u200E\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069\uFEFF]/g;
 
 /**
  * Saisie de recherche : caractères de contrôle retirés, espaces de bord retirés, limitée à
@@ -57,7 +63,8 @@ export function uidFragment(query) {
 }
 
 // Colonnes de localisation (vue item_locations, D-006). at NULL = jamais localisé ;
-// station_id NULL avec at renseigné = scan sur un lecteur non affecté.
+// station_id NULL avec at renseigné = scan sur un lecteur non affecté ; source = 'scan'
+// (reader_id renseigné) ou 'manual' (correction manuelle, migration 004).
 const LOCATION_COLUMNS = 'l.at, l.source, l.reader_id, l.station_id, st.name AS station_name';
 const NO_LOCATION = { at: null, source: null, reader_id: null, station_id: null, station_name: null };
 
@@ -106,10 +113,25 @@ export function getItem(db, id) {
        LEFT JOIN stations st ON st.id = l.station_id
       WHERE l.item_id = ?`
   ).get(id) ?? NO_LOCATION;
-  // Objet JSON garanti par le CHECK de la table. Valeur non textuelle : affichée en JSON.
-  const properties = Object.entries(JSON.parse(row.properties))
+  // Localisation issue d'une correction manuelle : son auteur. C'est la dernière correction de
+  // l'objet, avec le même ordre que la vue (heure, puis id) ; index corrections_by_item.
+  const correctedBy = location.source !== 'manual' ? null : db.prepare(
+    `SELECT u.username
+       FROM location_corrections c JOIN users u ON u.id = c.user_id
+      WHERE c.item_id = ?
+      ORDER BY c.created_at DESC, c.id DESC
+      LIMIT 1`
+  ).get(id)?.username ?? null;
+  return { ...row, ...location, corrected_by: correctedBy, properties: propertyPairs(row.properties) };
+}
+
+/**
+ * Propriétés stockées (texte JSON d'un objet, garanti par le CHECK de la table) → liste de
+ * paires [clé, valeur texte]. Valeur non textuelle (donnée importée) : affichée en JSON.
+ */
+export function propertyPairs(json) {
+  return Object.entries(JSON.parse(json))
     .map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]);
-  return { ...row, ...location, properties };
 }
 
 /** Derniers scans d'une puce, du plus récent au plus ancien (index scans_by_uid). */

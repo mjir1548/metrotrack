@@ -124,10 +124,26 @@ test('lecteur non affecté : scan accepté avec station_id NULL', () => {
   assert.equal(db.prepare('SELECT station_id FROM item_locations WHERE item_id = 1').get().station_id, null);
 });
 
-test('filet de sécurité : UNIQUE(reader_id, counter) refuse un doublon inséré directement', () => {
+test('filet de sécurité : un doublon (reader_id, counter) inséré directement est refusé par la base', () => {
   ingestFrame(db, frame(1), NOW);
+  // Refusé d'abord par le trigger scans_no_replace (migration 004), avant UNIQUE(reader_id, counter).
   assert.throws(
     () => db.prepare("INSERT INTO scans (reader_id, station_id, uid_nfc, counter, received_at) VALUES (1, 1, 'DEADBEEF', 1, ?)").run(NOW),
-    (err) => err.errcode === 2067,
+    (err) => err.errcode === 1811 && err.message === 'scans: append-only',
   );
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM scans').get().n, 1);
+});
+
+test('filet de sécurité atteint par ingestFrame (pré-vérifications du compteur contournées) : rejet « replay », jamais une exception', () => {
+  assert.equal(ingestFrame(db, frame(5), NOW).ok, true);
+  // Base dont la lecture du dernier compteur répond 0 : seule la base peut encore refuser le doublon.
+  const blind = {
+    prepare: (sql) => (sql.includes('MAX(counter)') ? { get: () => ({ c: 0 }) } : db.prepare(sql)),
+    exec: (sql) => db.exec(sql),
+    get isTransaction() { return db.isTransaction; },
+  };
+  assert.deepEqual(ingestFrame(blind, frame(5), NOW), { ok: false, reason: 'replay', readerId: 1 });
+  assert.equal(db.isTransaction, false);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM scans').get().n, 1);
+  assert.equal(ingestFrame(blind, frame(6), NOW).ok, true, 'un compteur nouveau passe toujours');
 });

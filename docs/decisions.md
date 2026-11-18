@@ -142,3 +142,23 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
 - **Raison** : mesure de la revue sécurité. Avec 300 000 scans, la liste passait de 1,9 s à 44 ms et la fiche de 1,9 s à 0,2 ms. `node:sqlite` est synchrone : une vue lente bloquait tout le serveur, réception des trames comprise.
 - **Pour l'étape 5** : garder cette forme, avec une sous-requête pour le dernier scan, une pour la dernière correction manuelle, et la plus récente des deux l'emporte.
 - **Alternative écartée** : une colonne de localisation stockée sur la fiche. Elle serait un doublon (CLAUDE.md §5.3).
+
+## D-014 — Numéros de fiche jamais réutilisés (AUTOINCREMENT)
+
+- **Date** : 2026-11-18 · **Statut** : Validée (2026-11-18, accord de l'humain)
+- **Décision** : la table `items` est reconstruite avec `INTEGER PRIMARY KEY AUTOINCREMENT` dans la migration 004 (étape 5). Un numéro de fiche supprimée n'est jamais redonné à une autre fiche.
+- **Raison** (revue sécurité et testeur, étape 5) :
+  - sans AUTOINCREMENT, SQLite redonne le plus grand numéro libéré : `audit_log.entity_id` pouvait alors désigner plusieurs objets successifs ;
+  - un formulaire ouvert avant une suppression pouvait viser, sans le savoir, la nouvelle fiche qui avait repris le numéro ;
+  - le contournement à l'affichage de l'historique devient inutile.
+- **Alternatives écartées** :
+  - contournement à l'affichage seul : journal brut ambigu ;
+  - jeton de version dans les formulaires : plus de code, journal toujours ambigu ;
+  - suppression logique : sémantique changée, UID bloqué.
+- **Coût** : reconstruction de la table au moment de la migration (copie des lignes, mêmes contraintes). Aucune clé étrangère ne visait `items` avant la migration 004. La séquence repart du plus grand numéro existant : un numéro supprimé AVANT la migration 004 peut donc resservir une fois. Sans effet sur le journal, qui n'existait pas encore, mais un ancien lien `/items/<n>` peut alors désigner une autre fiche.
+
+## Limites acceptées pour le MVP (étape 5)
+
+- Deux personnes qui modifient la même fiche en même temps : la dernière enregistrée l'emporte. L'audit garde les deux versions.
+- Un double clic sur « Créer la fiche » peut créer deux fiches identiques. On en supprime une à la main, et l'audit le montre.
+- Les propriétés dont le nom est un nombre entier (« 10 ») s'affichent en tête. Le schéma impose un objet JSON, dont l'ordre des clés est fixé.

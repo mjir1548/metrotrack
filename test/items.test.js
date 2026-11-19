@@ -64,6 +64,23 @@ test('cleanLine : contrôles C0, DEL, C1 et bidi retirés, espaces de bord retir
   assert.equal(cleanLine('Étuve n° 3 — été'), 'Étuve n° 3 — été');
 });
 
+test('cleanLine : toute suite de blancs (espaces multiples, U+00A0, U+2007, U+202F, U+3000) → une espace ordinaire ; cleanNotes inchangé', () => {
+  assert.equal(cleanLine('Poste   E2E'), 'Poste E2E');
+  assert.equal(cleanLine(`a${ch(0xA0)}b${ch(0x2007)}c${ch(0x202F)}d${ch(0x3000)}e${ch(0x20, 0xA0, 0x20)}f`), 'a b c d e f');
+  assert.equal(cleanLine(`${ch(0xA0)} x ${ch(0x202F)}`), 'x');
+  assert.equal(cleanNotes(`a   b${ch(0xA0)}c\n\td`), `a   b${ch(0xA0)}c\n\td`, 'notes : espaces gardés');
+});
+
+test('propriétés : clés identiques à l\'œil (espaces insécables ou multiples) → doublon refusé', () => {
+  for (const second of [`N${ch(0xB0)}${ch(0xA0)}de série`, `n${ch(0xB0)}${ch(0x202F)}DE   série`, `N${ch(0xB0)}${ch(0x2007)}de série`]) {
+    const result = validateItemInput({ name: 'x', keys: [`N${ch(0xB0)} de série`, second], values: ['1', '2'] });
+    assert.equal(result.ok, false, JSON.stringify(second));
+    assert.equal(result.form.rows[1].error, `Propriété en double : « N${ch(0xB0)} de série » existe déjà (majuscules et minuscules confondues).`);
+  }
+  assert.deepEqual(validateItemInput({ name: `Fiche${ch(0xA0, 0xA0)}A`, keys: [`Marque${ch(0x202F)}`], values: [`Fluke${ch(0xA0)}87V`] }).item,
+    { name: 'Fiche A', notes: '', properties: [['Marque', 'Fluke 87V']] });
+});
+
 test('cleanLine et cleanNotes : invisibles retirés (U+200B, U+200E, U+200F, U+061C, U+FEFF, U+2028, U+2029, U+00AD) ; U+200C et U+200D gardés', () => {
   const invisible = ch(0x200B, 0x200E, 0x200F, 0x061C, 0xFEFF, 0x2028, 0x2029, 0x00AD);
   assert.equal(cleanLine(`Mul${invisible}ti`), 'Multi');

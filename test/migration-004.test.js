@@ -20,6 +20,9 @@ import { itemHistory } from '../server/items.js';
 const MIGRATIONS = join(import.meta.dirname, '..', 'server', 'migrations');
 const NOW = '2026-11-17T10:00:00.000Z';
 const KEY = Buffer.alloc(32, 9);
+// Refus des journaux. Depuis la migration 005, le trigger anti-REPLACE de scans répond
+// « scans: duplicate » (message propre, reconnu par ingest.js) ; les autres « append-only ».
+const DUPLICATE_OR_APPEND_ONLY = /append-only|scans: duplicate/;
 
 // Définition de référence de docs/cadrage.md §3, recopiée telle quelle (vue temporaire).
 const REFERENCE_VIEW = `CREATE TEMP VIEW reference_item_locations AS
@@ -175,7 +178,8 @@ test('migration 004 : base en version 3 avec des données → version 4, localis
 
     const db = openDb(path);
     try {
-      assert.equal(db.prepare('PRAGMA user_version').get().user_version, 4);
+      // openDb applique aussi les migrations suivantes (005 : postes et lecteurs).
+      assert.equal(db.prepare('PRAGMA user_version').get().user_version, 5);
       // Reconstruction de items (AUTOINCREMENT) : données et localisations identiques.
       assert.deepEqual(db.prepare('SELECT * FROM items ORDER BY id').all().map((r) => ({ ...r })), itemsBefore);
       assert.deepEqual(rowsOf(db, 'item_locations'), before);
@@ -216,7 +220,7 @@ test('migration 004 : base en version 3 avec des données → version 4, localis
       db.close();
     }
     const again = openDb(path); // aucune migration rejouée
-    assert.equal(again.prepare('PRAGMA user_version').get().user_version, 4);
+    assert.equal(again.prepare('PRAGMA user_version').get().user_version, 5);
     again.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -245,7 +249,7 @@ test('ajout seul sans PRAGMA recursive_triggers : une connexion brute (new Datab
         "INSERT INTO scans (reader_id, station_id, uid_nfc, counter, received_at) VALUES (1, 1, 'DEADBEEF', 1, 'x') ON CONFLICT (reader_id, counter) DO UPDATE SET uid_nfc = 'DEADBEEF'",
         "INSERT INTO audit_log (id, at, action, details) VALUES (1, 'x', 'y', '{}') ON CONFLICT (id) DO UPDATE SET action = 'falsifié'",
         "INSERT OR IGNORE INTO scans (reader_id, station_id, uid_nfc, counter, received_at) VALUES (1, 1, 'DEADBEEF', 1, 'x')",
-      ]) assert.throws(() => raw.exec(sql), /append-only/, sql);
+      ]) assert.throws(() => raw.exec(sql), DUPLICATE_OR_APPEND_ONLY, sql);
       assert.equal(state(), before, 'journaux intacts');
       // Les insertions normales restent possibles.
       raw.exec("INSERT INTO scans (reader_id, station_id, uid_nfc, counter, received_at) VALUES (1, 1, 'DEADBEEF', 1000, 'x')");
@@ -284,15 +288,15 @@ test('triggers : UPDATE, DELETE, REPLACE, UPSERT refusés sur scans et audit_log
       'audit_log': "INSERT OR REPLACE INTO audit_log (id, at, user_id, action, entity_id, details) VALUES (1, 'x', 2, 'item.create', 2, '{}')",
       'location_corrections': `INSERT OR REPLACE INTO location_corrections (id, item_id, station_id, user_id, created_at) VALUES (1, 2, 1, 2, '${NOW}')`,
     };
-    for (const [what, sql] of Object.entries(replaces)) assert.throws(() => db.exec(sql), /append-only/, what);
+    for (const [what, sql] of Object.entries(replaces)) assert.throws(() => db.exec(sql), DUPLICATE_OR_APPEND_ONLY, what);
     const upserts = {
       scans: "INSERT INTO scans (id, reader_id, station_id, uid_nfc, counter, received_at) VALUES (1, 2, 2, 'C0000001', 99, 'x') ON CONFLICT (id) DO UPDATE SET station_id = 3",
       audit_log: "INSERT INTO audit_log (id, at, action, details) VALUES (1, 'x', 'y', '{}') ON CONFLICT (id) DO UPDATE SET action = 'falsifié'",
       location_corrections: `INSERT INTO location_corrections (id, item_id, station_id, user_id, created_at) VALUES (1, 2, 1, 2, '${NOW}') ON CONFLICT (id) DO UPDATE SET station_id = 1`,
     };
-    for (const [what, sql] of Object.entries(upserts)) assert.throws(() => db.exec(sql), /append-only/, `UPSERT ${what}`);
+    for (const [what, sql] of Object.entries(upserts)) assert.throws(() => db.exec(sql), DUPLICATE_OR_APPEND_ONLY, `UPSERT ${what}`);
     // INSERT OR IGNORE sur une clé existante : refusé lui aussi par les triggers anti-REPLACE.
-    assert.throws(() => db.exec("INSERT OR IGNORE INTO scans (id, reader_id, station_id, uid_nfc, counter, received_at) VALUES (1, 2, 2, 'C0000001', 99, 'x')"), /append-only/);
+    assert.throws(() => db.exec("INSERT OR IGNORE INTO scans (id, reader_id, station_id, uid_nfc, counter, received_at) VALUES (1, 2, 2, 'C0000001', 99, 'x')"), /scans: duplicate/);
     assert.throws(() => db.exec("INSERT OR IGNORE INTO audit_log (id, at, action, details) VALUES (1, 'x', 'y', '{}')"), /append-only/);
     assert.throws(() => db.exec(`INSERT OR IGNORE INTO location_corrections (id, item_id, station_id, user_id, created_at) VALUES (1, 2, 1, 2, '${NOW}')`), /append-only/);
     assert.equal(state(), before, 'journaux intacts');

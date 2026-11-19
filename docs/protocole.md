@@ -184,11 +184,18 @@ Limite connue (v0) : une trame retardée puis dépassée par une trame plus réc
 ## 6. Gestion des clés et des identifiants
 
 - **Création d'un lecteur** (dans l'interface, étape 6 du plan) : le serveur génère `reader_id` et une clé AES-256 aléatoire. La clé est affichée **une seule fois** (hexadécimal) pour être injectée dans le boîtier.
+  - `reader_id` = plus grand identifiant existant + 1 (le premier lecteur reçoit 1 ; au-delà de 4 294 967 295, la création est refusée).
+  - Clé : 32 octets du générateur aléatoire du système, affichés en **64 caractères hexadécimaux minuscules**, dans l'ordre des octets de la clé AES (les deux premiers caractères donnent le premier octet). C'est aussi le format du fichier lu par `tools/simulateur.js --key-file` : la clé seule sur une ligne.
+  - La page qui affiche la clé est la réponse directe à la création (ou au remplacement). Elle n'est jamais réaffichée ensuite.
 - **Stockage serveur** : dans la base SQLite, protégée par les droits du fichier. À présenter à la SSI.
 - **Stockage boîtier** : NVS. Le chiffrement de la flash et le secure boot de l'ESP32 sont recommandés contre l'extraction physique.
 - La clé ne circule **jamais** ensuite : ni sur la radio, ni sur le réseau, ni dans un journal.
-- **Révocation** : désactiver le lecteur. Ses trames sont alors rejetées.
+- **Révocation** : désactiver le lecteur, **définitivement** (aucune réactivation ; pour remettre un boîtier en service, créer un nouveau lecteur ou remplacer la clé). Ses trames sont alors rejetées.
 - **Remplacement de clé** (reflash, suspicion de compromission) : création d'un **nouveau lecteur** (nouvel identifiant et nouvelle clé), l'ancien est désactivé. Ainsi un même `reader_id` ne voit jamais son compteur repartir à zéro.
+- **Test d'un lecteur avec le simulateur (développement uniquement)** : la page de clé n'en parle pas, car elle sert aussi en production.
+  1. Enregistrer la clé affichée, seule sur une ligne, dans un fichier temporaire hors du dépôt (par exemple `lecteur-N.key`).
+  2. Lancer : `node tools/simulateur.js --reader N --key-file lecteur-N.key --uid 04A1B2C3D4E5F6 --counter 1 --ca dev/tls/ca.crt`, en ajoutant `--url` si le serveur n'écoute pas sur l'adresse par défaut. Réponse attendue : `HTTP 204`. Le compteur doit augmenter à chaque trame suivante.
+  3. Supprimer le fichier aussitôt après. Jamais avec la clé d'un boîtier en service : en production, la clé ne va que dans le boîtier.
 
 ⚠️ À VALIDER (Yanis) :
 - identifiant attribué par le serveur (proposé), ou identifiant matériel propre au boîtier ?
@@ -262,3 +269,4 @@ trame (36) 0100000001000000028f22de611bf05f4cf9d25f36131eda9cf50410fc51251c7b300
 |---|---|---|
 | v0 | 2026-11-15 | Première proposition (cadrage). |
 | v0 | 2026-11-15 | Précisions issues de l'étape 1, sans changement du format : contrôles propres au transport HTTP, `Connection: close` sur tout rejet, réponse 404, compteur 0 rejeté. |
+| v0 | 2026-11-18 | Précisions issues de l'étape 6 (§6), sans changement du format : attribution de `reader_id`, format d'affichage de la clé, désactivation définitive, procédure de test au simulateur (développement). |

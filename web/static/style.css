@@ -630,6 +630,120 @@ time { white-space: nowrap; }
 .panneau-danger form { margin: 0; }
 .nom-confirme { overflow-wrap: anywhere; }
 
+/* ---------- Postes et lecteurs (étape 6) ---------- */
+
+/* Onglets « Postes » / « Lecteurs » sous le titre de la rubrique. */
+.onglets {
+  display: flex;
+  gap: var(--espace-1);
+  margin-bottom: var(--espace-4);
+  border-bottom: 1px solid var(--couleur-bordure);
+}
+.onglets a {
+  margin-bottom: -1px; /* le soulignement de l'onglet actif recouvre la bordure */
+  padding: var(--espace-2) var(--espace-4);
+  font-weight: 600;
+  color: var(--couleur-texte-doux);
+  text-decoration: none;
+  border-bottom: 3px solid transparent;
+}
+.onglets a:hover { color: var(--couleur-texte); border-bottom-color: var(--couleur-bordure-forte); }
+.onglets a.actif { color: var(--couleur-primaire); border-bottom-color: var(--couleur-primaire); }
+
+/* Description d'un poste dans la liste : deux lignes au plus. */
+.description-courte {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  margin-top: 0.125rem;
+  font-size: var(--taille-petite);
+  color: var(--couleur-texte-doux);
+  overflow-wrap: anywhere;
+}
+
+.tableau-postes, .tableau-lecteurs, .tableau-lecteurs-poste, .tableau-objets-poste, .tableau-scans-lecteur { table-layout: fixed; }
+.tableau-postes th:nth-child(2), .tableau-postes th:nth-child(3) { width: 10rem; }
+.tableau-lecteurs th:nth-child(1) { width: 8.5rem; }
+.tableau-lecteurs th:nth-child(3) { width: 7.5rem; }
+.tableau-lecteurs th:nth-child(4) { width: 9rem; }
+.tableau-lecteurs th:nth-child(5) { width: 9.5rem; }
+.tableau-lecteurs th:nth-child(6) { width: 12.5rem; }
+.tableau-lecteurs th { white-space: nowrap; }
+
+/* Lien dans un tableau ou une fiche (poste, objet) : souligné au survol seulement. */
+.lien-simple { text-decoration: none; overflow-wrap: anywhere; }
+.lien-simple:hover { text-decoration: underline; }
+.tableau-lecteurs-poste th:nth-child(2) { width: 9rem; }
+.tableau-lecteurs-poste th:nth-child(3) { width: 13rem; }
+.tableau-objets-poste th:nth-child(2) { width: 13rem; }
+.tableau-scans-lecteur th:nth-child(1) { width: 12rem; }
+.tableau-scans-lecteur th:nth-child(4) { width: 10rem; }
+
+/* État d'un lecteur : actif (vert, comme un poste) ou désactivé (gris). */
+.etat-actif { color: var(--couleur-poste); background: var(--couleur-poste-fond); border-color: var(--couleur-poste-bordure); }
+.etat-desactive { color: var(--couleur-jamais); background: var(--couleur-jamais-fond); border-color: var(--couleur-bordure); }
+.etat-desactive::before { background: transparent; border: 1.5px solid currentColor; }
+
+/* Puce « inconnue (lecteur n° X non affecté) » : lien vers la fiche du lecteur. */
+.lien-etat { display: inline-flex; max-width: 100%; text-decoration: none; border-radius: 0.875rem; }
+.lien-etat:hover .etat { border-color: currentColor; }
+
+/* Poste avec historique : explication sous ses informations. */
+.note-poste {
+  margin: var(--espace-4) 0 0;
+  font-size: var(--taille-petite);
+  color: var(--couleur-texte-doux);
+}
+
+/* Suppression impossible : panneau neutre, causes en liste. */
+.panneau-info { max-width: 44rem; border-left: 4px solid var(--couleur-primaire); }
+.liste-causes { margin: 0 0 var(--espace-4); padding-left: var(--espace-5); }
+.liste-causes li { margin-bottom: var(--espace-1); }
+.panneau-info .actions-formulaire { margin-top: var(--espace-5); }
+
+/* Bouton dans un encadré « vide » (page d'information). */
+.vide .bouton { margin-top: var(--espace-2); }
+
+/* Page de la clé : avertissement bien visible, mais sobre (couleurs « inconnue »). */
+.panneau-alerte {
+  margin-bottom: var(--espace-4);
+  color: var(--couleur-inconnue);
+  background: var(--couleur-inconnue-fond);
+  border-color: var(--couleur-inconnue-bordure);
+  border-left: 4px solid var(--couleur-inconnue);
+}
+.panneau-alerte p { margin-bottom: var(--espace-2); }
+
+.numero-lecteur {
+  font-family: var(--police-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+/* Clé : chasse fixe ; 64 caractères sans espace qui se coupent n'importe où (aucun
+   débordement à 375 px). Un clic sélectionne toute la clé (user-select). */
+.cle {
+  margin: 0 0 var(--espace-2);
+  padding: var(--espace-3) var(--espace-4);
+  font-family: var(--police-mono);
+  font-size: 1.0625rem;
+  letter-spacing: 0.04em;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  background: var(--couleur-entete-tableau);
+  border: 1px solid var(--couleur-bordure-forte);
+  border-radius: var(--rayon-petit);
+  user-select: all;
+  -webkit-user-select: all;
+}
+.fiche-carte h2 + .numero-lecteur { margin-bottom: var(--espace-4); }
+/* Bouton « Retour aux lecteurs » sous les cartes de la page de clé : sans trait de séparation. */
+.fiche + .actions-formulaire { margin-top: var(--espace-5); padding-top: 0; border-top: 0; }
+
 /* ---------- Tableaux et fiche sur petit écran : lignes empilées ---------- */
 
 @media (max-width: 40rem) {
@@ -673,5 +787,5 @@ time { white-space: nowrap; }
   .barre-interieur, .contenu { padding-left: var(--espace-4); padding-right: var(--espace-4); }
   .contenu { padding-top: var(--espace-5); }
   .formulaire-page { padding: var(--espace-4); }
-  .panneau-danger { padding: var(--espace-4); }
+  .panneau-danger, .panneau-info, .panneau-alerte { padding: var(--espace-4); }
 }

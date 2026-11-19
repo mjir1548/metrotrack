@@ -162,3 +162,19 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
 - Deux personnes qui modifient la même fiche en même temps : la dernière enregistrée l'emporte. L'audit garde les deux versions.
 - Un double clic sur « Créer la fiche » peut créer deux fiches identiques. On en supprime une à la main, et l'audit le montre.
 - Les propriétés dont le nom est un nombre entier (« 10 ») s'affichent en tête. Le schéma impose un objet JSON, dont l'ordre des clés est fixé.
+
+## D-015 — Numéros de poste jamais réutilisés (sans changement de schéma)
+
+- **Date** : 2026-11-18 · **Statut** : Validée (2026-11-19, accord de l'humain)
+- **Décision** : un nouveau poste reçoit le plus grand numéro déjà attribué plus 1. Ce plus grand numéro tient compte des postes existants et des postes supprimés, retrouvés dans les lignes `station.delete` d'`audit_log`. Le calcul est fait dans la transaction de création.
+- **Raison** : même risque que pour D-014.
+  - Les lignes d'audit `station.*` et `reader.assign` pourraient désigner deux postes différents.
+  - Un formulaire « Changer de poste » resté ouvert pourrait affecter un lecteur au poste qui a repris le numéro : ses scans iraient alors au mauvais endroit.
+- **Alternative écartée** : AUTOINCREMENT comme D-014. `stations` est référencée par trois clés étrangères (readers, scans, location_corrections). La reconstruire exige `foreign_keys = OFF`, ce qui n'est pas possible dans la transaction de migration.
+- **Coût** : une lecture d'`audit_log` à chaque création de poste, opération rare (de l'ordre de la milliseconde).
+
+## Limites acceptées pour le MVP (étape 6)
+
+- La clé d'un lecteur s'affiche dans la réponse au formulaire de création ou de remplacement. Recharger cette page, ou cliquer deux fois, crée un lecteur de plus dont personne n'a la clé. Ce lecteur est inutilisable : il suffit de le désactiver. La page en avertit.
+- Malgré `Cache-Control: no-store`, certains navigateurs peuvent remontrer la page de clé avec le bouton Retour dans le même onglet. La page demande de fermer l'onglet une fois la clé injectée.
+- Un lecteur désactivé ne se réactive pas et ne change plus de poste. Le poste auquel il était affecté ne peut donc plus être supprimé, mais il peut être renommé.

@@ -9,7 +9,7 @@
 // Toutes les requêtes sont paramétrées. L'UID de la puce n'est ni créé ni modifié ici
 // (association des puces : étape 7).
 
-import { CONTROL_CHARS, collator, propertyPairs } from './inventory.js';
+import { CONTROL_CHARS, LINE_BLANKS, collator, propertyPairs } from './inventory.js';
 
 // Bornes des saisies, en caractères comptés en unités UTF-16 (text.length), comme l'attribut
 // HTML maxlength : le navigateur et le serveur appliquent la même limite (un emoji hors du
@@ -35,10 +35,13 @@ const NOTES_CONTROL_CHARS = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u00AD\u061
 
 /**
  * Saisie sur une ligne (nom, clé, valeur) : contrôles, bidi et invisibles retirés, forme NFC
- * (un « é » saisi précomposé ou décomposé est le même texte), espaces de bord retirés.
+ * (un « é » saisi précomposé ou décomposé est le même texte), suites de blancs réduites à
+ * une espace ordinaire (LINE_BLANKS), espaces de bord retirés.
  */
 export function cleanLine(value) {
-  return typeof value === 'string' ? value.replace(CONTROL_CHARS, '').normalize('NFC').trim() : '';
+  return typeof value === 'string'
+    ? value.replace(CONTROL_CHARS, '').normalize('NFC').replace(LINE_BLANKS, ' ').trim()
+    : '';
 }
 
 /** Notes : CRLF → LF, mêmes retraits (sauf LF et tabulation), forme NFC, espaces de bord retirés. */
@@ -136,8 +139,11 @@ function propertiesJson(pairs) {
   return JSON.stringify(Object.fromEntries(pairs));
 }
 
-/** Exécute work() dans une transaction d'écriture ; ROLLBACK et relance sur toute erreur. */
-function inTransaction(db, work) {
+/**
+ * Exécute work() dans une transaction d'écriture ; ROLLBACK et relance sur toute erreur.
+ * Partagée avec server/stations.js et server/readers.js (même règle : écriture + audit ensemble).
+ */
+export function inTransaction(db, work) {
   db.exec('BEGIN IMMEDIATE');
   try {
     const result = work();
@@ -150,7 +156,8 @@ function inTransaction(db, work) {
   }
 }
 
-function audit(db, { at, userId, action, entityId, details }) {
+/** Ligne audit_log (details : objet sérialisé en JSON ; JAMAIS de secret). À appeler dans inTransaction. */
+export function audit(db, { at, userId, action, entityId, details }) {
   db.prepare('INSERT INTO audit_log (at, user_id, action, entity_id, details) VALUES (?, ?, ?, ?, ?)')
     .run(at, userId, action, entityId, JSON.stringify(details));
 }

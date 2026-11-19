@@ -29,15 +29,25 @@ export function parseItemId(text) {
 // U+200C et U+200D (antiliant, liant) sont GARDÉS : légitimes dans certaines langues et emoji.
 export const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u200B\u200E\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069\uFEFF]/g;
 
+// Suite de blancs Unicode dans une saisie sur une ligne → UNE espace ordinaire. Sans cela,
+// « Poste   2 », ou « Poste 2 » écrit avec une espace insécable (U+00A0, U+202F, U+2007),
+// s'afficheraient comme « Poste 2 » tout en échappant au contrôle des doublons (noms de
+// poste, clés de propriété). \s couvre déjà tous les blancs Unicode ; les trois espaces
+// insécables sont listées en plus, pour l'auditeur. Les notes et descriptions (plusieurs
+// lignes, cleanNotes) ne sont pas concernées. Partagée par cleanLine (items.js) et la
+// recherche (normalizeQuery) : « Poste  2 » cherche « Poste 2 ».
+export const LINE_BLANKS = /[\s\u00A0\u2007\u202F]+/g;
+
 /**
- * Saisie de recherche : caractères de contrôle retirés, espaces de bord retirés, limitée à
+ * Saisie de recherche : caractères de contrôle retirés, suites de blancs réduites à une
+ * espace (LINE_BLANKS), espaces de bord retirés, limitée à
  * MAX_QUERY_CHARS caractères (points de code : pas d'unité UTF-16 coupée en deux). Une saisie
  * dont la forme de comparaison est vide (accent combinant isolé, par exemple) est traitée
  * comme une recherche vide : tout l'inventaire, champ vide.
  */
 export function normalizeQuery(value) {
   if (typeof value !== 'string') return '';
-  const query = [...value.replace(CONTROL_CHARS, '').trim()].slice(0, MAX_QUERY_CHARS).join('').trim();
+  const query = [...value.replace(CONTROL_CHARS, '').replace(LINE_BLANKS, ' ').trim()].slice(0, MAX_QUERY_CHARS).join('').trim();
   return fold(query).trim() === '' ? '' : query;
 }
 

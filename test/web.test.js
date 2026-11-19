@@ -16,6 +16,7 @@ import { encodeFrame } from '../server/protocol.js';
 import { hashPassword } from '../server/password.js';
 import { csrfTokenFor } from '../server/sessions.js';
 import { makeTestCerts } from './tls-fixture.js';
+import { statusOrCut, CUT } from './coupure.js';
 
 const NOW = '2026-11-17T10:00:00.000Z';
 const READER_KEY = Buffer.alloc(32, 0x33);
@@ -321,16 +322,17 @@ test('connexion : Content-Type autre que formulaire → 400 ; corps trop gros �
   const big = await send({ method: 'POST', path: '/login', headers: { ...headers, ...FORM_TYPE }, body: 'a='.padEnd(5000, 'b') });
   assert.equal(big.status, 413);
   assert.equal(big.headers.connection, 'close');
-  // Corps en flux (sans Content-Length) au-delà du plafond.
-  const streamed = await new Promise((resolve, reject) => {
+  // Corps en flux (sans Content-Length) au-delà du plafond : 413, ou connexion coupée si le
+  // serveur ferme pendant que le client écrit encore (coupure.js).
+  const streamed = await statusOrCut(new Promise((resolve, reject) => {
     const req = request({
       host: '127.0.0.1', port, path: '/login', method: 'POST', ca: certs.ca, agent: false, headers: { ...headers, ...FORM_TYPE },
     }, (res) => { res.resume(); resolve(res.statusCode); });
     req.on('error', reject);
     for (let i = 0; i < 10; i++) req.write(Buffer.alloc(1000, 0x61));
     req.end();
-  });
-  assert.equal(streamed, 413);
+  }));
+  assert.ok([413, CUT].includes(streamed), String(streamed));
   assert.ok(server.listening);
   assert.equal((await login('alice', PASSWORD)).status, 303);
 });

@@ -18,6 +18,7 @@ import { DUMMY_HASH } from '../server/password.js';
 import { createSession, csrfTokenFor } from '../server/sessions.js';
 import { MAX_EDIT_FORM_BYTES, MAX_FORM_ROWS } from '../server/web.js';
 import { makeTestCerts } from './tls-fixture.js';
+import { statusOrCut, CUT } from './coupure.js';
 
 const NOW = '2026-11-17T10:00:00.000Z';
 const KEY = Buffer.alloc(32, 0x66);
@@ -206,13 +207,15 @@ test('méthodes : 405 avec Allow sur les routes d\'édition ; /items/<id> reste 
 
 // ---------------------------------------------------------------- correction sans poste
 
-test('correction de localisation sans aucun poste : message explicatif, sans formulaire ni lien ; envoi → 400 sans écriture', async () => {
+test('correction de localisation sans aucun poste : message explicatif et lien vers la création d\'un poste, sans formulaire ; envoi → 400 sans écriture', async () => {
   const res = await page('/items/1/location');
   assert.equal(res.status, 200);
   assert.ok(res.body.includes("Aucun poste n'existe encore."));
   assert.ok(res.body.includes("Il faut d'abord créer un poste pour pouvoir y localiser un objet."));
   assert.ok(!res.body.includes('<select'));
-  assert.deepEqual([...res.body.matchAll(/href="([^"]*)"/g)].map((m) => m[1]).filter((h) => !h.startsWith('/static/')).sort(), ['/', '/items/1']);
+  assert.ok(res.body.includes('<a class="bouton" href="/stations/new">Créer un poste</a>'));
+  // Liens : bandeau (Inventaire, Postes et lecteurs), retour à la fiche, création d'un poste (étape 6).
+  assert.deepEqual([...res.body.matchAll(/href="([^"]*)"/g)].map((m) => m[1]).filter((h) => !h.startsWith('/static/')).sort(), ['/', '/items/1', '/stations', '/stations/new']);
   const before = snapshot();
   const sent = await post('/items/1/location', { station: '1' });
   assert.equal(sent.status, 400);
@@ -395,8 +398,9 @@ test('nom fait seulement d\'un caractère invisible (name=%E2%80%8B) → 400 « 
 
 test('corps de formulaire plafonné : au-delà de 256 Kio → 413 sans écriture ; juste en dessous → traité (400 de validation)', async () => {
   const before = snapshot();
-  const big = await post('/items/new', itemFields('x', 'a'.repeat(MAX_EDIT_FORM_BYTES)));
-  assert.equal(big.status, 413);
+  // 413, ou connexion coupée si le serveur ferme pendant que le client écrit encore (coupure.js).
+  const big = await statusOrCut(post('/items/new', itemFields('x', 'a'.repeat(MAX_EDIT_FORM_BYTES))));
+  assert.ok([413, CUT].includes(big), String(big));
   const under = await post('/items/new', itemFields('x', 'a'.repeat(MAX_EDIT_FORM_BYTES - 200)));
   assert.equal(under.status, 400);
   assert.ok(under.body.includes('Les notes ne doivent pas dépasser'));

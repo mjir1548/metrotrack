@@ -43,6 +43,20 @@ test('parseItemId : entier strictement positif, 16 chiffres au plus, format stri
   }
 });
 
+test('normalizeQuery : suites de blancs (espaces multiples, insécables) réduites à une espace ; « Poste  2 » trouve « Poste 2 »', () => {
+  const ch = (...codes) => String.fromCodePoint(...codes);
+  assert.equal(normalizeQuery('Poste  2'), 'Poste 2');
+  assert.equal(normalizeQuery(`Poste${ch(0xA0)}2`), 'Poste 2');
+  assert.equal(normalizeQuery(`a${ch(0x202F, 0x20, 0x2007)}b`), 'a b');
+  const db = openDb(':memory:');
+  try {
+    db.prepare("INSERT INTO items (name, created_at, updated_at) VALUES ('Poste 2 : multimètre', 'x', 'x'), ('Poste 3', 'x', 'x')").run();
+    assert.deepEqual(listItems(db, normalizeQuery('poste   2')).map((i) => i.name), ['Poste 2 : multimètre']);
+  } finally {
+    db.close();
+  }
+});
+
 test('normalizeQuery : espaces de bord retirés, 100 caractères au plus (points de code), non-chaîne → vide', () => {
   assert.equal(normalizeQuery('  multi  '), 'multi');
   assert.equal(normalizeQuery(null), '');

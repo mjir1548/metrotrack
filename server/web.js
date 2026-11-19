@@ -1,5 +1,6 @@
 // Interface web : connexion, déconnexion, inventaire (liste et fiche), édition des fiches
-// (création, modification, suppression, correction de localisation), feuille de style.
+// (création, modification, suppression, correction de localisation), postes et lecteurs
+// (étape 6), feuille de style.
 // HTML rendu côté serveur, sans JavaScript côté client, sans ressource externe.
 //
 // ÉCHAPPEMENT : toutes les pages sont produites par les gabarits de server/views.js, écrits
@@ -20,8 +21,18 @@ import {
   validateItemInput, createItem, updateItem, deleteItem, correctLocation, listStations, itemHistory, MAX_PROPERTIES,
 } from './items.js';
 import {
+  validateStationInput, createStation, updateStation, deleteStation, stationHistory, stationHasHistory, getStation,
+  listStationSummaries, stationReaders, stationItems,
+} from './stations.js';
+import {
+  createReader, assignReader, deactivateReader, replaceReader, listReaders, getReader, readerScans,
+} from './readers.js';
+import {
   loginPage as loginView, forbiddenPage, inventoryPage, itemPage as itemView, itemNotFoundPage, BUSY_MESSAGE,
   itemFormPage, deleteItemPage as deleteView, locationPage as locationView,
+  stationsPage, stationPage as stationView, stationFormPage, deleteStationPage as deleteStationView, stationNotFoundPage,
+  readersPage, readerPage as readerView, readerFormPage, readerStationPage, deactivateReaderPage as deactivateView,
+  replaceReaderPage as replaceView, readerKeyPage, readerNotFoundPage, readerInactivePage, readerIdsExhaustedPage,
 } from './views.js';
 
 // Délai avant la réponse à un échec de connexion (ralentit les essais successifs ; la
@@ -96,27 +107,46 @@ const ROUTES = {
   '/logout': { POST: logout },
   '/static/style.css': { GET: styleSheet },
   '/items/new': { GET: newItemPage, POST: createItemAction },
+  '/stations': { GET: stationsList },
+  '/stations/new': { GET: newStationPage, POST: createStationAction },
+  '/readers': { GET: readersList },
+  '/readers/new': { GET: newReaderPage, POST: createReaderAction },
 };
-// Pages d'une fiche : /items/<id> et /items/<id>/<action>. Le segment <id> est validé par le
-// gestionnaire (entier strict) ; tout autre chemin sous /items/ (/items/1/x, /items/1/,
-// /items/1/edit/2...) n'est pas une route.
-const ITEM_PREFIX = '/items/';
+// Pages d'une entité : <préfixe><id> et <préfixe><id>/<action>. Le segment <id> est validé
+// par le gestionnaire (entier strict) ; tout autre chemin sous le préfixe (/items/1/x,
+// /items/1/, /items/1/edit/2...) n'est pas une route. Les chemins exacts de ROUTES
+// (/items/new, /stations/new, /readers/new) sont résolus avant.
 const ITEM_ROUTES = {
   '': { GET: itemPage },
   edit: { GET: editItemPage, POST: updateItemAction },
   delete: { GET: deleteItemPage, POST: deleteItemAction },
   location: { GET: locationPage, POST: correctLocationAction },
 };
+const STATION_ROUTES = {
+  '': { GET: stationPage },
+  edit: { GET: editStationPage, POST: updateStationAction },
+  delete: { GET: deleteStationPage, POST: deleteStationAction },
+};
+const READER_ROUTES = {
+  '': { GET: readerPage },
+  station: { GET: readerStationForm, POST: assignReaderAction },
+  deactivate: { GET: deactivateReaderPage, POST: deactivateReaderAction },
+  replace: { GET: replaceReaderPage, POST: replaceReaderAction },
+};
+const ENTITY_ROUTES = [['/items/', ITEM_ROUTES], ['/stations/', STATION_ROUTES], ['/readers/', READER_ROUTES]];
 
 /** Chemin → {route, idText} (idText : segment <id> brut, non validé, ou null), ou null si aucune route. */
 function resolveRoute(path) {
   // Object.hasOwn : un chemin comme « /__proto__ » ou « constructor » ne résout rien d'hérité.
   if (Object.hasOwn(ROUTES, path)) return { route: ROUTES[path], idText: null };
-  if (!path.startsWith(ITEM_PREFIX)) return null;
-  const parts = path.slice(ITEM_PREFIX.length).split('/');
-  if (parts.length === 1) return { route: ITEM_ROUTES[''], idText: parts[0] };
-  if (parts.length === 2 && parts[1] !== '' && Object.hasOwn(ITEM_ROUTES, parts[1])) {
-    return { route: ITEM_ROUTES[parts[1]], idText: parts[0] };
+  for (const [prefix, routes] of ENTITY_ROUTES) {
+    if (!path.startsWith(prefix)) continue;
+    const parts = path.slice(prefix.length).split('/');
+    if (parts.length === 1) return { route: routes[''], idText: parts[0] };
+    if (parts.length === 2 && parts[1] !== '' && Object.hasOwn(routes, parts[1])) {
+      return { route: routes[parts[1]], idText: parts[0] };
+    }
+    return null;
   }
   return null;
 }
@@ -306,6 +336,267 @@ function submittedItem(ctx, res, user, form, item) {
  */
 function withBlankRows(form, wanted) {
   return { ...form, blankRows: Math.max(0, Math.min(wanted, MAX_FORM_ROWS - form.rows.length)) };
+}
+
+// ---------------------------------------------------------------- postes (étape 6)
+// Mêmes règles que l'édition des fiches : session obligatoire, tout POST par postForm, saisie
+// invalide réaffichée en 400, action réussie suivie d'une redirection 303 avec un code ?ok=.
+// Action impossible (poste avec historique, lecteur désactivé, numéros épuisés) : page
+// d'explication en 409, sans aucune écriture.
+
+function stationsList(ctx, req, res) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  sendHtml(res, 200, stationsPage(pageUser(session), { stations: listStationSummaries(ctx.db), notice: queryParam(req, 'ok') }));
+}
+
+function stationPage(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const station = findStation(ctx, res, user, idText);
+  if (!station) return;
+  sendHtml(res, 200, stationView(user, {
+    station,
+    readers: stationReaders(ctx.db, station.id),
+    items: stationItems(ctx.db, station.id),
+    deletable: !stationHasHistory(ctx.db, station.id),
+    now: Date.now(),
+    notice: queryParam(req, 'ok'),
+  }));
+}
+
+function newStationPage(ctx, req, res) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  sendHtml(res, 200, stationFormPage(pageUser(session), { station: null, form: { name: '', description: '' }, errors: {} }));
+}
+
+const duplicateStationError = (existing) => `Un poste porte déjà ce nom : « ${existing} » (majuscules et minuscules confondues). Choisissez un autre nom.`;
+
+function createStationAction(ctx, req, res) {
+  postForm(ctx, req, res, (session, form) => {
+    const user = pageUser(session);
+    const result = validateStationInput({ name: form.get('name'), description: form.get('description') });
+    if (!result.ok) return sendHtml(res, 400, stationFormPage(user, { station: null, form: result.form, errors: result.errors }));
+    const outcome = createStation(ctx.db, session.userId, result.station);
+    if (outcome.duplicate !== undefined) {
+      return sendHtml(res, 400, stationFormPage(user, { station: null, form: result.form, errors: { name: duplicateStationError(outcome.duplicate) } }));
+    }
+    ctx.log(`poste ${outcome.id} créé par ${session.username}`);
+    redirect(res, `/stations/${outcome.id}?ok=cree`);
+  });
+}
+
+function editStationPage(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const station = findStation(ctx, res, user, idText);
+  if (!station) return;
+  sendHtml(res, 200, stationFormPage(user, { station, form: { name: station.name, description: station.description }, errors: {} }));
+}
+
+function updateStationAction(ctx, req, res, idText) {
+  postForm(ctx, req, res, (session, form) => {
+    const user = pageUser(session);
+    const station = findStation(ctx, res, user, idText);
+    if (!station) return;
+    const result = validateStationInput({ name: form.get('name'), description: form.get('description') });
+    if (!result.ok) return sendHtml(res, 400, stationFormPage(user, { station, form: result.form, errors: result.errors }));
+    const outcome = updateStation(ctx.db, session.userId, station.id, result.station);
+    if (outcome === null) return sendHtml(res, 404, stationNotFoundPage(user));
+    if (outcome.duplicate !== undefined) {
+      return sendHtml(res, 400, stationFormPage(user, { station, form: result.form, errors: { name: duplicateStationError(outcome.duplicate) } }));
+    }
+    if (outcome.changed.length > 0) ctx.log(`poste ${station.id} modifié par ${session.username} (${outcome.changed.join(', ')})`);
+    redirect(res, `/stations/${station.id}?ok=${outcome.changed.length > 0 ? 'modifie' : 'inchange'}`);
+  });
+}
+
+function deleteStationPage(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const station = findStation(ctx, res, user, idText);
+  if (!station) return;
+  sendHtml(res, 200, deleteStationView(user, { station, history: stationHistory(ctx.db, station.id) }));
+}
+
+function deleteStationAction(ctx, req, res, idText) {
+  postForm(ctx, req, res, (session) => {
+    const user = pageUser(session);
+    const station = findStation(ctx, res, user, idText);
+    if (!station) return;
+    const outcome = deleteStation(ctx.db, session.userId, station.id);
+    if (outcome === 'no_station') return sendHtml(res, 404, stationNotFoundPage(user));
+    if (outcome !== 'ok') {
+      ctx.log(`suppression du poste ${station.id} refusée : le poste a un historique`);
+      return sendHtml(res, 409, deleteStationView(user, { station, history: outcome.blocked }));
+    }
+    ctx.log(`poste ${station.id} supprimé par ${session.username}`);
+    redirect(res, '/stations?ok=supprime');
+  });
+}
+
+/** Poste désigné par le segment d'URL, ou null après avoir répondu 404 (format invalide ou inexistant). */
+function findStation(ctx, res, user, idText) {
+  const id = parseItemId(idText);
+  const station = id === null ? null : getStation(ctx.db, id);
+  if (!station) sendHtml(res, 404, stationNotFoundPage(user));
+  return station;
+}
+
+// ---------------------------------------------------------------- lecteurs (étape 6)
+// SÉCURITÉ : la clé d'un lecteur n'apparaît que dans la réponse au POST de création ou de
+// remplacement (sendKeyPage). Elle n'est jamais journalisée (ctx.log ne reçoit que des
+// numéros et l'identifiant du compte), jamais mise dans une URL, jamais réaffichée.
+
+const STATION_GONE = 'Ce poste n\'existe pas ou plus. Choisissez un poste dans la liste.';
+
+/**
+ * Champ « station » d'un formulaire de lecteur : '' → null (non affecté), entier strict →
+ * identifiant (BigInt), absent ou mal formé → undefined (refusé). L'existence du poste est
+ * vérifiée dans la transaction d'écriture.
+ */
+function stationChoice(form) {
+  const selected = form.get('station');
+  if (selected === '') return null;
+  return parseItemId(selected) ?? undefined;
+}
+
+function readersList(ctx, req, res) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  sendHtml(res, 200, readersPage(pageUser(session), { readers: listReaders(ctx.db), now: Date.now() }));
+}
+
+function readerPage(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const reader = findReader(ctx, res, user, idText);
+  if (!reader) return;
+  sendHtml(res, 200, readerView(user, { reader, scans: readerScans(ctx.db, reader.id), now: Date.now(), notice: queryParam(req, 'ok') }));
+}
+
+function newReaderPage(ctx, req, res) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  sendHtml(res, 200, readerFormPage(pageUser(session), { stations: listStations(ctx.db) }));
+}
+
+function createReaderAction(ctx, req, res) {
+  postForm(ctx, req, res, (session, form) => {
+    const user = pageUser(session);
+    const stationId = stationChoice(form);
+    const outcome = stationId === undefined ? 'no_station' : createReader(ctx.db, session.userId, stationId);
+    if (outcome === 'no_station') {
+      return sendHtml(res, 400, readerFormPage(user, { stations: listStations(ctx.db), selected: form.get('station') ?? '', error: STATION_GONE }));
+    }
+    if (outcome === 'ids_exhausted') {
+      ctx.log('création de lecteur refusée : plus aucun numéro de lecteur disponible');
+      return sendHtml(res, 409, readerIdsExhaustedPage(user));
+    }
+    ctx.log(`lecteur ${outcome.id} créé par ${session.username}`); // jamais la clé
+    sendKeyPage(res, user, outcome, null);
+  });
+}
+
+function readerStationForm(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const reader = findReader(ctx, res, user, idText);
+  if (!reader) return;
+  if (reader.active !== 1) return sendHtml(res, 200, readerInactivePage(user, { reader }));
+  sendHtml(res, 200, readerStationPage(user, { reader, stations: listStations(ctx.db) }));
+}
+
+function assignReaderAction(ctx, req, res, idText) {
+  postForm(ctx, req, res, (session, form) => {
+    const user = pageUser(session);
+    const reader = findReader(ctx, res, user, idText);
+    if (!reader) return;
+    if (reader.active !== 1) return sendHtml(res, 409, readerInactivePage(user, { reader }));
+    const stationId = stationChoice(form);
+    const outcome = stationId === undefined ? 'no_station' : assignReader(ctx.db, session.userId, reader.id, stationId);
+    if (outcome === 'no_reader') return sendHtml(res, 404, readerNotFoundPage(user));
+    if (outcome === 'inactive') return sendHtml(res, 409, readerInactivePage(user, { reader }));
+    if (outcome === 'no_station') {
+      return sendHtml(res, 400, readerStationPage(user, { reader, stations: listStations(ctx.db), selected: form.get('station') ?? '', error: STATION_GONE }));
+    }
+    if (outcome.changed) ctx.log(`lecteur ${reader.id} changé de poste par ${session.username}`);
+    redirect(res, `/readers/${reader.id}?ok=${outcome.changed ? 'affecte' : 'inchange'}`);
+  });
+}
+
+function deactivateReaderPage(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const reader = findReader(ctx, res, user, idText);
+  if (!reader) return;
+  if (reader.active !== 1) return sendHtml(res, 200, readerInactivePage(user, { reader }));
+  sendHtml(res, 200, deactivateView(user, { reader }));
+}
+
+function deactivateReaderAction(ctx, req, res, idText) {
+  postForm(ctx, req, res, (session) => {
+    const user = pageUser(session);
+    const reader = findReader(ctx, res, user, idText);
+    if (!reader) return;
+    const outcome = deactivateReader(ctx.db, session.userId, reader.id);
+    if (outcome === 'no_reader') return sendHtml(res, 404, readerNotFoundPage(user));
+    if (outcome === 'inactive') return sendHtml(res, 409, readerInactivePage(user, { reader }));
+    ctx.log(`lecteur ${reader.id} désactivé par ${session.username}`);
+    redirect(res, `/readers/${reader.id}?ok=desactive`);
+  });
+}
+
+function replaceReaderPage(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const reader = findReader(ctx, res, user, idText);
+  if (!reader) return;
+  if (reader.active !== 1) return sendHtml(res, 200, readerInactivePage(user, { reader }));
+  sendHtml(res, 200, replaceView(user, { reader }));
+}
+
+function replaceReaderAction(ctx, req, res, idText) {
+  postForm(ctx, req, res, (session) => {
+    const user = pageUser(session);
+    const reader = findReader(ctx, res, user, idText);
+    if (!reader) return;
+    const outcome = replaceReader(ctx.db, session.userId, reader.id);
+    if (outcome === 'no_reader') return sendHtml(res, 404, readerNotFoundPage(user));
+    if (outcome === 'inactive') return sendHtml(res, 409, readerInactivePage(user, { reader }));
+    if (outcome === 'ids_exhausted') {
+      ctx.log(`remplacement de la clé du lecteur ${reader.id} refusé : plus aucun numéro de lecteur disponible`);
+      return sendHtml(res, 409, readerIdsExhaustedPage(user));
+    }
+    ctx.log(`clé du lecteur ${outcome.oldId} remplacée par ${session.username} : nouveau lecteur ${outcome.id}, lecteur ${outcome.oldId} désactivé`); // jamais la clé
+    sendKeyPage(res, user, outcome, outcome.oldId);
+  });
+}
+
+/**
+ * SÉCURITÉ : seule réponse qui contient une clé de lecteur. Réponse directe au POST, sans
+ * redirection (la clé n'est dans aucune URL, et aucune page consultable ensuite ne la
+ * contient), avec Cache-Control: no-store (sendHtml). Format : 64 caractères hexadécimaux en
+ * minuscules, celui du fichier lu par tools/simulateur.js --key-file.
+ */
+function sendKeyPage(res, user, created, oldId) {
+  sendHtml(res, 200, readerKeyPage(user, { id: created.id, station: created.station, keyHex: created.key.toString('hex'), oldId }));
+}
+
+/** Lecteur désigné par le segment d'URL, ou null après avoir répondu 404 (format invalide ou inexistant). */
+function findReader(ctx, res, user, idText) {
+  const id = parseItemId(idText);
+  const reader = id === null ? null : getReader(ctx.db, id);
+  if (!reader) sendHtml(res, 404, readerNotFoundPage(user));
+  return reader;
 }
 
 function loginPage(ctx, req, res) {

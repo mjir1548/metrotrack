@@ -64,12 +64,14 @@ export function ingestFrame(db, frameBytes, receivedAt = new Date().toISOString(
 }
 
 // Filet anti-rejeu (D-005) : un couple (lecteur, compteur) déjà enregistré est refusé par la
-// base, soit par le trigger scans_no_replace (migration 004, vérifié en premier), soit par
+// base, soit par le trigger scans_no_replace (vérifié en premier), soit par
 // UNIQUE (reader_id, counter). Dans les deux cas, c'est un rejeu : rejet 400 normal, jamais
 // une erreur interne. Toute autre erreur est relancée.
+// Le message « scans: duplicate » est propre à scans_no_replace (migration 005) : il ne peut
+// pas être confondu avec celui d'un autre trigger (scans_no_update, scans_no_delete...).
 function isDuplicateScan(err) {
   if (err.errcode === 2067 /* SQLITE_CONSTRAINT_UNIQUE */) return true;
-  return err.errcode === 1811 /* SQLITE_CONSTRAINT_TRIGGER */ && err.message === 'scans: append-only';
+  return err.errcode === 1811 /* SQLITE_CONSTRAINT_TRIGGER */ && err.message === 'scans: duplicate';
 }
 
 function lastCounter(db, readerId) {

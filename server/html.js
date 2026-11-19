@@ -8,7 +8,8 @@
 // Contextes couverts : texte d'un élément, et valeur d'attribut ENTRE GUILLEMETS DOUBLES.
 // Règles d'usage : jamais d'interpolation dans un nom de balise ou d'attribut, dans un attribut
 // sans guillemets, dans <script>/<style> (interdits de toute façon par la CSP), ni dans une URL
-// formée à partir d'une saisie (les seules URL construites sont /items/<entier>).
+// formée à partir d'une saisie (les seules URL construites sont /items/<entier>,
+// /stations/<entier> et /readers/<entier>, avec des identifiants lus en base).
 
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 

@@ -29,7 +29,7 @@ Dernière mise à jour : 2026-11-17
 - **Étape 4 (inventaire en lecture)** : terminée, commitée (`ced50be`) avec l'accord de l'humain. 241 tests verts. Questions soumises à l'humain, sans réponse pour l'instant :
   - D-011 et D-013 (Proposées) ;
   - le pipelining des trames après un rejet (protocole).
-- **Étape 5 (édition des fiches et journal)** : terminée et validée par le testeur et la revue (315 tests verts). **En attente de l'accord de l'humain pour le commit.** D-014 (AUTOINCREMENT) validée.
+- **Étape 5 (édition des fiches et journal)** : terminée, commitée (`487041f`) avec l'accord de l'humain. 315 tests verts. D-014 (AUTOINCREMENT) validée.
 - **Pour l'étape 6** :
   - message propre au trigger anti-doublon (`scans: duplicate`) ;
   - suppression d'un poste qui a des corrections : message clair (FOREIGN KEY), pas de 500.
@@ -341,3 +341,74 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
   - Parcours complet et migration v3 → v4 corrects.
 - Vérification de l'orchestrateur : 315/315, aucune dépendance.
 - **Étape 5 terminée, en attente de l'accord de l'humain pour le commit** (3 allers-retours sur 3). `PROMPT-REPRISE.md` est exclu du commit.
+- Accord de l'humain → commit `487041f` « Étape 5 : édition des fiches et journal des modifications ».
+
+### 2026-11-18 — Étape 6 lancée (postes et lecteurs)
+- Contenu :
+  - postes : créer, renommer, décrire ; suppression seulement sans historique ;
+  - lecteurs : création (identifiant et clé AES-256 générés par le serveur, clé affichée une seule fois), affectation à un poste, désactivation définitive, remplacement de clé (= nouveau lecteur, l'ancien est désactivé) ;
+  - `audit_log` sans jamais la clé ;
+  - migration 005 : message propre au trigger anti-doublon (S1 de l'étape 5).
+- Choix par défaut appliqués aux questions ouvertes, à confirmer par l'humain :
+  - un poste ou un lecteur qui a un historique ne se supprime pas (cadrage Q9) ;
+  - un lecteur désactivé ne se réactive pas ;
+  - les clés restent stockées en clair dans la base (Q8).
+- Agent `dev` lancé (aller-retour 1/3).
+- Rapport de `dev` (étape 6, aller-retour 1/3) : implémentée, 364 tests verts, aucune dépendance.
+  - Nouveaux fichiers : migration 005 (`scans: duplicate`, index `scans_by_station`), `server/stations.js`, `server/readers.js`.
+  - Routes `/stations…` et `/readers…`. Une action impossible renvoie 409 avec une explication.
+  - `docs/protocole.md` §6 précisé, sans changement du contrat.
+  - Test de bout en bout : la clé lue sur la page est acceptée par le simulateur.
+  - Écart non demandé : un numéro de poste n'est jamais réutilisé, grâce à une recherche dans `audit_log`. À arbitrer.
+  - Limite : un double clic ou un rechargement de la page de clé crée un autre lecteur (la page en avertit).
+  - Capture de la page de clé vérifiée par l'orchestrateur : claire.
+- Testeur et revue sécurité lancés en parallèle.
+- Rapport de la revue (étape 6) : **OK pour commit**, sous réserve de deux points IMPORTANTS.
+  - I1 : décisions non consignées → l'orchestrateur ajoute D-015 (numéros de poste non réutilisés, **Proposée, à faire valider par l'humain**) et les limites acceptées de l'étape 6.
+  - I2 : retirer de la page de clé le bloc « Tester avec le simulateur », qui pousse à écrire une vraie clé dans un fichier.
+  - Suggestions :
+    - S2 : ligne d'audit `reader.create` pour le nouveau lecteur lors d'un remplacement ;
+    - S3 : « fermez cet onglet » ;
+    - S4 : utiliser `EXISTS` plutôt que `count(*)` sur la page d'un poste ;
+    - S5 : désactivation définitive à préciser dans `protocole.md` ;
+    - S6 : `aria-labelledby`.
+  - Tout le reste est jugé conforme : clé jamais lue hors `ingest.js`, cycle de vie, limite uint32, migration 005, CSRF, XSS, coûts.
+- Rapport du testeur (étape 6) : fonctionne de bout en bout, aucun bogue bloquant. 369 tests verts ; ajout de `test/postes-lecteurs-verif.test.js`.
+  - Vérifications complètes : clé introuvable ailleurs (636 requêtes analysées), concurrence avec 2 serveurs, migration 4 → 5 depuis `487041f`.
+  - Défaut mineur : des noms de poste identiques à l'œil (espaces multiples ou insécables) échappent au contrôle de doublon.
+- Retour à `dev` (aller-retour 2/3) :
+  - retirer le bloc simulateur de la page de clé et déplacer la procédure dans `protocole.md` ;
+  - ajouter « fermez cet onglet » ;
+  - écrire une ligne d'audit `reader.create` pour le nouveau lecteur lors d'un remplacement ;
+  - utiliser `EXISTS` ;
+  - préciser la désactivation définitive dans `protocole.md` ;
+  - réduire les blancs internes à une seule espace dans `cleanLine` ;
+  - corriger `aria-labelledby`.
+- `dev` (étape 6, aller-retour 2/3) a été coupé par la limite d'usage, puis repris. Rapport : tout est corrigé, 372 tests verts.
+  - Bloc simulateur retiré de la page de clé ; procédure « développement uniquement » ajoutée dans `protocole.md` §6, avec la désactivation définitive.
+  - Ligne d'audit `reader.create` écrite lors d'un remplacement.
+  - `stationHasHistory` en EXISTS.
+  - Blancs réduits à une seule espace dans `cleanLine`.
+  - Captures régénérées.
+  - Détail : une tabulation dans un nom est supprimée et non remplacée par une espace (non traité, mineur).
+- Re-vérification par le testeur et re-relecture par la revue lancées en parallèle.
+- Testeur et revue (étape 6) coupés par la fin de session, puis relancés (2026-11-19).
+- Re-relecture de la revue : **OK pour commit**.
+  - I1 et I2 fermés ; texte de `protocole.md` §6 sûr ; double audit cohérent ; `cleanLine` sans risque.
+  - Suggestions mineures : `cleanLine` aussi dans `stationNameKey` (S-a) ; réduction des blancs dans la recherche (S-b).
+- Re-vérification du testeur (étape 6) : les 7 points ✅. Un test de l'étape 5 est instable (`edition-web.test.js:398`, ECONNRESET au lieu de 413 une fois sur 13 sous Windows) : c'est une course dans le test, pas un défaut du serveur.
+- Retour à `dev` (aller-retour 3/3, le dernier) : S-a (`cleanLine` dans `stationNameKey`), S-b (réduction des blancs dans la recherche), test stabilisé.
+- Rapport de `dev` (étape 6, aller-retour 3/3) : S-a, S-b et test stabilisé (`test/coupure.js`). 375 tests verts, 3 fois de suite.
+  - Doute : une fiche ancienne dont le nom contient des espaces multiples n'est pas trouvée tant qu'elle n'est pas réenregistrée (aucune donnée de production à ce jour).
+- Vérification ciblée par le testeur et relecture ciblée par la revue lancées.
+- Relecture finale de la revue (étape 6) : **OK pour commit**.
+  - S-a et S-b corrects ; aucun caractère invisible ; l'assouplissement des tests de corps trop gros est légitime (le 413 strict de `web.test.js` est gardé).
+  - Suggestions reportées à l'étape 7 :
+    - ajouter un test 413 strict sur une route d'édition (Content-Length seul) ;
+    - commenter l'usage de la regex `LINE_BLANKS`, qui porte le drapeau `/g`.
+- Vérification finale du testeur (étape 6) : ✅ 375/375, 5 fois de suite.
+  - Doublons avec espaces insécables refusés ; recherche avec espaces multiples correcte.
+  - Tests de plafond non affaiblis : avec un plafond multiplié par 1 000, les trois tests échouent bien.
+- Vérification de l'orchestrateur : 375/375, aucune dépendance.
+- **Étape 6 terminée, en attente de l'accord de l'humain pour le commit** (3 allers-retours sur 3). D-015 à faire valider. `PROMPT-REPRISE.md` est exclu du commit.
+- **Accord de l'humain (2026-11-19)** : D-015 validée, et commit de l'étape 6.

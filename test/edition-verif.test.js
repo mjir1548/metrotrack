@@ -23,6 +23,7 @@ import { createSession, csrfTokenFor } from '../server/sessions.js';
 import { MAX_EDIT_FORM_BYTES } from '../server/web.js';
 import { MAX_NAME_CHARS, MAX_NOTES_CHARS, MAX_PROPERTY_KEY_CHARS, MAX_PROPERTY_VALUE_CHARS } from '../server/items.js';
 import { makeTestCerts } from './tls-fixture.js';
+import { statusOrCut, CUT } from './coupure.js';
 
 const NOW = '2026-11-17T10:00:00.000Z';
 let dir, db, server, port, certs, origin;
@@ -187,8 +188,9 @@ test('corps exactement au plafond : traité ; plafond + 1 octet envoyé en chunk
   let res = await send({ method: 'POST', path: '/items/new', headers, body: body(MAX_EDIT_FORM_BYTES) });
   assert.equal(res.status, 400, 'lu et validé (notes trop longues), pas 413');
   assert.match(res.body, /Les notes ne doivent pas dépasser/);
-  res = await send({ method: 'POST', path: '/items/new', headers, body: body(MAX_EDIT_FORM_BYTES + 1), chunked: true });
-  assert.equal(res.status, 413);
+  // 413, ou connexion coupée si le serveur ferme pendant que le client écrit encore (coupure.js).
+  const over = await statusOrCut(send({ method: 'POST', path: '/items/new', headers, body: body(MAX_EDIT_FORM_BYTES + 1), chunked: true }));
+  assert.ok([413, CUT].includes(over), String(over));
   assert.equal(snapshot(), before);
 });
 

@@ -126,10 +126,10 @@ test('lecteur non affecté : scan accepté avec station_id NULL', () => {
 
 test('filet de sécurité : un doublon (reader_id, counter) inséré directement est refusé par la base', () => {
   ingestFrame(db, frame(1), NOW);
-  // Refusé d'abord par le trigger scans_no_replace (migration 004), avant UNIQUE(reader_id, counter).
+  // Refusé d'abord par le trigger scans_no_replace (message propre depuis la migration 005), avant UNIQUE(reader_id, counter).
   assert.throws(
     () => db.prepare("INSERT INTO scans (reader_id, station_id, uid_nfc, counter, received_at) VALUES (1, 1, 'DEADBEEF', 1, ?)").run(NOW),
-    (err) => err.errcode === 1811 && err.message === 'scans: append-only',
+    (err) => err.errcode === 1811 && err.message === 'scans: duplicate',
   );
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM scans').get().n, 1);
 });

@@ -178,3 +178,12 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
 - La clé d'un lecteur s'affiche dans la réponse au formulaire de création ou de remplacement. Recharger cette page, ou cliquer deux fois, crée un lecteur de plus dont personne n'a la clé. Ce lecteur est inutilisable : il suffit de le désactiver. La page en avertit.
 - Malgré `Cache-Control: no-store`, certains navigateurs peuvent remontrer la page de clé avec le bouton Retour dans le même onglet. La page demande de fermer l'onglet une fois la clé injectée.
 - Un lecteur désactivé ne se réactive pas et ne change plus de poste. Le poste auquel il était affecté ne peut donc plus être supprimé, mais il peut être renommé.
+
+## Limites acceptées pour le MVP (étape 7)
+
+- **Réutilisation d'une puce.** Une puce détachée d'une fiche (remplacement de puce ou suppression de la fiche) redevient une puce inconnue et garde ses scans. Si on l'associe ensuite à une autre fiche, celle-ci hérite de cet historique et de la dernière localisation. Le modèle reste inchangé (D-006, cadrage §3.1). Les pages de création et d'association avertissent quand la puce a déjà appartenu à une fiche. La règle d'usage reste : ne pas réutiliser une puce.
+- **Puces inconnues.** La liste affiche au plus les 200 puces les plus récentes, avec la mention qu'il y en a d'autres. Son coût dépend du nombre d'UID distincts dans le journal. Un lecteur compromis qui inonderait le journal de faux UID ferait durer chaque affichage de cette page environ 0,45 s à 300 000 UID distincts. Pendant ce temps, tout le serveur attend, y compris la réception des trames. C'est une limite résiduelle acceptée pour le MVP.
+- **Partage du serveur.** `node:sqlite` répond de façon synchrone : quand beaucoup de pages sont demandées en même temps, la réception d'un scan attend qu'elles soient servies (mesuré : environ 290 ms au lieu de 3 ms avec 8 clients qui rechargent sans arrêt la liste des puces). C'est acceptable pour un usage local à quelques utilisateurs.
+- **Pas de compteur de puces inconnues dans le bandeau.** Il coûterait environ 20 ms par page.
+- **UID dans les adresses `/chips/<UID>` : majuscules seulement, sans normalisation.** Une adresse en minuscules donne 404. Les liens de l'application sont toujours en majuscules.
+- **Association.** La confirmation porte la puce que la fiche avait au moment de l'affichage. Si elle a changé entre-temps, l'association est refusée (409) sans rien écrire.

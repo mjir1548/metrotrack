@@ -18,6 +18,21 @@ export function parseItemId(text) {
   return typeof text === 'string' && ITEM_ID_FORMAT.test(text) ? BigInt(text) : null;
 }
 
+// UID de puce NFC : 8, 14 ou 20 caractères hexadécimaux en MAJUSCULES (puces de 4, 7 ou
+// 10 octets), le format stocké dans scans et items (CHECK des migrations 001 et 004).
+export const UID_FORMAT = /^(?:[0-9A-F]{8}|[0-9A-F]{14}|[0-9A-F]{20})$/;
+
+/**
+ * Segment d'URL → UID, ou null. SÉCURITÉ : aucune normalisation. Le segment est comparé tel
+ * qu'il est reçu, sans décodage %XX (server/http.js ne décode pas le chemin) ni passage en
+ * majuscules : un UID n'a qu'une seule représentation acceptée, celle des liens produits par
+ * l'application. Minuscules, séparateurs, encodages (%34, %00...), espaces, longueurs autres
+ * que 8, 14 ou 20 : refusés (404 pour l'appelant).
+ */
+export function parseUid(text) {
+  return typeof text === 'string' && UID_FORMAT.test(text) ? text : null;
+}
+
 // Caractères retirés de la saisie (recherche, et nom, clés et valeurs des fiches) avant usage
 // et avant tout réaffichage :
 // - contrôles C0 (dont NUL), DEL, contrôles C1 ;
@@ -36,6 +51,10 @@ export const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u200B\u200
 // insécables sont listées en plus, pour l'auditeur. Les notes et descriptions (plusieurs
 // lignes, cleanNotes) ne sont pas concernées. Partagée par cleanLine (items.js) et la
 // recherche (normalizeQuery) : « Poste  2 » cherche « Poste 2 ».
+// ATTENTION : expression avec le drapeau /g. Sûre avec .replace() (qui repart toujours du
+// début), mais à NE PAS utiliser avec .test() ni .exec() : ces méthodes mémorisent la position
+// de la dernière correspondance (lastIndex) d'un appel à l'autre, et un second appel pourrait
+// alors échouer à tort. Même règle pour CONTROL_CHARS ci-dessus.
 export const LINE_BLANKS = /[\s\u00A0\u2007\u202F]+/g;
 
 /**

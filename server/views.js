@@ -23,6 +23,9 @@ const ITEM_NOTICES = {
   modifie: 'Modifications enregistrées.',
   inchange: 'Aucune modification : la fiche était déjà à jour.',
   corrige: 'Localisation corrigée.',
+  cree_puce: 'Fiche créée avec la puce scannée : la localisation suit désormais les scans de cette puce.',
+  puce_associee: 'Puce associée : la localisation de la fiche suit désormais cette puce.',
+  puce_remplacee: 'Puce remplacée : l\'ancienne puce est détachée, la localisation suit désormais la nouvelle.',
 };
 const STATION_LIST_NOTICES = { supprime: 'Poste supprimé.' };
 const STATION_NOTICES = {
@@ -91,9 +94,12 @@ export function forbiddenPage() {
 
 // ---------------------------------------------------------------- application
 
-// Rubriques du bandeau : l'inventaire (fiches) et les postes et lecteurs.
+// Rubriques du bandeau : l'inventaire (fiches), les postes et lecteurs, les puces inconnues.
+// Pas de badge « nombre de puces inconnues » sur l'onglet : il serait calculé sur chaque page,
+// et son calcul coûte environ 20 ms à 300 000 scans (server/chips.js), au-delà du budget fixé.
 const SECTION_ITEMS = 'items';
 const SECTION_STATIONS = 'stations';
+const SECTION_CHIPS = 'chips';
 
 /** Lien du bandeau : class="actif" dans sa rubrique, aria-current="page" sur la liste elle-même. */
 function navLink(href, label, active, current) {
@@ -115,6 +121,7 @@ ${BRAND}
 <nav class="navigation" aria-label="Navigation principale">
 ${navLink('/', 'Inventaire', section === SECTION_ITEMS, current === '/')}
 ${navLink('/stations', 'Postes et lecteurs', section === SECTION_STATIONS, current === '/stations')}
+${navLink('/chips', 'Puces inconnues', section === SECTION_CHIPS, current === '/chips')}
 </nav>
 </div>
 <div class="session">
@@ -256,7 +263,7 @@ ${scans.map((scan) => html`<tr>
 ${history.map((entry) => html`<tr>
 <td data-label="Date">${timeTag(entry.at, now)}</td>
 <td data-label="Auteur">${entry.username ?? html`<span class="texte-doux">ligne de commande</span>`}</td>
-<td data-label="Modification">${entry.label}</td>
+<td data-label="Modification">${historyLabel(entry.label)}</td>
 </tr>
 `)}</tbody>
 </table>`;
@@ -283,7 +290,7 @@ ${source}
 <div><dt>Créée</dt><dd>${formatDateTime(item.created_at)}</dd></div>
 <div><dt>Modifiée</dt><dd>${formatDateTime(item.updated_at)}</dd></div>
 </dl>
-</section>
+${item.uid_nfc === null ? html`<p class="note-carte">Pour localiser l'objet, scannez sa puce sur un poste, puis associez-la depuis <a href="/chips">Puces inconnues</a>.</p>\n` : null}</section>
 <section class="fiche-carte" aria-labelledby="titre-proprietes">
 <h2 id="titre-proprietes">Propriétés</h2>
 ${properties}
@@ -301,6 +308,15 @@ ${scanHistory}
 ${changes}
 </section>
 </div>`);
+}
+
+/**
+ * Libellé d'une ligne d'historique (items.js, auditLabel) : texte, ou segments dont les UID
+ * {uid} sont affichés en chasse fixe. Chaque segment passe par le gabarit (échappé).
+ */
+function historyLabel(label) {
+  if (!Array.isArray(label)) return label;
+  return label.map((part) => (typeof part === 'string' ? part : html`<span class="uid">${part.uid}</span>`));
 }
 
 export function itemNotFoundPage(user) {
@@ -331,23 +347,42 @@ const EMPTY_ROW = { key: '', value: '', error: null };
  *   errors: {name?: string, notes?: string, properties?: string},
  * }} data
  *   item : null pour une création ; sinon la fiche modifiée (nom actuellement enregistré) ;
- *   form : valeurs à afficher (saisies nettoyées, ou fiche enregistrée), puis blankRows lignes vides.
+ *   form : valeurs à afficher (saisies nettoyées, ou fiche enregistrée), puis blankRows lignes vides ;
+ *   chip : création depuis une puce inconnue (étape 7) : la puce (chips.js, getChip), affichée
+ *   en lecture seule. Son UID est dans l'adresse du formulaire, jamais dans un champ ;
+ *   now : heure actuelle (ms), pour l'ancienneté du dernier scan de la puce.
  */
-export function itemFormPage(user, { item, form, errors }) {
+export function itemFormPage(user, { item, form, errors, chip = null, now = Date.now() }) {
   const editing = item !== null;
-  const action = editing ? `/items/${item.id}/edit` : '/items/new';
-  const cancel = editing ? `/items/${item.id}` : '/';
+  let action = '/items/new';
+  let cancel = '/';
+  let back = '← Inventaire';
+  if (editing) {
+    action = `/items/${item.id}/edit`;
+    cancel = `/items/${item.id}`;
+    back = '← Retour à la fiche';
+  } else if (chip !== null) {
+    action = `/chips/${chip.uid}/new`;
+    cancel = '/chips';
+    back = '← Puces inconnues';
+  }
   const title = editing ? 'Modifier la fiche' : 'Nouvelle fiche';
   const failed = Object.keys(errors).length > 0 || form.rows.some((row) => row.error !== null);
   const rows = [...form.rows, ...Array(form.blankRows).fill(EMPTY_ROW)];
+  const chipField = chip === null ? null : html`<div class="champ">
+<p class="libelle">Puce NFC</p>
+<p class="puce-lecture"><span class="uid">${chip.uid}</span></p>
+<p class="aide">Dernier scan : ${chipPlace(chip)}, ${timeTag(chip.received_at, now)}. Dès la création, l'objet est localisé à ce scan.</p>
+</div>
+`;
 
-  return appLayout(user, title, html`<p class="retour"><a href="${cancel}">${editing ? '← Retour à la fiche' : '← Inventaire'}</a></p>
+  return appLayout(user, title, html`<p class="retour"><a href="${cancel}">${back}</a></p>
 <div class="entete-page">
 <h1>${title}</h1>
 ${editing ? html`<p class="sous-titre-page">${item.name}</p>\n` : null}</div>
-${failed ? html`<p class="erreur" role="alert">La fiche n'a pas été enregistrée. Corrigez les champs signalés en rouge : votre saisie est conservée.</p>\n` : null}<form class="formulaire-page" method="post" action="${action}">
+${failed ? html`<p class="erreur" role="alert">La fiche n'a pas été enregistrée. Corrigez les champs signalés en rouge : votre saisie est conservée.</p>\n` : null}${chip === null ? null : reuseWarning(chip)}<form class="formulaire-page" method="post" action="${action}">
 <input type="hidden" name="csrf" value="${user.csrf}">
-<div class="champ">
+${chipField}<div class="champ">
 <label for="name">Nom <span class="obligatoire">(obligatoire)</span></label>
 <input id="name" name="name" value="${form.name}" maxlength="${MAX_NAME_CHARS}" required autocomplete="off" aria-describedby="${describedBy('name-aide', 'name-erreur', errors.name)}"${invalid(errors.name)}>
 <p class="aide" id="name-aide">Par exemple «&nbsp;Multimètre Fluke 87V&nbsp;». ${MAX_NAME_CHARS} caractères au plus.</p>
@@ -369,7 +404,7 @@ ${rows.map((row, i) => propertyRow(row, i + 1))}</div>
 <button class="bouton bouton-secondaire" type="submit" name="action" value="lignes" formnovalidate>Ajouter des lignes</button>
 <a class="lien-annuler" href="${cancel}">Annuler</a>
 </div>
-</form>`);
+</form>`, chip === null ? undefined : chipsSection);
 }
 
 // Ligne de propriété n (à partir de 1) : deux champs répétés prop_key / prop_value, chacun avec
@@ -396,7 +431,7 @@ export function deleteItemPage(user, { item }) {
 <div class="panneau panneau-danger">
 <p>Vous allez supprimer la fiche «&nbsp;<strong class="nom-confirme">${item.name}</strong>&nbsp;».</p>
 <p>Ses propriétés, ses notes et l'historique de ses corrections manuelles de localisation seront supprimés avec elle.</p>
-<p class="texte-doux">Le journal des scans de sa puce et le journal des modifications sont conservés.</p>
+${item.uid_nfc === null ? null : html`<p>Sa puce <span class="uid">${item.uid_nfc}</span> sera détachée : si elle a déjà été scannée, elle réapparaîtra dans «&nbsp;Puces inconnues&nbsp;» avec ses scans.</p>\n`}<p class="texte-doux">Le journal des scans de sa puce et le journal des modifications sont conservés.</p>
 <form method="post" action="/items/${item.id}/delete">
 <input type="hidden" name="csrf" value="${user.csrf}">
 <div class="actions-formulaire">
@@ -471,13 +506,16 @@ ${button}
 ${sectionTabs(current)}`;
 }
 
-/** Page d'information dans la rubrique (introuvable, action impossible) : encadré centré. */
-function messagePage(user, { title, text, hint = null, back, action = null }) {
+/**
+ * Page d'information (introuvable, action impossible) : encadré centré.
+ * layout : rubrique du bandeau (postes et lecteurs par défaut, ou puces inconnues).
+ */
+function messagePage(user, { title, text, hint = null, back, action = null, layout = stationsSection }) {
   return appLayout(user, title, html`${back}
 <div class="vide">
 <h1>${title}</h1>
 <p>${text}</p>
-${hint === null ? null : html`<p class="texte-doux">${hint}</p>\n`}${action === null ? null : html`<a class="bouton" href="${action.href}">${action.label}</a>\n`}</div>`, stationsSection);
+${hint === null ? null : html`<p class="texte-doux">${hint}</p>\n`}${action === null ? null : html`<a class="bouton" href="${action.href}">${action.label}</a>\n`}</div>`, layout);
 }
 
 export function stationNotFoundPage(user) {
@@ -911,4 +949,203 @@ export function readerKeyPage(user, { id, station, keyHex, oldId = null }) {
 <div class="actions-formulaire">
 <a class="bouton" href="/readers">Retour aux lecteurs</a>
 </div>`, stationsSection);
+}
+
+// ---------------------------------------------------------------- puces inconnues (étape 7)
+// Les adresses /chips/<UID>/... ne contiennent qu'un UID validé (inventory.js, parseUid :
+// hexadécimal majuscule de 8, 14 ou 20 caractères) ou lu en base au même format, et des
+// identifiants entiers lus en base.
+
+const chipsSection = { section: SECTION_CHIPS };
+const BACK_TO_CHIPS = html`<p class="retour"><a href="/chips">← Puces inconnues</a></p>`;
+
+/** Lieu du dernier scan d'une puce, en texte : nom du poste, ou lecteur non affecté (lien vers le lecteur). */
+function chipPlace(chip) {
+  return chip.station_id === null
+    ? html`<a class="lien-simple" href="/readers/${chip.reader_id}">lecteur n° ${chip.reader_id} non affecté</a>`
+    : chip.station_name;
+}
+
+/**
+ * Avertissement avant de réutiliser une puce qui a déjà appartenu à une fiche
+ * (chip.previous : chips.js, chipPreviousOwner), ou rien. Ses anciens scans, restés au journal,
+ * seront rattachés à la nouvelle fiche (cadrage.md §3, choix 1 : « ne pas réutiliser une puce »).
+ */
+function reuseWarning(chip) {
+  const previous = chip.previous ?? null;
+  if (previous === null) return null;
+  const name = html`«&nbsp;${previous.name ?? 'sans nom'}&nbsp;»`;
+  const owner = previous.exists
+    ? html`<a href="/items/${previous.itemId}">${name} (n° ${previous.itemId})</a>`
+    : html`${name} (n° ${previous.itemId}, supprimée depuis)`;
+  const scans = chip.scan_count > 1
+    ? `Ses ${thousands(chip.scan_count)} scans enregistrés, y compris ceux de cette époque, seront rattachés à la nouvelle fiche : ils compteront dans ses derniers scans.`
+    : 'Son scan enregistré sera rattaché à la nouvelle fiche : il comptera dans ses derniers scans.';
+  return html`<div class="panneau panneau-alerte panneau-reutilisation" role="note">
+<p><strong>Cette puce a déjà appartenu à la fiche ${owner}</strong>, jusqu'au ${formatDateTime(previous.until)}.</p>
+<p>${scans} Si possible, préférez une puce neuve.</p>
+</div>
+`;
+}
+
+/** Même information en puce d'état (liste) : verte pour un poste, orange pour un lecteur non affecté. */
+function chipBadge(chip) {
+  return chip.station_id === null
+    ? html`<a class="lien-etat" href="/readers/${chip.reader_id}"><span class="etat etat-inconnue">lecteur n° ${chip.reader_id} non affecté</span></a>`
+    : html`<span class="etat etat-poste">${chip.station_name}</span>`;
+}
+
+/**
+ * Liste des puces inconnues.
+ * @param {{chips: object[], more?: boolean, now: number}} data chips, more : chips.js,
+ *   listUnknownChips (more : d'autres puces, plus anciennes, ne sont pas affichées).
+ */
+export function chipsPage(user, { chips, more = false, now }) {
+  const summary = more
+    ? html`<p class="resultats" role="status">Plus de ${plural(chips.length, 'puce inconnue', 'puces inconnues')} · les ${chips.length} plus récentes sont affichées. Associez-les ou créez leurs fiches pour voir les suivantes.</p>`
+    : html`<p class="resultats">${plural(chips.length, 'puce inconnue', 'puces inconnues')}</p>`;
+  const body = chips.length === 0
+    ? html`<div class="vide"><p>Aucune puce inconnue : toutes les puces scannées sont associées à une fiche.</p>
+<p class="texte-doux">Une puce scannée sur un poste sans fiche apparaîtra ici, avec le poste et l'heure de son dernier scan.</p></div>`
+    : html`<div class="panneau-tableau">
+<table class="tableau tableau-puces">
+<thead><tr><th scope="col">Puce</th><th scope="col">Dernier poste</th><th scope="col">Dernier scan</th><th scope="col">Scans</th><th scope="col"><span class="visuellement-cache">Actions</span></th></tr></thead>
+<tbody>
+${chips.map((chip) => html`<tr>
+<td><span class="uid uid-puce">${chip.uid}</span></td>
+<td data-label="Dernier poste">${chipBadge(chip)}</td>
+<td data-label="Dernier scan">${timeTag(chip.received_at, now)}</td>
+<td data-label="Scans">${thousands(chip.scan_count)}</td>
+<td class="cellule-actions"><a class="bouton bouton-secondaire" href="/chips/${chip.uid}/new">Créer une fiche</a>
+<a class="lien-simple" href="/chips/${chip.uid}/associate">Associer à une fiche existante</a></td>
+</tr>
+`)}</tbody>
+</table>
+</div>`;
+  return appLayout(user, 'Puces inconnues', html`<div class="entete-page">
+<h1>Puces inconnues</h1>
+<p class="intro">Puces scannées sur un poste qu'aucune fiche ne porte encore. Créez une fiche, ou associez la puce à une fiche existante : l'objet sera localisé au poste de son dernier scan.</p>
+</div>
+${summary}
+${body}`, { ...chipsSection, current: '/chips' });
+}
+
+/**
+ * Recherche de la fiche à laquelle associer une puce inconnue.
+ * @param {{chip: object, query: string, items: object[], total: number, now: number}} data
+ *   items : fiches affichées (au plus chips.js MAX_ASSOCIATE_RESULTS), total : fiches trouvées.
+ */
+export function associateSearchPage(user, { chip, query, items, total, now }) {
+  const searching = query !== '';
+  const base = `/chips/${chip.uid}/associate`;
+  const truncated = total > items.length
+    ? html` · les ${items.length} premières sont affichées : précisez la recherche.`
+    : null;
+  const summary = searching
+    ? html`<p class="resultats" role="status">${plural(total, 'résultat', 'résultats')} pour «&nbsp;${query}&nbsp;»${truncated} · <a href="${base}">Effacer</a></p>`
+    : html`<p class="resultats">${plural(total, 'fiche', 'fiches')}${truncated}</p>`;
+
+  let body;
+  if (total === 0 && !searching) {
+    body = html`<div class="vide"><p>Aucune fiche dans l'inventaire.</p>
+<p class="texte-doux">Créez plutôt une fiche pour cette puce.</p>
+<a class="bouton" href="/chips/${chip.uid}/new">Créer une fiche</a></div>`;
+  } else if (total === 0) {
+    body = html`<div class="vide"><p>Aucune fiche ne correspond à «&nbsp;${query}&nbsp;».</p>
+<p class="texte-doux">Essayez une partie du nom, ou quelques caractères de l'UID de sa puce actuelle.</p></div>`;
+  } else {
+    body = html`<div class="panneau-tableau">
+<table class="tableau tableau-association">
+<thead><tr><th scope="col">Objet</th><th scope="col">Puce actuelle</th><th scope="col">Localisation</th><th scope="col"><span class="visuellement-cache">Action</span></th></tr></thead>
+<tbody>
+${items.map((item) => html`<tr>
+<td class="cellule-objet"><a class="lien-objet" href="/items/${item.id}">${item.name}</a></td>
+<td data-label="Puce actuelle">${item.uid_nfc === null ? html`<span class="texte-doux">aucune puce</span>` : html`<span class="uid">${item.uid_nfc}</span>`}</td>
+<td data-label="Localisation">${locationBadge(item)}</td>
+<td class="cellule-actions"><a class="bouton bouton-secondaire" href="${base}/${item.id}">Associer</a></td>
+</tr>
+`)}</tbody>
+</table>
+</div>`;
+  }
+
+  return appLayout(user, 'Associer la puce', html`${BACK_TO_CHIPS}
+<div class="entete-page">
+<h1>Associer la puce à une fiche</h1>
+<p class="sous-titre-page"><span class="uid">${chip.uid}</span> · dernier scan : ${chipPlace(chip)}, ${timeTag(chip.received_at, now)}</p>
+</div>
+<form class="recherche" method="get" action="${base}" role="search">
+<label class="visuellement-cache" for="q">Rechercher une fiche par nom ou UID</label>
+<input id="q" name="q" type="search" value="${query}" maxlength="${MAX_QUERY_CHARS}" placeholder="Nom de l'objet ou UID" autocomplete="off" spellcheck="false">
+<button class="bouton bouton-secondaire" type="submit">Rechercher</button>
+</form>
+${summary}
+${body}
+${total === 0 && !searching ? null : html`<p class="alternative">L'objet n'a pas encore de fiche ? <a href="/chips/${chip.uid}/new">Créer une fiche pour cette puce</a></p>\n`}`, chipsSection);
+}
+
+/**
+ * Confirmation de l'association d'une puce inconnue à une fiche. Si la fiche porte déjà une
+ * puce : avertissement (l'ancienne puce sera détachée) et bouton rouge.
+ * @param {{chip: object, item: object, now: number, changed?: boolean}} data
+ *   item : fiche avec sa localisation (inventory.js, getItem) ; changed : l'envoi précédent a
+ *   été refusé parce que la fiche avait changé de puce entre-temps (page réaffichée en 409).
+ */
+export function associateConfirmPage(user, { chip, item, now, changed = false }) {
+  const replacing = item.uid_nfc !== null;
+  const title = replacing ? 'Remplacer la puce de la fiche' : 'Associer la puce';
+  const search = `/chips/${chip.uid}/associate`;
+  const lastScan = html`${chipPlace(chip)}, ${timeTag(chip.received_at, now)}`;
+  // Sémantique de la vue item_locations : la plus récente des deux l'emporte. Une correction
+  // manuelle postérieure au dernier scan de la puce reste donc la localisation après association.
+  const correctionWins = item.source === 'manual' && item.at > chip.received_at;
+  const explanation = replacing
+    ? html`<p><strong>La fiche «&nbsp;<span class="nom-confirme">${item.name}</span>&nbsp;» porte déjà la puce <span class="uid">${item.uid_nfc}</span>.</strong></p>
+<ul class="liste-causes">
+<li>L'ancienne puce <span class="uid">${item.uid_nfc}</span> sera détachée de la fiche. Ses scans restent dans le journal et redeviennent ceux d'une puce inconnue.</li>
+<li>La localisation de la fiche suivra désormais la nouvelle puce <span class="uid">${chip.uid}</span>, scannée en dernier : ${lastScan}.</li>
+</ul>`
+    : html`<p>La puce <span class="uid">${chip.uid}</span> sera associée à la fiche «&nbsp;<strong class="nom-confirme">${item.name}</strong>&nbsp;».</p>
+<p>La fiche sera localisée au dernier scan de la puce : ${lastScan}.</p>`;
+
+  return appLayout(user, title, html`<p class="retour"><a href="${search}">← Retour à la recherche</a></p>
+<div class="entete-page">
+<h1>${title}</h1>
+<p class="sous-titre-page">${item.name}</p>
+</div>
+${changed ? html`<p class="erreur" role="alert">La fiche a changé de puce depuis l'affichage de la page précédente : rien n'a été modifié. Vérifiez ci-dessous, puis confirmez à nouveau.</p>\n` : null}${reuseWarning(chip)}<div class="panneau ${replacing ? 'panneau-danger' : 'panneau-info'}">
+${explanation}
+${correctionWins ? html`<p class="texte-doux">Une correction manuelle de localisation plus récente que ce scan existe : elle reste la localisation de la fiche jusqu'au prochain scan de la puce.</p>\n` : null}<form method="post" action="${search}/${item.id}">
+<input type="hidden" name="csrf" value="${user.csrf}">
+<input type="hidden" name="previous" value="${item.uid_nfc ?? ''}">
+<div class="actions-formulaire">
+${replacing
+    ? html`<button class="bouton bouton-danger" type="submit">Remplacer la puce</button>`
+    : html`<button class="bouton" type="submit">Associer la puce</button>`}
+<a class="lien-annuler" href="${search}">Annuler</a>
+</div>
+</form>
+</div>`, chipsSection);
+}
+
+export function chipNotFoundPage(user) {
+  return messagePage(user, {
+    title: 'Puce introuvable',
+    text: 'Aucune puce scannée ne correspond à cette adresse.',
+    hint: 'Une puce apparaît dans la liste des puces inconnues dès son premier scan sur un poste.',
+    back: BACK_TO_CHIPS,
+    layout: chipsSection,
+  });
+}
+
+/** La puce est (devenue) associée à une fiche : plus rien à faire ici. */
+export function chipKnownPage(user, { uid, itemId }) {
+  return messagePage(user, {
+    title: 'Puce déjà associée',
+    text: `La puce ${uid} est déjà associée à une fiche : elle n'est plus inconnue.`,
+    hint: 'Rien n\'a été modifié.',
+    back: BACK_TO_CHIPS,
+    action: { href: `/items/${itemId}`, label: 'Voir la fiche' },
+    layout: chipsSection,
+  });
 }

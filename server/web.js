@@ -1,6 +1,6 @@
 // Interface web : connexion, déconnexion, inventaire (liste et fiche), édition des fiches
 // (création, modification, suppression, correction de localisation), postes et lecteurs
-// (étape 6), feuille de style.
+// (étape 6), puces inconnues et association (étape 7), feuille de style.
 // HTML rendu côté serveur, sans JavaScript côté client, sans ressource externe.
 //
 // ÉCHAPPEMENT : toutes les pages sont produites par les gabarits de server/views.js, écrits
@@ -16,7 +16,7 @@ import {
   SESSION_COOKIE, createSession, findSession, deleteSession, csrfTokenFor, newToken, isTokenFormat, safeEqual,
 } from './sessions.js';
 import { isSafeHtml } from './html.js';
-import { listItems, getItem, recentScans, parseItemId, normalizeQuery } from './inventory.js';
+import { listItems, getItem, recentScans, parseItemId, parseUid, normalizeQuery } from './inventory.js';
 import {
   validateItemInput, createItem, updateItem, deleteItem, correctLocation, listStations, itemHistory, MAX_PROPERTIES,
 } from './items.js';
@@ -28,11 +28,15 @@ import {
   createReader, assignReader, deactivateReader, replaceReader, listReaders, getReader, readerScans,
 } from './readers.js';
 import {
+  listUnknownChips, getChip, chipPreviousOwner, createItemForChip, associateChip, MAX_ASSOCIATE_RESULTS,
+} from './chips.js';
+import {
   loginPage as loginView, forbiddenPage, inventoryPage, itemPage as itemView, itemNotFoundPage, BUSY_MESSAGE,
   itemFormPage, deleteItemPage as deleteView, locationPage as locationView,
   stationsPage, stationPage as stationView, stationFormPage, deleteStationPage as deleteStationView, stationNotFoundPage,
   readersPage, readerPage as readerView, readerFormPage, readerStationPage, deactivateReaderPage as deactivateView,
   replaceReaderPage as replaceView, readerKeyPage, readerNotFoundPage, readerInactivePage, readerIdsExhaustedPage,
+  chipsPage, associateSearchPage, associateConfirmPage, chipNotFoundPage, chipKnownPage,
 } from './views.js';
 
 // Délai avant la réponse à un échec de connexion (ralentit les essais successifs ; la
@@ -111,6 +115,7 @@ const ROUTES = {
   '/stations/new': { GET: newStationPage, POST: createStationAction },
   '/readers': { GET: readersList },
   '/readers/new': { GET: newReaderPage, POST: createReaderAction },
+  '/chips': { GET: chipsList },
 };
 // Pages d'une entité : <préfixe><id> et <préfixe><id>/<action>. Le segment <id> est validé
 // par le gestionnaire (entier strict) ; tout autre chemin sous le préfixe (/items/1/x,
@@ -134,11 +139,30 @@ const READER_ROUTES = {
   replace: { GET: replaceReaderPage, POST: replaceReaderAction },
 };
 const ENTITY_ROUTES = [['/items/', ITEM_ROUTES], ['/stations/', STATION_ROUTES], ['/readers/', READER_ROUTES]];
+// Puces inconnues (étape 7) : /chips/<UID>/new, /chips/<UID>/associate et
+// /chips/<UID>/associate/<id de fiche>. Le segment <UID> est validé par le gestionnaire
+// (parseUid : forme exacte, sans décodage) ; /chips/<UID> seul n'est pas une route.
+const CHIP_PREFIX = '/chips/';
+const CHIP_ROUTES = {
+  new: { GET: newChipItemPage, POST: createChipItemAction },
+  associate: { GET: associateSearch },
+};
+const CHIP_CONFIRM_ROUTE = { GET: associateConfirm, POST: associateChipAction };
 
-/** Chemin → {route, idText} (idText : segment <id> brut, non validé, ou null), ou null si aucune route. */
+/**
+ * Chemin → {route, idText, subIdText}, ou null si aucune route.
+ * idText : segment <id> (ou <UID>) brut, non validé, ou null ; subIdText : second identifiant
+ * brut (fiche visée par une association), ou null.
+ */
 function resolveRoute(path) {
   // Object.hasOwn : un chemin comme « /__proto__ » ou « constructor » ne résout rien d'hérité.
   if (Object.hasOwn(ROUTES, path)) return { route: ROUTES[path], idText: null };
+  if (path.startsWith(CHIP_PREFIX)) {
+    const parts = path.slice(CHIP_PREFIX.length).split('/');
+    if (parts.length === 2 && Object.hasOwn(CHIP_ROUTES, parts[1])) return { route: CHIP_ROUTES[parts[1]], idText: parts[0] };
+    if (parts.length === 3 && parts[1] === 'associate') return { route: CHIP_CONFIRM_ROUTE, idText: parts[0], subIdText: parts[2] };
+    return null;
+  }
   for (const [prefix, routes] of ENTITY_ROUTES) {
     if (!path.startsWith(prefix)) continue;
     const parts = path.slice(prefix.length).split('/');
@@ -160,13 +184,13 @@ export function handleWeb(ctx, path, req, res) {
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
   const resolved = resolveRoute(path);
   if (!resolved) return sendStatus(res, 404);
-  const { route, idText } = resolved;
+  const { route, idText, subIdText = null } = resolved;
   const handler = Object.hasOwn(route, req.method) ? route[req.method] : null;
   if (!handler) {
     res.setHeader('Allow', Object.keys(route).join(', '));
     return sendStatus(res, 405);
   }
-  handler(ctx, req, res, idText);
+  handler(ctx, req, res, idText, subIdText);
 }
 
 // ---------------------------------------------------------------- gestionnaires
@@ -307,8 +331,9 @@ function findItem(ctx, res, user, idText) {
  *   - « Ajouter des lignes » : 200, saisie réaffichée (nettoyée, sans erreurs) avec
  *     BLANK_ROWS lignes vides de plus, dans la limite de MAX_FORM_ROWS ; rien n'est écrit ;
  *   - saisie invalide : 400, formulaire réaffiché avec les valeurs et les erreurs.
+ * chip : création depuis une puce inconnue (étape 7), réaffichée en lecture seule ; sinon null.
  */
-function submittedItem(ctx, res, user, form, item) {
+function submittedItem(ctx, res, user, form, item, chip = null) {
   const keys = form.getAll('prop_key');
   const values = form.getAll('prop_value');
   if (keys.length > MAX_FORM_ROWS || values.length > MAX_FORM_ROWS) {
@@ -317,13 +342,14 @@ function submittedItem(ctx, res, user, form, item) {
     return null;
   }
   const result = validateItemInput({ name: form.get('name'), notes: form.get('notes'), keys, values });
+  const now = Date.now();
   if (form.get('action') === ADD_ROWS_ACTION) {
     const rows = result.form.rows.map((row) => ({ ...row, error: null }));
-    sendHtml(res, 200, itemFormPage(user, { item, form: withBlankRows({ ...result.form, rows }, result.form.blankRows + BLANK_ROWS), errors: {} }));
+    sendHtml(res, 200, itemFormPage(user, { item, chip, now, form: withBlankRows({ ...result.form, rows }, result.form.blankRows + BLANK_ROWS), errors: {} }));
     return null;
   }
   if (!result.ok) {
-    sendHtml(res, 400, itemFormPage(user, { item, form: withBlankRows(result.form, BLANK_ROWS), errors: result.errors }));
+    sendHtml(res, 400, itemFormPage(user, { item, chip, now, form: withBlankRows(result.form, BLANK_ROWS), errors: result.errors }));
     return null;
   }
   return result.item;
@@ -597,6 +623,130 @@ function findReader(ctx, res, user, idText) {
   const reader = id === null ? null : getReader(ctx.db, id);
   if (!reader) sendHtml(res, 404, readerNotFoundPage(user));
   return reader;
+}
+
+// ---------------------------------------------------------------- puces inconnues (étape 7)
+// Mêmes règles : session obligatoire, tout POST par postForm, action réussie suivie d'une
+// redirection 303 avec un code ?ok=. Aucune saisie manuelle d'UID : l'UID vient de l'adresse,
+// il doit avoir été scanné (sinon 404) et être encore inconnu (sinon 409). Ces deux
+// conditions sont vérifiées à l'affichage, puis à nouveau dans la transaction d'écriture
+// (server/chips.js). Le journal des scans n'est jamais modifié.
+
+function chipsList(ctx, req, res) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  sendHtml(res, 200, chipsPage(pageUser(session), { ...listUnknownChips(ctx.db), now: Date.now() }));
+}
+
+/**
+ * Puce inconnue désignée par le segment d'URL, ou null après avoir répondu :
+ * 404 si le segment n'est pas un UID au format exact ou si cet UID n'a jamais été scanné
+ * (même page, sans distinction) ; 409 si une fiche porte déjà cette puce.
+ */
+function findUnknownChip(ctx, res, user, uidText) {
+  const uid = parseUid(uidText);
+  const chip = uid === null ? null : getChip(ctx.db, uid);
+  if (!chip) {
+    sendHtml(res, 404, chipNotFoundPage(user));
+    return null;
+  }
+  if (chip.item_id !== null) {
+    sendHtml(res, 409, chipKnownPage(user, { uid: chip.uid, itemId: chip.item_id }));
+    return null;
+  }
+  return withPreviousOwner(ctx, chip);
+}
+
+/** Puce complétée de previous : la dernière fiche qui l'a portée (avertissement de réutilisation), ou null. */
+function withPreviousOwner(ctx, chip) {
+  return { ...chip, previous: chipPreviousOwner(ctx.db, chip.uid) };
+}
+
+/** Issue d'une écriture refusée par chips.js (puce jamais scannée ou déjà associée) : réponse, puis vrai. */
+function chipConflictAnswered(res, user, uid, outcome) {
+  if (outcome === 'never_scanned') {
+    sendHtml(res, 404, chipNotFoundPage(user));
+    return true;
+  }
+  if (outcome.known !== undefined) {
+    sendHtml(res, 409, chipKnownPage(user, { uid, itemId: outcome.known }));
+    return true;
+  }
+  return false;
+}
+
+// « Créer une fiche » depuis une puce inconnue : formulaire de l'étape 5, UID en lecture seule.
+function newChipItemPage(ctx, req, res, uidText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const chip = findUnknownChip(ctx, res, user, uidText);
+  if (!chip) return;
+  const form = { name: '', notes: '', rows: [], blankRows: BLANK_ROWS };
+  sendHtml(res, 200, itemFormPage(user, { item: null, chip, now: Date.now(), form, errors: {} }));
+}
+
+function createChipItemAction(ctx, req, res, uidText) {
+  postForm(ctx, req, res, (session, form) => {
+    const user = pageUser(session);
+    const chip = findUnknownChip(ctx, res, user, uidText);
+    if (!chip) return;
+    const valid = submittedItem(ctx, res, user, form, null, chip);
+    if (!valid) return;
+    const outcome = createItemForChip(ctx.db, session.userId, chip.uid, valid);
+    if (chipConflictAnswered(res, user, chip.uid, outcome)) return;
+    ctx.log(`fiche ${outcome.id} créée par ${session.username} avec la puce ${chip.uid}`);
+    redirect(res, `/items/${outcome.id}?ok=cree_puce`);
+  });
+}
+
+// « Associer à une fiche existante » : recherche (même logique que l'inventaire), limitée à
+// MAX_ASSOCIATE_RESULTS fiches affichées.
+function associateSearch(ctx, req, res, uidText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const chip = findUnknownChip(ctx, res, user, uidText);
+  if (!chip) return;
+  const query = normalizeQuery(queryParam(req, 'q'));
+  const found = listItems(ctx.db, query);
+  sendHtml(res, 200, associateSearchPage(user, {
+    chip, query, items: found.slice(0, MAX_ASSOCIATE_RESULTS), total: found.length, now: Date.now(),
+  }));
+}
+
+function associateConfirm(ctx, req, res, uidText, itemIdText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const chip = findUnknownChip(ctx, res, user, uidText);
+  if (!chip) return;
+  const item = findItem(ctx, res, user, itemIdText);
+  if (!item) return;
+  sendHtml(res, 200, associateConfirmPage(user, { chip, item, now: Date.now() }));
+}
+
+function associateChipAction(ctx, req, res, uidText, itemIdText) {
+  postForm(ctx, req, res, (session, form) => {
+    const user = pageUser(session);
+    const uid = parseUid(uidText);
+    const itemId = parseItemId(itemIdText);
+    if (uid === null) return sendHtml(res, 404, chipNotFoundPage(user));
+    if (itemId === null) return sendHtml(res, 404, itemNotFoundPage(user));
+    // previous : puce de la fiche affichée sur la page de confirmation ('' : aucune).
+    const outcome = associateChip(ctx.db, session.userId, uid, itemId, form.get('previous'));
+    if (chipConflictAnswered(res, user, uid, outcome)) return;
+    if (outcome === 'no_item') return sendHtml(res, 404, itemNotFoundPage(user));
+    if (outcome.changed) {
+      // La fiche a changé de puce depuis la confirmation : page réaffichée, à jour, sans écriture.
+      const chip = withPreviousOwner(ctx, getChip(ctx.db, uid));
+      const item = getItem(ctx.db, itemId);
+      return sendHtml(res, 409, associateConfirmPage(user, { chip, item, now: Date.now(), changed: true }));
+    }
+    const replaced = outcome.previousUid === null ? '' : ` (remplace ${outcome.previousUid})`;
+    ctx.log(`puce ${uid} associée à la fiche ${outcome.id} par ${session.username}${replaced}`);
+    redirect(res, `/items/${outcome.id}?ok=${outcome.previousUid === null ? 'puce_associee' : 'puce_remplacee'}`);
+  });
 }
 
 function loginPage(ctx, req, res) {

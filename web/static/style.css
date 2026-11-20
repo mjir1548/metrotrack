@@ -332,7 +332,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { border-color
   gap: var(--espace-5);
 }
 
-.navigation { display: flex; gap: var(--espace-1); }
+.navigation { display: flex; flex-wrap: wrap; gap: var(--espace-1); } /* trois rubriques : passent à la ligne à 375 px */
 
 .navigation a {
   padding: var(--espace-1) var(--espace-3);
@@ -690,8 +690,8 @@ time { white-space: nowrap; }
 .lien-etat { display: inline-flex; max-width: 100%; text-decoration: none; border-radius: 0.875rem; }
 .lien-etat:hover .etat { border-color: currentColor; }
 
-/* Poste avec historique : explication sous ses informations. */
-.note-poste {
+/* Poste avec historique, fiche sans puce : explication sous les informations de la carte. */
+.note-poste, .note-carte {
   margin: var(--espace-4) 0 0;
   font-size: var(--taille-petite);
   color: var(--couleur-texte-doux);
@@ -743,6 +743,56 @@ time { white-space: nowrap; }
 .fiche-carte h2 + .numero-lecteur { margin-bottom: var(--espace-4); }
 /* Bouton « Retour aux lecteurs » sous les cartes de la page de clé : sans trait de séparation. */
 .fiche + .actions-formulaire { margin-top: var(--espace-5); padding-top: 0; border-top: 0; }
+
+/* ---------- Puces inconnues et association (étape 7) ---------- */
+
+/* Texte d'introduction sous le titre d'une rubrique. */
+.intro {
+  max-width: 44rem;
+  margin: var(--espace-2) 0 0;
+  color: var(--couleur-texte-doux);
+}
+
+.tableau-puces, .tableau-association { table-layout: fixed; }
+.tableau-puces th:nth-child(1) { width: 13.5rem; }
+.tableau-puces th:nth-child(3) { width: 9rem; }
+.tableau-puces th:nth-child(4) { width: 5rem; }
+.tableau-puces th:nth-child(5) { width: 14rem; }
+.tableau-association th:nth-child(2) { width: 13.5rem; }
+.tableau-association th:nth-child(4) { width: 9rem; }
+
+/* UID d'une puce inconnue : l'information principale de la ligne, donc lisible. */
+.uid-puce { font-size: var(--taille-petite); font-weight: 600; color: var(--couleur-texte); overflow-wrap: anywhere; }
+
+/* Actions d'une ligne : bouton secondaire, puis lien ; passent l'un sous l'autre si la place manque. */
+.cellule-actions .bouton-secondaire { min-height: 2.25rem; margin: 0 var(--espace-3) var(--espace-1) 0; white-space: nowrap; }
+.tableau-association .cellule-actions { text-align: right; }
+.tableau-association .cellule-actions .bouton-secondaire { margin: 0; }
+.cellule-actions .lien-simple { display: inline-block; font-size: var(--taille-petite); font-weight: 600; }
+
+/* Puce affichée en lecture seule dans le formulaire de création. */
+.libelle { margin: 0; font-size: var(--taille-petite); font-weight: 600; }
+.puce-lecture {
+  margin: 0;
+  padding: var(--espace-2) var(--espace-3);
+  overflow-wrap: anywhere;
+  background: var(--couleur-entete-tableau);
+  border: 1px dashed var(--couleur-bordure-forte);
+  border-radius: var(--rayon-petit);
+}
+.puce-lecture .uid { font-size: var(--taille-normale); font-weight: 600; color: var(--couleur-texte); }
+
+/* Lien vers l'autre action, sous la recherche d'association. */
+.alternative { margin: var(--espace-4) 0 0; font-size: var(--taille-petite); color: var(--couleur-texte-doux); }
+.alternative a { font-weight: 600; }
+
+/* Avertissement de réutilisation d'une puce : même largeur que le formulaire ou la confirmation. */
+.panneau-reutilisation { max-width: 44rem; }
+.panneau-reutilisation a { color: inherit; font-weight: 700; }
+
+/* Confirmation : UID dans le texte, à chasse fixe mais à la couleur du texte. */
+.panneau .uid { color: inherit; font-size: 0.9375rem; overflow-wrap: anywhere; }
+.panneau-danger .liste-causes { margin-top: var(--espace-3); }
 
 /* ---------- Tableaux et fiche sur petit écran : lignes empilées ---------- */
 

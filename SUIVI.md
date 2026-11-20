@@ -410,5 +410,70 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
   - Doublons avec espaces insécables refusés ; recherche avec espaces multiples correcte.
   - Tests de plafond non affaiblis : avec un plafond multiplié par 1 000, les trois tests échouent bien.
 - Vérification de l'orchestrateur : 375/375, aucune dépendance.
-- **Étape 6 terminée, en attente de l'accord de l'humain pour le commit** (3 allers-retours sur 3). D-015 à faire valider. `PROMPT-REPRISE.md` est exclu du commit.
+- **Étape 6 terminée, commitée (8034cea)** (3 allers-retours sur 3). D-015 à faire valider. `PROMPT-REPRISE.md` est exclu du commit.
 - **Accord de l'humain (2026-11-19)** : D-015 validée, et commit de l'étape 6.
+- Commit `8034cea` « Étape 6 : gestion des postes et des lecteurs ».
+
+### 2026-11-19 — Étape 7 lancée (puces inconnues et association)
+- Contenu :
+  - liste des puces scannées sans fiche (poste et heure du dernier scan, nombre de scans) ;
+  - « Créer une fiche » avec l'UID déjà rempli ;
+  - « Associer à une fiche existante », avec confirmation si la fiche avait déjà une puce : l'ancienne puce est détachée et la modification tracée ;
+  - `audit_log`.
+- Ajouts reportés de l'étape 6 : un test 413 strict sur une route d'édition, et un commentaire sur le drapeau `/g` de `LINE_BLANKS`.
+- Agent `dev` lancé (aller-retour 1/3).
+- Rapport de `dev` (étape 7, aller-retour 1/3) : implémentée, 416 tests verts, aucune dépendance.
+  - `server/chips.js` ; routes `/chips…` ; onglet « Puces inconnues » sans badge (le compte coûterait 19 ms par page).
+  - Liste des puces inconnues en 22 ms pour 300 000 scans, par lecture de l'index `scans_by_uid` par sauts.
+  - Ajout non demandé : champ caché `previous` sur la confirmation, avec 409 si la fiche a changé de puce entre-temps.
+  - Reliquats de l'étape 6 traités : commentaire sur `LINE_BLANKS`, test 413 strict.
+  - Capture de la confirmation de remplacement vérifiée par l'orchestrateur : avertissement clair.
+- Testeur et revue sécurité lancés en parallèle.
+
+### 2026-11-20 — Démonstration tangible demandée par l'humain
+- Reprise : testeur et revue de l'étape 7 relancés (ils avaient été coupés par la fin de session).
+- Instance de démonstration créée dans `dev/demo/` (ignoré par git) :
+  - certificats propres, port 18443, base `dev/demo/data/demo.db` ;
+  - compte `demo`, mot de passe aléatoire noté dans `dev/demo/identifiants.txt` (local uniquement, jamais recopié ailleurs) ;
+  - 4 postes, 5 lecteurs (dont un non affecté) ;
+  - 8 scans simulés, dont 2 puces inconnues.
+- Serveur de démonstration lancé avec `METROTRACK_CONFIG=dev/demo/config.json node server/main.js serve`.
+- Le navigateur intégré refuse la CA de développement (ERR_CERT_AUTHORITY_INVALID) : l'humain doit choisir lui-même de continuer vers le site dans le panneau.
+- L'humain a ouvert la démo dans son propre navigateur, après avoir accepté lui-même l'avertissement de certificat. Visite guidée et commande de scan en direct fournies.
+- Rapport de la revue (étape 7) : **À corriger**.
+  - B1 : `/chips` n'a pas de limite ; avec 300 000 UID distincts, le serveur est bloqué 7 s. Correction : `LIMIT`, total affiché, test à 50 000 puces.
+  - I1 : la réutilisation d'une puce se fait sans avertissement. Correction : un avertissement tiré d'`audit_log`, sans changement de modèle.
+  - I2 : les limites acceptées de l'étape 7 sont consignées par l'orchestrateur dans `decisions.md`.
+  - Suggestions :
+    - S1 : préciser le commentaire de la lecture « en sauts » ;
+    - S2 : la page de suppression doit prévenir que la puce redeviendra inconnue.
+- En attente du testeur avant le retour à `dev`.
+- Serveur de démo arrêté de l'extérieur (code 127, probablement par le ménage d'un agent), puis relancé. Consigne donnée aux agents : n'arrêter que leurs propres processus, par PID.
+- Rapport du testeur (étape 7) : les 10 critères ✅, 426 tests verts ; ajout de `test/puces-verif.test.js`. Points mineurs :
+  - `/api/frames` ralentit quand `/chips` est très sollicitée (consigné dans les limites acceptées) ;
+  - UID de l'historique pas en chasse fixe ;
+  - `previous` répété (sans danger) ;
+  - ordre des contrôles 409/404 (cohérent).
+- Retour à `dev` (aller-retour 2/3) :
+  - B1 : limite sur `/chips` et test à 50 000 puces ;
+  - I1 : avertissement de réutilisation tiré d'`audit_log` ;
+  - S1 : commentaire de la lecture en sauts ;
+  - S2 : avertissement sur la page de suppression ;
+  - UID en chasse fixe dans l'historique.
+- Le testeur reconnaît avoir arrêté la démo (`Stop-Process` sur un filtre de ligne de commande trop large). Base de démo vérifiée par l'orchestrateur : `integrity_check` ok, 8 scans et 6 objets, rien de perdu.
+- Rapport de `dev` (étape 7, aller-retour 2/3) : 437 tests verts.
+  - B1 : `/chips` limité à 200 puces ; 92 ms à 50 000 UID et 452 ms à 300 000 (parcours d'index résiduel, accepté comme limite).
+  - I1 : avertissement de réutilisation (`chipPreviousOwner`, `json_extract` sur `audit_log`).
+  - S1, S2 et UID en chasse fixe dans l'historique.
+- Re-vérification par le testeur et re-relecture par la revue lancées (consigne : n'arrêter que leurs propres PID).
+- **Nouvelle demande de l'humain (2026-11-20)** : des explications intégrées au site sur le fonctionnement de chaque écran, en commençant par Inventaire et Nouvelle fiche.
+  - Planifié comme petite étape dédiée (« aide intégrée »), juste après le commit de l'étape 7, pour ne pas perturber la vérification en cours des mêmes fichiers.
+  - Forme proposée : un encadré repliable « Comment ça marche ? » en `<details>` (sans JavaScript, CSP inchangée), en tête de chaque page.
+- Re-vérification du testeur (étape 7) : ✅ sur tout, 438 tests verts (il a ajouté 1 test).
+  - Point mineur : `chipPreviousOwner` parcourt `audit_log` (environ 120 ms pour 200 000 lignes, sur des pages rarement affichées). Acceptable pour le MVP.
+- En attente de la revue.
+- Re-relecture de la revue (étape 7) : **OK pour commit**, après correction d'une phrase fausse dans `decisions.md` (limite de `/chips`), corrigée par l'orchestrateur.
+  - S1 (`chipPreviousOwner` appelé inutilement sur la recherche) reportée à l'étape d'aide intégrée.
+- Vérification de l'orchestrateur : 438/438, aucune dépendance.
+- **Étape 7 terminée, en attente de l'accord de l'humain pour le commit** (2 allers-retours). `PROMPT-REPRISE.md` et `dev/` sont exclus.
+- Classeur `MetroTrack-point-etape.xlsx` (à la racine, non versionné) demandé par l'humain. Quatre onglets : Fait, À faire, À valider, Matériel. Généré sans dépendance par un script du scratchpad ; ouverture vérifiée dans Excel.

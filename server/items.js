@@ -6,10 +6,11 @@
 // sans sa trace, ni une trace sans sa modification. audit_log est en ajout seul (triggers de
 // la migration 004). Ses détails ne contiennent que des données de fiche et de poste : jamais
 // de secret (mot de passe, jeton, clé de lecteur).
-// Toutes les requêtes sont paramétrées. L'UID de la puce n'est ni créé ni modifié ici
-// (association des puces : étape 7).
+// Toutes les requêtes sont paramétrées. L'UID de la puce n'est jamais saisi à la main : il
+// n'est posé que par l'association d'une puce scannée (server/chips.js, étape 7), qui réutilise
+// insertItem, inTransaction et audit.
 
-import { CONTROL_CHARS, LINE_BLANKS, collator, propertyPairs } from './inventory.js';
+import { CONTROL_CHARS, LINE_BLANKS, UID_FORMAT, collator, propertyPairs } from './inventory.js';
 
 // Bornes des saisies, en caractères comptés en unités UTF-16 (text.length), comme l'attribut
 // HTML maxlength : le navigateur et le serveur appliquent la même limite (un emoji hors du
@@ -27,6 +28,7 @@ export const ACTIONS = {
   update: 'item.update',
   delete: 'item.delete',
   correctLocation: 'item.location_correct',
+  chipAssociate: 'item.chip_associate', // étape 7, server/chips.js
 };
 
 // Notes : exactement CONTROL_CHARS (inventory.js, voir la liste commentée), sauf le retour à
@@ -168,16 +170,24 @@ export function audit(db, { at, userId, action, entityId, details }) {
  * @returns {number} identifiant de la fiche
  */
 export function createItem(db, userId, item, now = new Date().toISOString()) {
-  return inTransaction(db, () => {
-    const properties = propertiesJson(item.properties);
-    const id = db.prepare('INSERT INTO items (name, properties, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
-      .run(item.name, properties, item.notes, now, now).lastInsertRowid;
-    audit(db, {
-      at: now, userId, action: ACTIONS.create, entityId: id,
-      details: { name: item.name, properties: JSON.parse(properties), notes: item.notes },
-    });
-    return id;
-  });
+  return inTransaction(db, () => insertItem(db, userId, item, null, now));
+}
+
+/**
+ * Insère une fiche et sa ligne d'audit item.create, SANS ouvrir de transaction : à appeler
+ * dans inTransaction (createItem ci-dessus ; création depuis une puce inconnue, server/chips.js).
+ * uid : UID de la puce (déjà validé et vérifié inconnu par l'appelant), ou null. Il figure
+ * dans les détails d'audit seulement s'il est renseigné.
+ * @returns {number} identifiant de la fiche
+ */
+export function insertItem(db, userId, item, uid, now) {
+  const properties = propertiesJson(item.properties);
+  const id = db.prepare('INSERT INTO items (uid_nfc, name, properties, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(uid, item.name, properties, item.notes, now, now).lastInsertRowid;
+  const details = { name: item.name, properties: JSON.parse(properties), notes: item.notes };
+  if (uid !== null) details.uid = uid;
+  audit(db, { at: now, userId, action: ACTIONS.create, entityId: id, details });
+  return id;
 }
 
 /**
@@ -256,7 +266,7 @@ export function listStations(db) {
 
 /**
  * Dernières modifications d'une fiche, de la plus récente à la plus ancienne :
- * [{at, username (null = ligne de commande), label}].
+ * [{at, username (null = ligne de commande), label}] (label : voir auditLabel).
  * Un numéro de fiche n'est jamais réutilisé (items en AUTOINCREMENT, migration 004) : toutes
  * les lignes item.* de ce numéro appartiennent à cette fiche. Lecture par l'index audit_by_entity.
  */
@@ -266,16 +276,20 @@ export function itemHistory(db, itemId, limit = HISTORY_ENTRIES) {
        FROM audit_log a
        LEFT JOIN users u ON u.id = a.user_id
       WHERE a.entity_id = ?
-        AND a.action IN (?, ?, ?, ?)
+        AND a.action IN (?, ?, ?, ?, ?)
       ORDER BY a.id DESC
       LIMIT ?`
-  ).all(itemId, ACTIONS.create, ACTIONS.update, ACTIONS.delete, ACTIONS.correctLocation, limit);
+  ).all(itemId, ACTIONS.create, ACTIONS.update, ACTIONS.delete, ACTIONS.correctLocation, ACTIONS.chipAssociate, limit);
   return rows.map((row) => ({ at: row.at, username: row.username, label: auditLabel(row.action, row.details) }));
 }
 
 const FIELD_LABELS = { name: 'nom', properties: 'propriétés', notes: 'notes' };
 
-/** Libellé français d'une ligne d'audit de fiche (jamais le JSON brut). */
+/**
+ * Libellé français d'une ligne d'audit de fiche (jamais le JSON brut) : un texte, ou, s'il
+ * contient des UID de puce (création avec puce, association), une liste de segments : textes
+ * et objets {uid}, que la page affiche en chasse fixe.
+ */
 export function auditLabel(action, detailsJson) {
   let details;
   try {
@@ -283,8 +297,21 @@ export function auditLabel(action, detailsJson) {
   } catch {
     details = {};
   }
+  // UID lu dans le journal : affiché seulement s'il a le format d'un UID (texte libre exclu).
+  // Il est renvoyé comme segment {uid} : la page l'affiche en chasse fixe (views.js), sans
+  // qu'aucun HTML ne soit produit ici.
+  const uidOf = (value) => (typeof value === 'string' && UID_FORMAT.test(value) ? { uid: value } : null);
   switch (action) {
-    case ACTIONS.create: return 'Fiche créée';
+    case ACTIONS.create: {
+      const uid = uidOf(details?.uid);
+      return uid === null ? 'Fiche créée' : ['Fiche créée avec la puce ', uid];
+    }
+    case ACTIONS.chipAssociate: {
+      const uid = uidOf(details?.uid);
+      const previous = uidOf(details?.previous_uid);
+      if (uid === null) return 'Puce associée';
+      return previous === null ? ['Puce associée : ', uid] : ['Puce associée : ', uid, ' (remplace ', previous, ')'];
+    }
     case ACTIONS.delete: return 'Fiche supprimée';
     case ACTIONS.update: {
       const fields = Object.keys(FIELD_LABELS).filter((field) => Object.hasOwn(details ?? {}, field)).map((field) => FIELD_LABELS[field]);

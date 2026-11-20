@@ -214,8 +214,9 @@ test('correction de localisation sans aucun poste : message explicatif et lien v
   assert.ok(res.body.includes("Il faut d'abord créer un poste pour pouvoir y localiser un objet."));
   assert.ok(!res.body.includes('<select'));
   assert.ok(res.body.includes('<a class="bouton" href="/stations/new">Créer un poste</a>'));
-  // Liens : bandeau (Inventaire, Postes et lecteurs), retour à la fiche, création d'un poste (étape 6).
-  assert.deepEqual([...res.body.matchAll(/href="([^"]*)"/g)].map((m) => m[1]).filter((h) => !h.startsWith('/static/')).sort(), ['/', '/items/1', '/stations', '/stations/new']);
+  // Liens : bandeau (Inventaire, Postes et lecteurs, Puces inconnues depuis l'étape 7), retour à
+  // la fiche, création d'un poste (étape 6).
+  assert.deepEqual([...res.body.matchAll(/href="([^"]*)"/g)].map((m) => m[1]).filter((h) => !h.startsWith('/static/')).sort(), ['/', '/chips', '/items/1', '/stations', '/stations/new']);
   const before = snapshot();
   const sent = await post('/items/1/location', { station: '1' });
   assert.equal(sent.status, 400);
@@ -404,6 +405,33 @@ test('corps de formulaire plafonné : au-delà de 256 Kio → 413 sans écriture
   const under = await post('/items/new', itemFields('x', 'a'.repeat(MAX_EDIT_FORM_BYTES - 200)));
   assert.equal(under.status, 400);
   assert.ok(under.body.includes('Les notes ne doivent pas dépasser'));
+  assert.equal(snapshot(), before);
+  assert.ok(server.listening);
+});
+
+test('413 strict : session et Origin valides, Content-Length: 300000 annoncé sans corps → exactement 413, connexion fermée, aucune écriture', async () => {
+  // Déterministe : le client n'envoie AUCUN octet de corps, il ne peut donc pas être coupé en
+  // pleine écriture (voir coupure.js). Le refus intervient sur la longueur annoncée, avant toute
+  // lecture : le jeton CSRF, qui serait dans le corps, n'est jamais lu.
+  const before = snapshot();
+  const res = await new Promise((resolve, reject) => {
+    const req = request({
+      host: '127.0.0.1', port, path: '/items/new', method: 'POST', ca: certs.ca, agent: false,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': '300000', Origin: origin, ...cookie() },
+    }, (response) => {
+      const chunks = [];
+      response.on('data', (c) => chunks.push(c));
+      response.on('end', () => {
+        resolve({ status: response.statusCode, headers: response.headers, body: Buffer.concat(chunks).toString('utf8') });
+        req.destroy();
+      });
+    });
+    req.on('error', (err) => (err.code === 'ECONNRESET' ? undefined : reject(err)));
+    req.flushHeaders(); // en-têtes seuls
+  });
+  assert.equal(res.status, 413);
+  assert.equal(res.headers.connection, 'close');
+  assert.equal(res.body, '');
   assert.equal(snapshot(), before);
   assert.ok(server.listening);
 });

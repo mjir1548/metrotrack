@@ -343,13 +343,15 @@ function submittedItem(ctx, res, user, form, item, chip = null) {
   }
   const result = validateItemInput({ name: form.get('name'), notes: form.get('notes'), keys, values });
   const now = Date.now();
+  // Puce réaffichée avec son avertissement de réutilisation, lu seulement si la page est produite.
+  const shownChip = () => (chip === null ? null : withPreviousOwner(ctx, chip));
   if (form.get('action') === ADD_ROWS_ACTION) {
     const rows = result.form.rows.map((row) => ({ ...row, error: null }));
-    sendHtml(res, 200, itemFormPage(user, { item, chip, now, form: withBlankRows({ ...result.form, rows }, result.form.blankRows + BLANK_ROWS), errors: {} }));
+    sendHtml(res, 200, itemFormPage(user, { item, chip: shownChip(), now, form: withBlankRows({ ...result.form, rows }, result.form.blankRows + BLANK_ROWS), errors: {} }));
     return null;
   }
   if (!result.ok) {
-    sendHtml(res, 400, itemFormPage(user, { item, chip, now, form: withBlankRows(result.form, BLANK_ROWS), errors: result.errors }));
+    sendHtml(res, 400, itemFormPage(user, { item, chip: shownChip(), now, form: withBlankRows(result.form, BLANK_ROWS), errors: result.errors }));
     return null;
   }
   return result.item;
@@ -654,10 +656,15 @@ function findUnknownChip(ctx, res, user, uidText) {
     sendHtml(res, 409, chipKnownPage(user, { uid: chip.uid, itemId: chip.item_id }));
     return null;
   }
-  return withPreviousOwner(ctx, chip);
+  return chip;
 }
 
-/** Puce complétée de previous : la dernière fiche qui l'a portée (avertissement de réutilisation), ou null. */
+/**
+ * Puce complétée de previous : la dernière fiche qui l'a portée (avertissement de réutilisation), ou null.
+ * chipPreviousOwner parcourt audit_log (chips.js) : il n'est appelé QUE pour une page qui affiche
+ * l'avertissement (formulaire de création depuis la puce, réaffiché compris ; confirmation
+ * d'association, 409 compris). Ni la recherche d'association ni une création réussie ne le lisent.
+ */
 function withPreviousOwner(ctx, chip) {
   return { ...chip, previous: chipPreviousOwner(ctx.db, chip.uid) };
 }
@@ -683,7 +690,7 @@ function newChipItemPage(ctx, req, res, uidText) {
   const chip = findUnknownChip(ctx, res, user, uidText);
   if (!chip) return;
   const form = { name: '', notes: '', rows: [], blankRows: BLANK_ROWS };
-  sendHtml(res, 200, itemFormPage(user, { item: null, chip, now: Date.now(), form, errors: {} }));
+  sendHtml(res, 200, itemFormPage(user, { item: null, chip: withPreviousOwner(ctx, chip), now: Date.now(), form, errors: {} }));
 }
 
 function createChipItemAction(ctx, req, res, uidText) {
@@ -723,7 +730,7 @@ function associateConfirm(ctx, req, res, uidText, itemIdText) {
   if (!chip) return;
   const item = findItem(ctx, res, user, itemIdText);
   if (!item) return;
-  sendHtml(res, 200, associateConfirmPage(user, { chip, item, now: Date.now() }));
+  sendHtml(res, 200, associateConfirmPage(user, { chip: withPreviousOwner(ctx, chip), item, now: Date.now() }));
 }
 
 function associateChipAction(ctx, req, res, uidText, itemIdText) {

@@ -112,15 +112,18 @@ const lastAudit = () => {
   const row = db.prepare('SELECT user_id, action, entity_id, details FROM audit_log ORDER BY id DESC LIMIT 1').get();
   return { ...row, details: JSON.parse(row.details) };
 };
+// Page sans son aide « Comment ça marche ? » : texte constant qui cite des cas absents de la
+// page elle-même (puce détachée, « précisez la recherche », « Sa puce »).
+const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<\/details>/, '');
 const chipRows = (html) => /<table class="tableau tableau-puces">([\s\S]*?)<\/table>/.exec(html)?.[1].split('<tr>').slice(2) ?? [];
 const listedUids = (html) => chipRows(html).map((row) => /<span class="uid uid-puce">([0-9A-F]+)<\/span>/.exec(row)[1]);
 
 // Balises autorisées : celles des gabarits. Toute autre serait une injection.
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
-  'textarea', 'select', 'option', 'ul', 'li', 'fieldset', 'legend']);
+  'textarea', 'select', 'option', 'ul', 'li', 'fieldset', 'legend', 'details', 'summary']);
 const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form',
-  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'button', 'label', 'ul', 'li', 'nav', 'fieldset', 'legend'];
+  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'button', 'label', 'ul', 'li', 'nav', 'fieldset', 'legend', 'details', 'summary'];
 
 function assertSafePage(html, what) {
   for (const [, tag] of html.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)) assert.ok(ALLOWED_TAGS.has(tag.toLowerCase()), `${what} : balise <${tag}>`);
@@ -366,7 +369,7 @@ test('confirmation sans puce existante : confirmation simple, bouton principal �
   assert.ok(res.body.includes('<input type="hidden" name="previous" value="">'));
   assert.ok(res.body.includes(`<form method="post" action="/chips/${LOOSE}/associate/2">`));
   assert.ok(res.body.includes('<button class="bouton" type="submit">Associer la puce</button>'));
-  assert.ok(!res.body.includes('détachée'));
+  assert.ok(!withoutHelp(res.body).includes('détachée'));
 });
 
 test('association à une fiche sans puce : 303, localisée au dernier scan, historique lisible, puce retirée, journal inchangé', async () => {
@@ -468,7 +471,7 @@ test('recherche : au plus 50 fiches affichées, avec une invitation à préciser
   assert.ok(lots.body.includes('60 résultats pour «&nbsp;lot&nbsp;» · les 50 premières sont affichées : précisez la recherche.'));
   const few = await page('/chips/ABCDEF01/associate?q=lot%205');
   assert.ok(few.body.includes('10 résultats'));
-  assert.ok(!few.body.includes('précisez la recherche'));
+  assert.ok(!withoutHelp(few.body).includes('précisez la recherche'));
 });
 
 // ---------------------------------------------------------------- plafond du corps
@@ -516,7 +519,7 @@ test('suppression d\'une fiche avec puce : la confirmation annonce le retour de 
   const confirm = await page(`/items/${id}/delete`);
   assert.ok(confirm.body.includes('<p>Sa puce <span class="uid">B0B0B0B0</span> sera détachée : si elle a déjà été scannée, elle réapparaîtra dans «&nbsp;Puces inconnues&nbsp;» avec ses scans.</p>'));
   const withoutChip = db.prepare('SELECT id FROM items WHERE uid_nfc IS NULL LIMIT 1').get().id;
-  assert.ok(!(await page(`/items/${withoutChip}/delete`)).body.includes('Sa puce'));
+  assert.ok(!withoutHelp((await page(`/items/${withoutChip}/delete`)).body).includes('Sa puce'));
   assert.equal((await post(`/items/${id}/delete`)).status, 303);
 });
 

@@ -103,9 +103,9 @@ const scan = (readerId, uid) => ingestFrame(db, encodeFrame({ readerId, counter:
 // Balises autorisées : celles des gabarits (formulaires compris). Toute autre serait une injection.
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
-  'textarea', 'select', 'option', 'fieldset', 'legend']);
+  'textarea', 'select', 'option', 'fieldset', 'legend', 'ul', 'li', 'details', 'summary']);
 const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form',
-  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'fieldset', 'legend', 'button', 'label'];
+  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'fieldset', 'legend', 'button', 'label', 'ul', 'li', 'details', 'summary'];
 
 function assertSafePage(html, what) {
   for (const [, tag] of html.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)) assert.ok(ALLOWED_TAGS.has(tag.toLowerCase()), `${what} : balise <${tag}>`);

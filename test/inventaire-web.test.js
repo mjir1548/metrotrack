@@ -82,11 +82,15 @@ function rows(html) {
 }
 const rowOf = (html, id) => rows(html).find((r) => r.id === id)?.html;
 const ids = (html) => rows(html).map((r) => r.id);
+// Page sans son aide « Comment ça marche ? » (texte constant qui cite le lien « Effacer »).
+const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<\/details>/, '');
 
 // Balises autorisées dans les pages : toute autre balise (script, img, i, b...) serait une injection.
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
-  'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd']);
-const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form', 'h1', 'h2', 'main'];
+  'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
+  'ul', 'li', 'details', 'summary']); // ul, li, details, summary : aide « Comment ça marche ? »
+const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form', 'h1', 'h2', 'main',
+  'ul', 'li', 'details', 'summary'];
 
 /** HTML bien formé au sens utile ici : seulement des balises attendues, ouvrantes et fermantes équilibrées, aucun gestionnaire d'événement. */
 function assertWellFormed(html, what) {
@@ -300,7 +304,7 @@ test('recherche : accent combinant isolé (?q=%CC%81) → tout l\'inventaire, ch
     assert.equal(res.status, 200, path);
     assert.deepEqual(ids(res.body), ids(all.body), path);
     assert.ok(res.body.includes('id="q" name="q" type="search" value=""'), path);
-    assert.ok(!res.body.includes('Effacer'), path);
+    assert.ok(!withoutHelp(res.body).includes('Effacer'), path);
     assert.match(res.body, /<p class="resultats">\d+ objets<\/p>/, path);
   }
 });

@@ -2,6 +2,7 @@
 // chaque valeur interpolée est échappée automatiquement.
 // Aucun attribut style, aucune balise <style> ni <script> : la CSP les bloquerait, et toute
 // la mise en forme est dans web/static/style.css.
+// Aide « Comment ça marche ? » sous le titre des pages : texte constant, dans server/aide.js.
 
 import { html } from './html.js';
 import { formatAge, formatDateTime } from './dates.js';
@@ -11,6 +12,7 @@ import {
 } from './items.js';
 import { MAX_STATION_NAME_CHARS, MAX_STATION_DESCRIPTION_CHARS, hasHistory } from './stations.js';
 import { MAX_READER_ID } from './readers.js';
+import { AIDE } from './aide.js';
 
 export const BUSY_MESSAGE = 'Trop de connexions en cours. Réessayez dans un instant.';
 
@@ -184,7 +186,7 @@ export function inventoryPage(user, { query, items, now, notice = null }) {
 <p class="texte-doux">Créez la première fiche avec le bouton «&nbsp;Nouvelle fiche&nbsp;».</p></div>`;
   } else if (items.length === 0) {
     body = html`<div class="vide"><p>Aucun objet ne correspond à «&nbsp;${query}&nbsp;».</p>
-<p class="texte-doux">Essayez une partie du nom, ou quelques caractères de l'UID de la puce.</p></div>`;
+<p class="texte-doux">Essayez une partie du nom, ou quelques caractères du numéro de sa puce.</p></div>`;
   } else {
     body = html`<div class="panneau-tableau">
 <table class="tableau tableau-inventaire">
@@ -206,9 +208,9 @@ ${items.map((item) => html`<tr>
 <a class="bouton" href="/items/new">Nouvelle fiche</a>
 </div>
 </div>
-<form class="recherche" method="get" action="/" role="search">
-<label class="visuellement-cache" for="q">Rechercher un objet par nom ou UID</label>
-<input id="q" name="q" type="search" value="${query}" maxlength="${MAX_QUERY_CHARS}" placeholder="Nom ou UID" autocomplete="off" spellcheck="false">
+${AIDE.inventaire}<form class="recherche" method="get" action="/" role="search">
+<label class="visuellement-cache" for="q">Rechercher un objet par nom ou numéro de puce</label>
+<input id="q" name="q" type="search" value="${query}" maxlength="${MAX_QUERY_CHARS}" placeholder="Nom ou numéro de puce" autocomplete="off" spellcheck="false">
 <button class="bouton bouton-secondaire" type="submit">Rechercher</button>
 </form>
 ${summary}
@@ -277,7 +279,7 @@ ${noticeFor(ITEM_NOTICES, notice)}<div class="entete-page entete-actions">
 <a class="lien-danger" href="/items/${item.id}/delete">Supprimer</a>
 </div>
 </div>
-<div class="fiche">
+${AIDE.fiche}<div class="fiche">
 <section class="fiche-carte" aria-labelledby="titre-localisation">
 <h2 id="titre-localisation">Localisation actuelle</h2>
 <p>${locationBadge(item)}</p>
@@ -367,6 +369,9 @@ export function itemFormPage(user, { item, form, errors, chip = null, now = Date
     back = '← Puces inconnues';
   }
   const title = editing ? 'Modifier la fiche' : 'Nouvelle fiche';
+  let help = AIDE.nouvelleFiche;
+  if (editing) help = AIDE.modifierFiche;
+  else if (chip !== null) help = AIDE.ficheDepuisPuce;
   const failed = Object.keys(errors).length > 0 || form.rows.some((row) => row.error !== null);
   const rows = [...form.rows, ...Array(form.blankRows).fill(EMPTY_ROW)];
   const chipField = chip === null ? null : html`<div class="champ">
@@ -380,7 +385,7 @@ export function itemFormPage(user, { item, form, errors, chip = null, now = Date
 <div class="entete-page">
 <h1>${title}</h1>
 ${editing ? html`<p class="sous-titre-page">${item.name}</p>\n` : null}</div>
-${failed ? html`<p class="erreur" role="alert">La fiche n'a pas été enregistrée. Corrigez les champs signalés en rouge : votre saisie est conservée.</p>\n` : null}${chip === null ? null : reuseWarning(chip)}<form class="formulaire-page" method="post" action="${action}">
+${help}${failed ? html`<p class="erreur" role="alert">La fiche n'a pas été enregistrée. Corrigez les champs signalés en rouge : votre saisie est conservée.</p>\n` : null}${chip === null ? null : reuseWarning(chip)}<form class="formulaire-page" method="post" action="${action}">
 <input type="hidden" name="csrf" value="${user.csrf}">
 ${chipField}<div class="champ">
 <label for="name">Nom <span class="obligatoire">(obligatoire)</span></label>
@@ -428,7 +433,7 @@ export function deleteItemPage(user, { item }) {
 <div class="entete-page">
 <h1>Supprimer la fiche</h1>
 </div>
-<div class="panneau panneau-danger">
+${AIDE.supprimerFiche}<div class="panneau panneau-danger">
 <p>Vous allez supprimer la fiche «&nbsp;<strong class="nom-confirme">${item.name}</strong>&nbsp;».</p>
 <p>Ses propriétés, ses notes et l'historique de ses corrections manuelles de localisation seront supprimés avec elle.</p>
 ${item.uid_nfc === null ? null : html`<p>Sa puce <span class="uid">${item.uid_nfc}</span> sera détachée : si elle a déjà été scannée, elle réapparaîtra dans «&nbsp;Puces inconnues&nbsp;» avec ses scans.</p>\n`}<p class="texte-doux">Le journal des scans de sa puce et le journal des modifications sont conservés.</p>
@@ -476,7 +481,7 @@ ${fieldError('station-erreur', error)}</div>
 <h1>Corriger la localisation</h1>
 <p class="sous-titre-page">${item.name}</p>
 </div>
-${current}
+${AIDE.localisation}${current}
 ${body}`);
 }
 
@@ -580,7 +585,7 @@ ${stations.map((station) => html`<tr>
 </table>
 </div>`;
   return appLayout(user, 'Postes', html`${noticeFor(STATION_LIST_NOTICES, notice)}${sectionHeader('/stations', html`<a class="bouton" href="/stations/new">Nouveau poste</a>`)}
-<p class="resultats">${plural(stations.length, 'poste', 'postes')}</p>
+${AIDE.postes}<p class="resultats">${plural(stations.length, 'poste', 'postes')}</p>
 ${body}`, { ...stationsSection, current: '/stations' });
 }
 
@@ -627,7 +632,7 @@ ${noticeFor(STATION_NOTICES, notice)}<div class="entete-page entete-actions">
 ${deletable ? html`<a class="lien-danger" href="/stations/${station.id}/delete">Supprimer</a>` : null}
 </div>
 </div>
-<div class="fiche">
+${AIDE.poste}<div class="fiche">
 <section class="fiche-carte" aria-labelledby="titre-description">
 <h2 id="titre-description">Description</h2>
 ${description}
@@ -666,7 +671,7 @@ export function stationFormPage(user, { station, form, errors }) {
 <div class="entete-page">
 <h1>${title}</h1>
 ${editing ? html`<p class="sous-titre-page">${station.name}</p>\n` : null}</div>
-${failed ? html`<p class="erreur" role="alert">Le poste n'a pas été enregistré. Corrigez les champs signalés en rouge : votre saisie est conservée.</p>\n` : null}<form class="formulaire-page" method="post" action="${action}">
+${editing ? AIDE.modifierPoste : AIDE.nouveauPoste}${failed ? html`<p class="erreur" role="alert">Le poste n'a pas été enregistré. Corrigez les champs signalés en rouge : votre saisie est conservée.</p>\n` : null}<form class="formulaire-page" method="post" action="${action}">
 <input type="hidden" name="csrf" value="${user.csrf}">
 <div class="champ">
 <label for="name">Nom <span class="obligatoire">(obligatoire)</span></label>
@@ -719,7 +724,7 @@ ${causes.map((cause) => html`<li>${cause}</li>
 <div class="entete-page">
 <h1>Supprimer le poste</h1>
 </div>
-<div class="panneau panneau-danger">
+${AIDE.supprimerPoste}<div class="panneau panneau-danger">
 <p>Vous allez supprimer le poste «&nbsp;<strong class="nom-confirme">${station.name}</strong>&nbsp;».</p>
 <p class="texte-doux">Il n'a aucun historique : aucun scan, aucune correction de localisation, aucun lecteur. Le journal des modifications garde la trace de la suppression.</p>
 <form method="post" action="/stations/${station.id}/delete">
@@ -757,7 +762,7 @@ ${readers.map((reader) => html`<tr>
 </table>
 </div>`;
   return appLayout(user, 'Lecteurs', html`${sectionHeader('/readers', html`<a class="bouton" href="/readers/new">Nouveau lecteur</a>`)}
-<p class="resultats">${plural(readers.length, 'lecteur', 'lecteurs')}${readers.length === 0 ? null : html` · ${plural(activeCount, 'actif', 'actifs')}`}</p>
+${AIDE.lecteurs}<p class="resultats">${plural(readers.length, 'lecteur', 'lecteurs')}${readers.length === 0 ? null : html` · ${plural(activeCount, 'actif', 'actifs')}`}</p>
 ${body}`, stationsSection);
 }
 
@@ -794,7 +799,7 @@ ${noticeFor(READER_NOTICES, notice)}<div class="entete-page entete-actions">
 <h1>Lecteur n° ${reader.id}</h1>
 ${actions}
 </div>
-<div class="fiche">
+${AIDE.lecteur}<div class="fiche">
 <section class="fiche-carte" aria-labelledby="titre-etat">
 <h2 id="titre-etat">État</h2>
 <p>${readerBadge(reader)}</p>
@@ -839,7 +844,7 @@ export function readerFormPage(user, { stations, selected = '', error = null }) 
 <div class="entete-page">
 <h1>Nouveau lecteur</h1>
 </div>
-<form class="formulaire-page" method="post" action="/readers/new">
+${AIDE.nouveauLecteur}<form class="formulaire-page" method="post" action="/readers/new">
 <input type="hidden" name="csrf" value="${user.csrf}">
 ${stationSelect({ stations, selected, error, help: 'Facultatif : le lecteur peut être affecté à un poste plus tard.' })}
 <p class="aide">Le serveur attribue le numéro du lecteur et génère sa clé. La clé sera affichée une seule fois, sur la page suivante, pour être injectée dans le boîtier.</p>
@@ -862,7 +867,7 @@ export function readerStationPage(user, { reader, stations, selected = null, err
 <h1>Changer de poste</h1>
 <p class="sous-titre-page">Lecteur n° ${reader.id}</p>
 </div>
-${error === null ? null : html`<p class="erreur" role="alert">Le poste n'a pas été changé.</p>\n`}<form class="formulaire-page" method="post" action="/readers/${reader.id}/station">
+${AIDE.changerPoste}${error === null ? null : html`<p class="erreur" role="alert">Le poste n'a pas été changé.</p>\n`}<form class="formulaire-page" method="post" action="/readers/${reader.id}/station">
 <input type="hidden" name="csrf" value="${user.csrf}">
 ${stationSelect({ stations, selected: current, error, help: 'Les scans déjà enregistrés gardent leur poste : seuls les prochains scans de ce lecteur seront rattachés au poste choisi.' })}
 <div class="actions-formulaire">
@@ -879,7 +884,7 @@ export function deactivateReaderPage(user, { reader }) {
 <h1>Désactiver le lecteur</h1>
 <p class="sous-titre-page">Lecteur n° ${reader.id} · ${reader.station_id === null ? 'non affecté' : reader.station_name}</p>
 </div>
-<div class="panneau panneau-danger">
+${AIDE.desactiverLecteur}<div class="panneau panneau-danger">
 <p>Ses trames seront refusées dès maintenant.</p>
 <p><strong>La désactivation est définitive</strong> : un lecteur désactivé ne peut pas être réactivé. Pour remettre le boîtier en service, il faudra créer un nouveau lecteur.</p>
 <p class="texte-doux">Ses scans passés et les localisations qui en découlent sont conservés.</p>
@@ -901,7 +906,7 @@ export function replaceReaderPage(user, { reader }) {
 <h1>Remplacer la clé</h1>
 <p class="sous-titre-page">Lecteur n° ${reader.id} · ${station}</p>
 </div>
-<div class="panneau panneau-danger">
+${AIDE.remplacerCle}<div class="panneau panneau-danger">
 <p>Un <strong>nouveau lecteur</strong> sera créé, avec un nouveau numéro et une nouvelle clé, au même poste (${station}).</p>
 <p>Le lecteur n° ${reader.id} sera <strong>désactivé définitivement</strong> : ses trames seront refusées dès maintenant, jusqu'à ce que le boîtier reçoive le nouveau numéro et la nouvelle clé.</p>
 <p class="texte-doux">La nouvelle clé sera affichée une seule fois, sur la page suivante : préparez-vous à l'injecter dans le boîtier. Les scans passés sont conservés.</p>
@@ -1026,7 +1031,7 @@ ${chips.map((chip) => html`<tr>
 <h1>Puces inconnues</h1>
 <p class="intro">Puces scannées sur un poste qu'aucune fiche ne porte encore. Créez une fiche, ou associez la puce à une fiche existante : l'objet sera localisé au poste de son dernier scan.</p>
 </div>
-${summary}
+${AIDE.puces}${summary}
 ${body}`, { ...chipsSection, current: '/chips' });
 }
 
@@ -1052,7 +1057,7 @@ export function associateSearchPage(user, { chip, query, items, total, now }) {
 <a class="bouton" href="/chips/${chip.uid}/new">Créer une fiche</a></div>`;
   } else if (total === 0) {
     body = html`<div class="vide"><p>Aucune fiche ne correspond à «&nbsp;${query}&nbsp;».</p>
-<p class="texte-doux">Essayez une partie du nom, ou quelques caractères de l'UID de sa puce actuelle.</p></div>`;
+<p class="texte-doux">Essayez une partie du nom, ou quelques caractères du numéro de sa puce actuelle.</p></div>`;
   } else {
     body = html`<div class="panneau-tableau">
 <table class="tableau tableau-association">
@@ -1074,9 +1079,9 @@ ${items.map((item) => html`<tr>
 <h1>Associer la puce à une fiche</h1>
 <p class="sous-titre-page"><span class="uid">${chip.uid}</span> · dernier scan : ${chipPlace(chip)}, ${timeTag(chip.received_at, now)}</p>
 </div>
-<form class="recherche" method="get" action="${base}" role="search">
-<label class="visuellement-cache" for="q">Rechercher une fiche par nom ou UID</label>
-<input id="q" name="q" type="search" value="${query}" maxlength="${MAX_QUERY_CHARS}" placeholder="Nom de l'objet ou UID" autocomplete="off" spellcheck="false">
+${AIDE.associerRecherche}<form class="recherche" method="get" action="${base}" role="search">
+<label class="visuellement-cache" for="q">Rechercher une fiche par nom ou numéro de puce</label>
+<input id="q" name="q" type="search" value="${query}" maxlength="${MAX_QUERY_CHARS}" placeholder="Nom ou numéro de puce" autocomplete="off" spellcheck="false">
 <button class="bouton bouton-secondaire" type="submit">Rechercher</button>
 </form>
 ${summary}
@@ -1113,7 +1118,7 @@ export function associateConfirmPage(user, { chip, item, now, changed = false })
 <h1>${title}</h1>
 <p class="sous-titre-page">${item.name}</p>
 </div>
-${changed ? html`<p class="erreur" role="alert">La fiche a changé de puce depuis l'affichage de la page précédente : rien n'a été modifié. Vérifiez ci-dessous, puis confirmez à nouveau.</p>\n` : null}${reuseWarning(chip)}<div class="panneau ${replacing ? 'panneau-danger' : 'panneau-info'}">
+${AIDE.associerConfirmation}${changed ? html`<p class="erreur" role="alert">La fiche a changé de puce depuis l'affichage de la page précédente : rien n'a été modifié. Vérifiez ci-dessous, puis confirmez à nouveau.</p>\n` : null}${reuseWarning(chip)}<div class="panneau ${replacing ? 'panneau-danger' : 'panneau-info'}">
 ${explanation}
 ${correctionWins ? html`<p class="texte-doux">Une correction manuelle de localisation plus récente que ce scan existe : elle reste la localisation de la fiche jusqu'au prochain scan de la puce.</p>\n` : null}<form method="post" action="${search}/${item.id}">
 <input type="hidden" name="csrf" value="${user.csrf}">

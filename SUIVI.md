@@ -8,61 +8,92 @@ Il sert à reprendre le travail depuis une autre session ou un autre compte Clau
 > 2. Tu es l'orchestrateur décrit dans `CLAUDE.md` §9. Reprends à la section « Où on en est » ci-dessous.
 > 3. Continue à tenir ce fichier à jour à chaque étape (ajoute une entrée datée dans « Historique »).
 
-Dernière mise à jour : 2026-11-17
+Dernière mise à jour : 2026-11-25
 
 ---
 
-## Où on en est
+## Où on en est (au 2026-11-25)
 
-- **Phase 0 (cadrage)** : terminée et validée.
-- **Étape 1 (squelette : un scan simulé met à jour la localisation)** : terminée, commitée (`2aea8e8`).
-- **Étape 2 (HTTPS)** : terminée, commitée (voir `git log`).
-  - Implémentée et vérifiée par le testeur (2 écarts corrigés).
-  - Revue sécurité, 1er passage : « À corriger », sans bloquant. Deux points importants : `.gitattributes` pour `*.sh` (fins de ligne LF) et limite de connexions (`maxConnections = 256`, une saturation ne doit pas arrêter le serveur). S'y ajoutent des suggestions TLS et `devcert.sh` : renégociation et tickets désactivés, journal des erreurs TLS, `umask`, `trap`, contrainte de nom sur la CA de dev.
-  - Correctifs appliqués par `dev` (aller-retour 2/3), 75 tests verts. Docs mises à jour : `protocole.md` §7 (saturation) et `decisions.md` D-009.
-  - Les certificats déjà présents dans `dev/tls/` du projet datent d'avant la contrainte de nom : supprimer `dev/tls/` puis relancer `sh tools/devcert.sh` pour en bénéficier.
-  - Re-vérification du testeur : aucun défaut, 78 tests verts. Elle couvre les certificats forgés hors contrainte (rejetés), la renégociation refusée, l'absence de tickets, la saturation à 300 connexions (serveur vivant) et l'absence de régression de l'étape 1.
-  - Revue sécurité finale : **OK pour commit**, sans bloquant ni point important.
-  - Commitée avec l'accord de l'humain. **Prochaine étape : 3 (comptes et connexion)**, à lancer sur son feu vert.
-  - À garder en tête pour l'étape 3 : les navigateurs ignorent HSTS sur une adresse IP, il faudra un nom d'hôte. L'option `maxConnections` de `createFrameServer` est réservée aux tests et ne doit pas être branchée sur `config.json` sans nouvelle décision.
-- **Étape 3 (comptes et connexion)** : terminée, commitée (`9eb48ec`) avec l'accord de l'humain. 151 tests verts. Sans rôles (D-010) ; paramètres d'authentification en D-011 (**Proposée**, reste à faire valider explicitement par l'humain ; le silence ne vaut pas validation).
-- **Étape 4 (inventaire en lecture)** : terminée, commitée (`ced50be`) avec l'accord de l'humain. 241 tests verts. Questions soumises à l'humain, sans réponse pour l'instant :
-  - D-011 et D-013 (Proposées) ;
-  - le pipelining des trames après un rejet (protocole).
-- **Étape 5 (édition des fiches et journal)** : terminée, commitée (`487041f`) avec l'accord de l'humain. 315 tests verts. D-014 (AUTOINCREMENT) validée.
-- **Pour l'étape 6** :
-  - message propre au trigger anti-doublon (`scans: duplicate`) ;
-  - suppression d'un poste qui a des corrections : message clair (FOREIGN KEY), pas de 500.
-- **(Historique) Pour l'étape 5** :
-  - borner la longueur des textes saisis (nom, notes, propriétés) ;
-  - filtrer les caractères bidi des noms à la saisie ;
-  - adapter le libellé de la source de localisation (scan ou correction manuelle) ;
-  - garder la forme de vue de D-013.
-- **Étapes suivantes** du plan (`docs/cadrage.md` §4) :
-  - 3 : comptes et connexion ;
-  - 4 : inventaire en lecture ;
-  - 5 : édition des fiches et journal des modifications ;
-  - 6 : postes et lecteurs ;
-  - 7 : puces inconnues et association ;
-  - ~~8 : préparation du pilote~~ : retirée du plan pour l'instant (D-012). Objectif : un logiciel fonctionnel, visuellement correct, conforme à toutes les exigences techniques. La qualité visuelle est un critère de chaque étape d'interface.
+**Le plan MVP est terminé** : étapes 1 à 7 commitées. Une petite étape « aide intégrée » est terminée, validée et commitée avec l'accord de l'humain (voir git log).
 
-## Décisions validées par l'humain
+| Étape | Contenu | Commit | Tests |
+|---|---|---|---|
+| 1 | Réception des scans (trame v0 de 36 octets, AES-256-GCM, anti-rejeu) | `2aea8e8` | 57 |
+| 2 | HTTPS obligatoire (TLS 1.2 minimum, HSTS, CA de dev contrainte) | `3ff1c05` | 78 |
+| 3 | Comptes et connexion (argon2id, sessions, CSRF, CSP) | `9eb48ec` | 151 |
+| 4 | Inventaire en lecture (liste, recherche, fiche, gabarit HTML à échappement automatique) | `ced50be` | 241 |
+| 5 | Édition des fiches, correction manuelle de localisation, `audit_log` | `487041f` | 315 |
+| 6 | Postes et lecteurs (clé affichée une fois, désactivation, remplacement de clé) | `8034cea` | 375 |
+| 7 | Puces inconnues, création et association à une fiche | `157a931` | 438 |
+| Aide | Encadré « Comment ça marche ? » sur 21 pages (`server/aide.js`) | commitée (voir git log) | 452 |
 
-- Stack : **Node.js 26 LTS, zéro dépendance npm** (modules intégrés `node:https`, `node:crypto`, `node:sqlite`, `node:test`). Voir D-002.
-- On implémente le **protocole v0** sans attendre le retour de Yanis. Ses points à valider sont listés dans `docs/protocole.md` §9.
-- **Dépôt git local** (`git init`, branche `main`). Aucun dépôt distant relié, **pas de push** sans demande explicite.
-- Le `.gitattributes` global (`* text=auto eol=lf`) n'est **pas validé**. Seul `*.sh text eol=lf` est ajouté, parce que la revue sécurité l'exige pour `devcert.sh`.
+**Fichiers à commiter pour l'aide**, nommément et jamais avec `git add .` :
+- `SUIVI.md`, `server/aide.js`, `server/views.js`, `server/web.js`, `web/static/style.css` ;
+- `test/aide-exactitude.test.js`, `test/aide-web.test.js`, `test/edition-web.test.js`, `test/inventaire-charge.test.js`, `test/inventaire-verif.test.js`, `test/inventaire-web.test.js`, `test/postes-lecteurs-web.test.js`, `test/puces-web.test.js`.
+
+Message de commit proposé à l'humain :
+```
+Aide intégrée « Comment ça marche ? »
+
+- Encadré repliable (details, sans JS) sur 21 pages de travail
+- Textes regroupés dans server/aide.js, vérifiés contre le comportement réel
+- Champ de recherche : « Nom ou numéro de puce »
+- chipPreviousOwner appelé seulement là où l'avertissement s'affiche
+- 452 tests
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+**Fichiers à NE PAS commiter** :
+- `PROMPT-REPRISE.md` : prompt de passation, local ;
+- `MetroTrack-point-etape.xlsx` : tableau de synthèse demandé par l'humain ;
+- `~$*.xlsx` : fichier de verrou d'Excel. Il est proposé, mais pas encore validé, d'ajouter `~$*` au `.gitignore` ;
+- `config.json`, `data/`, `dev/` : ignorés par git, ils contiennent des clés.
+
+**Démo** :
+- Une instance de démonstration existe dans `dev/demo/` (ignoré par git) : config sur le port 18443, base `dev/demo/data/demo.db`, certificats propres, compte `demo` dont le mot de passe est dans `dev/demo/identifiants.txt`, clés des lecteurs dans `dev/demo/keys/`.
+- Elle n'est **pas lancée** pour l'instant : le dernier serveur s'est arrêté. Relance : `$env:METROTRACK_CONFIG="dev/demo/config.json"; node server/main.js serve`, puis https://localhost:18443.
+- L'humain l'ouvre dans son propre navigateur, en acceptant lui-même l'avertissement de certificat. Le panneau navigateur de Claude refuse la CA de dev.
+
+**Pistes après le MVP**, à proposer, aucune n'est lancée :
+- valider le protocole avec Yanis et brancher un vrai boîtier ESP32 ;
+- certificat accepté par les navigateurs, avec un nom d'hôte, car HSTS ne marche pas sur une IP ;
+- sauvegarde SQLite (`VACUUM INTO`) et notice d'installation ;
+- retours de l'humain sur l'interface ;
+- éventuellement, gestion des comptes dans l'interface (aujourd'hui `user-add` en ligne de commande).
+
+## Décisions
+
+**Validées par l'humain** :
+- D-002 : stack Node.js 26 LTS sans aucune dépendance npm.
+- Protocole v0 implémenté sans attendre Yanis.
+- Dépôt git local, sans push.
+- `.gitattributes` limité à `*.sh`.
+- D-010 : aucun rôle utilisateur dans le MVP.
+- D-012 : recentrage, l'ONERA est hors plan. Objectif : un logiciel fonctionnel et soigné, toutes les exigences de sécurité restant en vigueur. `CLAUDE.md` a été adapté en conséquence.
+- D-014 : numéros de fiche jamais réutilisés (AUTOINCREMENT).
+- D-015 : numéros de poste jamais réutilisés.
+
+**Proposées, toujours en attente de l'humain** (le silence ne vaut pas validation) :
+- D-003 à D-009 : protocole, crypto, anti-rejeu, rejets HTTP, TLS. Certaines dépendent de Yanis.
+- D-011 : réglages de connexion (argon2id OWASP, file bornée à 16, session de 8 h, CSRF, délai d'1 s).
+- D-013 : calcul de la localisation par sous-requête indexée.
+- Les sections « Limites acceptées pour le MVP » des étapes 5, 6 et 7 dans `decisions.md`.
 
 ## Questions ouvertes
 
-- **À l'humain** (non bloquantes, `docs/cadrage.md` §5) :
-  - rôles des utilisateurs ;
+**À l'humain** :
+- Règle « un scan par requête » pour les boîtiers. Une trame envoyée en pipelining derrière un rejet est enregistrée sans réponse. Recommandé : l'écrire dans `protocole.md`.
+- Réutilisation d'une puce : garder l'avertissement sans changer le modèle (recommandé).
+- Commit de l'aide intégrée.
+- `~$*` dans `.gitignore`.
+- Questions anciennes de `cadrage.md` §5 :
   - sens de « informations » dans la fiche ;
   - Wi-Fi direct en production ;
-  - stockage des clés de lecteurs en clair dans la base ;
-  - suppression des postes et lecteurs qui ont un historique ;
-  - OS du serveur pilote et acceptation de Node par la SSI de l'ONERA.
-- **À Yanis** : les 10 points de `docs/protocole.md` §9 (format, AES-GCM, persistance du compteur, type de puce NFC, client HTTPS de l'ESP32, LoRa, mise en mémoire hors ligne, retour utilisateur, provisionnement).
+  - clés des lecteurs en clair dans la base ;
+  - OS du serveur.
+
+**À Yanis** : les 10 points de `docs/protocole.md` §9.
 
 ## Méthode de travail (comment l'orchestrateur fonctionne)
 
@@ -74,14 +105,15 @@ Boucle par étape (`CLAUDE.md` §9) : `dev` → `testeur` → `revue-securite`, 
 
 ## Comment vérifier l'état actuel
 
-Les commandes ci-dessous correspondent à l'état après l'étape 2 (HTTPS sur le port 8443).
+Commandes de base. Pour un parcours complet avec interface, utiliser la démo de `dev/demo/` (voir « Où on en est »).
 
 ```bash
 node --test
 sh tools/devcert.sh                      # CA + certificat de dev dans dev/tls/
 cp config.example.json config.json
 node server/main.js dev-seed             # poste, lecteur 1 (clé dans dev/reader-1.key), objet de démo
-node server/main.js serve                # https://127.0.0.1:8443
+node server/main.js user-add <identifiant> # mot de passe saisi au terminal (PowerShell : saisie masquée)
+node server/main.js serve                # https://127.0.0.1:8443 (interface web : /login)
 node tools/simulateur.js --reader 1 --key-file dev/reader-1.key --uid 04A1B2C3D4E5F6 --counter 1 --ca dev/tls/ca.crt
 ```
 
@@ -477,3 +509,37 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
 - Vérification de l'orchestrateur : 438/438, aucune dépendance.
 - **Étape 7 terminée, en attente de l'accord de l'humain pour le commit** (2 allers-retours). `PROMPT-REPRISE.md` et `dev/` sont exclus.
 - Classeur `MetroTrack-point-etape.xlsx` (à la racine, non versionné) demandé par l'humain. Quatre onglets : Fait, À faire, À valider, Matériel. Généré sans dépendance par un script du scratchpad ; ouverture vérifiée dans Excel.
+- Accord de l'humain → commit de l'étape 7. **Le plan MVP (étapes 1 à 7) est terminé.**
+
+### 2026-11-20 — Aide intégrée au site (petite étape)
+- Encadré repliable « Comment ça marche ? » (`<details>`, sans JS) en tête des pages, en commençant par Inventaire et Nouvelle fiche, puis les autres écrans.
+- Ajout de la suggestion S1 de la revue (étape 7) : `chipPreviousOwner` appelé seulement là où l'avertissement est affiché.
+- Agent `dev` lancé (aller-retour 1/3).
+- Rapport de `dev` (aide intégrée) : encadré présent sur 21 pages, texte regroupé dans `server/aide.js`, 449 tests verts.
+  - Reliquat S1 de l'étape 7 corrigé et prouvé par un test.
+  - 6 fichiers de test adaptés (balises autorisées, assertions négatives vérifiées hors de l'encadré d'aide).
+  - Capture de l'inventaire avec l'aide ouverte vérifiée par l'orchestrateur : claire.
+- Testeur et revue lancés en parallèle (vérification ciblée).
+- Relecture de la revue (aide intégrée) : **OK pour commit**.
+  - Pas d'injection, CSP inchangée, textes de sécurité exacts, `withoutHelp` sûr, S1 fermée.
+  - À faire :
+    - préciser l'aide de recherche (« au moins 4 caractères dont un chiffre, ou le numéro complet ») ;
+    - ne pas commiter le tableur ni le fichier de verrou Office ; proposer à l'humain `~$*` dans `.gitignore`.
+- Vérification du testeur (aide intégrée) : structure et contenu vérifiés, 451 tests verts et 1 todo ; ajout de `test/aide-exactitude.test.js`.
+  - Une phrase fausse : la recherche par puce exige un chiffre ou le numéro complet.
+  - Deux phrases imprécises, et quelques remarques de clarté.
+- Retour à `dev` (aller-retour 2/3) :
+  - corriger la phrase fausse et les deux imprécisions ;
+  - supprimer les redites, remplacer les termes techniques, harmoniser « UID » et « numéro de puce » ;
+  - renommer la classe en `aide-page`.
+- Rapport de `dev` (aide, aller-retour 2/3) : les retouches de texte sont faites, la classe s'appelle `aide-page`, et le champ de recherche indique « Nom ou numéro de puce ». 452 tests verts, aucun todo.
+  - Choix de `dev`, approuvé par l'orchestrateur : ne pas écrire « Yanis » dans l'interface (logiciel destiné à plusieurs entreprises).
+- Vérification ciblée par le testeur et la revue lancée.
+- Relecture finale de la revue (aide) : **OK pour commit**. Le tableur, son fichier de verrou et `PROMPT-REPRISE.md` restent hors du commit.
+- Vérification finale du testeur (aide) : ✅ 452/452, textes exacts, `withoutHelp` sûr. Seule une capture à 375 px est mal générée (outil de capture, pas l'application).
+- **Aide intégrée terminée, en attente de l'accord de l'humain pour le commit** (2 allers-retours).
+
+### 2026-11-25 — Passation vers un autre Claude
+- L'humain change de Claude. `SUIVI.md` (sections du haut réécrites : état, décisions, questions) et `PROMPT-REPRISE.md` sont remis à jour pour la reprise.
+- État : MVP (étapes 1 à 7) commité ; aide intégrée validée mais non commitée ; 452 tests verts ; démo arrêtée.
+- Accord de l'humain (2026-11-25) → commit de l'aide intégrée.

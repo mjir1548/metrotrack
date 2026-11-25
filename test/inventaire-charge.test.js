@@ -67,6 +67,8 @@ function page(path) {
     req.end();
   });
 }
+// Page sans son aide « Comment ça marche ? » (texte constant qui cite les pastilles, dont « jamais localisé »).
+const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<\/details>/, '');
 const historyRows = (html) => (/<table class="tableau tableau-scans">([\s\S]*?)<\/table>/.exec(html)?.[1].match(/<tr>/g)?.length ?? 1) - 1;
 
 test(`liste de ${ITEMS} objets avec ${SCANS} scans : toutes les lignes, en moins de ${MAX_MS} ms`, async (t) => {
@@ -78,7 +80,7 @@ test(`liste de ${ITEMS} objets avec ${SCANS} scans : toutes les lignes, en moins
   assert.equal(res.body.match(/class="lien-objet"/g).length, ITEMS);
   assert.ok(res.ms < MAX_MS, `${Math.round(res.ms)} ms`);
   // Chaque objet a été scanné au moins une fois : aucun « jamais localisé ».
-  assert.ok(!res.body.includes('jamais localisé'));
+  assert.ok(!withoutHelp(res.body).includes('jamais localisé'));
 });
 
 test('recherche sur la base chargée : résultats corrects, en moins de la borne', async (t) => {

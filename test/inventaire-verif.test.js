@@ -101,13 +101,16 @@ const page = (path) => send({ path, headers: { Cookie: `__Host-mt_session=${toke
 const postFrame = (frame) => send({ method: 'POST', path: '/api/frames', headers: { 'Content-Type': 'application/octet-stream' }, body: frame });
 const frameOf = (readerId, counter, uidHex, key = KEY) => encodeFrame({ readerId, counter, uid: Buffer.from(uidHex, 'hex'), key });
 const idOf = (name) => db.prepare('SELECT id FROM items WHERE name = ?').get(name).id;
+// Page sans son aide « Comment ça marche ? » (texte constant qui cite le lien « Effacer »).
+const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<\/details>/, '');
 const rowOf = (html, id) => /<tbody>([\s\S]*?)<\/tbody>/.exec(html)?.[1]
   .split('</tr>').find((r) => r.includes(`href="/items/${id}"`));
 const historyStations = (html) => [...(/<table class="tableau tableau-scans">([\s\S]*?)<\/table>/.exec(html)?.[1] ?? '')
   .matchAll(/<td data-label="Poste">([\s\S]*?)<\/td>/g)].map((m) => m[1]);
 
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
-  'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd']);
+  'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
+  'ul', 'li', 'details', 'summary']); // ul, li, details, summary : aide « Comment ça marche ? »
 
 /**
  * Aucune balise ni aucun attribut injecté. Les valeurs d'attribut (toutes entre guillemets
@@ -208,7 +211,7 @@ test('recherche : q répété → seule la première valeur compte ; q vide ou a
   const count = /<p class="resultats">(\d+) objets<\/p>/.exec(all.body)[1];
   for (const res of [firstEmpty, all, await page('/?q'), await page('/?x=1')]) {
     assert.ok(res.body.includes(`<p class="resultats">${count} objets</p>`));
-    assert.ok(!res.body.includes('Effacer'));
+    assert.ok(!withoutHelp(res.body).includes('Effacer'));
   }
 });
 
@@ -237,7 +240,7 @@ test('recherche par HTTP : contrôles C1 (NEL) et bidi retirés de la saisie ; s
   const all = await page('/');
   const count = /<p class="resultats">(\d+) objets<\/p>/.exec(all.body)[1];
   assert.ok(only.body.includes(`<p class="resultats">${count} objets</p>`));
-  assert.ok(!only.body.includes('Effacer'));
+  assert.ok(!withoutHelp(only.body).includes('Effacer'));
   assert.ok(only.body.includes('id="q" name="q" type="search" value=""'));
 });
 

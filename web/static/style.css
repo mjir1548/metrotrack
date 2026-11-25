@@ -794,6 +794,83 @@ time { white-space: nowrap; }
 .panneau .uid { color: inherit; font-size: 0.9375rem; overflow-wrap: anywhere; }
 .panneau-danger .liste-causes { margin-top: var(--espace-3); }
 
+/* ---------- Aide intégrée « Comment ça marche ? » (server/aide.js) ---------- */
+
+/* Encadré repliable sous le titre, fermé par défaut, sans JavaScript. Classe distincte de
+   .aide (aide courte sous un champ). */
+details.aide-page {
+  max-width: 44rem;
+  margin: calc(-1 * var(--espace-2)) 0 var(--espace-4);
+  font-size: var(--taille-petite);
+  color: var(--couleur-texte);
+}
+
+/* Titre de l'encadré : un lien discret, précédé d'une icône « ? » en CSS (texte de
+   remplacement vide : les lecteurs d'écran ne lisent que « Comment ça marche ? »). */
+details.aide-page > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espace-2);
+  min-height: 2.25rem;
+  padding: 0 var(--espace-1);
+  margin-left: calc(-1 * var(--espace-1));
+  font-weight: 600;
+  color: var(--couleur-primaire);
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--rayon-petit);
+}
+details.aide-page > summary::-webkit-details-marker { display: none; }
+details.aide-page > summary::before {
+  content: "?";
+  content: "?" / "";
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+/* Chevron : vers le bas fermé, vers le haut ouvert. */
+details.aide-page > summary::after {
+  content: "";
+  flex: none;
+  width: 0.375rem;
+  height: 0.375rem;
+  margin-top: -0.1875rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+details.aide-page[open] > summary::after { margin-top: 0.1875rem; transform: rotate(-135deg); }
+details.aide-page > summary:hover { color: var(--couleur-primaire-survol); text-decoration: underline; }
+details.aide-page > summary:focus-visible {
+  outline: 3px solid var(--couleur-focus);
+  outline-offset: 2px;
+}
+
+/* Contenu : fond très léger, un paragraphe court puis des listes à puces. */
+.aide-contenu {
+  margin-top: var(--espace-2);
+  padding: var(--espace-4) var(--espace-5);
+  line-height: 1.55;
+  overflow-wrap: break-word;
+  background: var(--couleur-survol-ligne);
+  border: 1px solid var(--couleur-bordure);
+  border-left: 4px solid var(--couleur-primaire);
+  border-radius: var(--rayon-petit);
+}
+.aide-contenu p { margin: 0 0 var(--espace-2); }
+.aide-contenu ul { margin: 0 0 var(--espace-4); padding-left: var(--espace-5); }
+.aide-contenu li { margin-bottom: var(--espace-1); }
+.aide-contenu li::marker { color: var(--couleur-texte-doux); }
+.aide-contenu > :last-child { margin-bottom: 0; }
+
 /* ---------- Tableaux et fiche sur petit écran : lignes empilées ---------- */
 
 @media (max-width: 40rem) {
@@ -838,4 +915,5 @@ time { white-space: nowrap; }
   .contenu { padding-top: var(--espace-5); }
   .formulaire-page { padding: var(--espace-4); }
   .panneau-danger, .panneau-info, .panneau-alerte { padding: var(--espace-4); }
+  .aide-contenu { padding: var(--espace-3) var(--espace-4); }
 }

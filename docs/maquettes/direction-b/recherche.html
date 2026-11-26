@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>« multi » · Recherche · MetroTrack</title>
+<link rel="stylesheet" href="../assets/fonts.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg class="sprite" aria-hidden="true">
+  <symbol id="i-recherche" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>
+  </symbol>
+  <symbol id="i-accueil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 10.5L12 4l8 6.5"/><path d="M6 9v10.5h4.5V15h3v4.5H18V9"/>
+  </symbol>
+  <symbol id="i-objet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3.5l7.5 4v9L12 20.5l-7.5-4v-9z"/><path d="M4.5 7.5L12 11.5l7.5-4"/><path d="M12 11.5v9"/>
+  </symbol>
+  <symbol id="i-poste" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0113 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/>
+  </symbol>
+  <symbol id="i-lecteur" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="6" y="9" width="12" height="11" rx="2.5"/><path d="M9.5 6.2a4 4 0 015 0"/><path d="M7.4 3.9a7 7 0 019.2 0"/><circle cx="12" cy="14.5" r="1.6"/>
+  </symbol>
+  <symbol id="i-puce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="6.5" y="6.5" width="11" height="11" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/>
+    <path d="M9.5 3.5v3M14.5 3.5v3M9.5 17.5v3M14.5 17.5v3M3.5 9.5h3M3.5 14.5h3M17.5 9.5h3M17.5 14.5h3"/>
+  </symbol>
+  <symbol id="i-horloge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>
+  </symbol>
+  <symbol id="i-historique" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.8 12a8.2 8.2 0 102.4-5.8"/><path d="M3.5 4v4.2h4.2"/><path d="M12 8v4l2.8 1.8"/>
+  </symbol>
+  <symbol id="i-deplace" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 8h13"/><path d="M14 4.5L17.5 8 14 11.5"/><path d="M20 16H7"/><path d="M10 12.5L6.5 16l3.5 3.5"/>
+  </symbol>
+  <symbol id="i-modifier" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 19.5l1-4.2L15.8 5a2 2 0 012.8 0l.4.4a2 2 0 010 2.8L8.7 18.5z"/><path d="M13.5 7.3l3.2 3.2"/>
+  </symbol>
+  <symbol id="i-main" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 12.5V6.8a1.5 1.5 0 013 0V11"/><path d="M11 10.5V5.3a1.5 1.5 0 013 0v5.2"/><path d="M14 10.5V7a1.5 1.5 0 013 0v6.5a6.5 6.5 0 01-6.5 6.5h-.4a6 6 0 01-4.8-2.4L3.6 14.6a1.5 1.5 0 012.2-2L8 14.5"/>
+  </symbol>
+  <symbol id="i-ajouter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 5v14M5 12h14"/>
+  </symbol>
+  <symbol id="i-valide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.2l2.5 2.5 4.9-5"/>
+  </symbol>
+  <symbol id="i-attention" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10.3 4.3L3 17.5A2 2 0 004.7 20.5h14.6a2 2 0 001.7-3L13.7 4.3a2 2 0 00-3.4 0z"/><path d="M12 9.5v4.5"/><path d="M12 17.3v.2"/>
+  </symbol>
+  <symbol id="i-silence" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="6" y="9" width="12" height="11" rx="2.5"/><path d="M9.5 6.2a4 4 0 015 0"/><path d="M3.5 3.5l17 17"/>
+  </symbol>
+  <symbol id="i-aide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.4a2.5 2.5 0 014.8.9c0 1.7-2.4 2.2-2.4 3.7"/><path d="M12 16.9v.2"/>
+  </symbol>
+  <symbol id="i-reglages" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>
+  </symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.5 6l6 6-6 6"/>
+  </symbol>
+  <symbol id="i-fermer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>
+  </symbol>
+  <symbol id="i-copier" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6.5a2 2 0 00-2-2h-7a2 2 0 00-2 2v7a2 2 0 002 2h2"/>
+  </symbol>
+  <symbol id="i-utilisateur" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0114 0"/>
+  </symbol>
+  <symbol id="i-direct" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="2.2"/><path d="M8 8a5.7 5.7 0 000 8M16 8a5.7 5.7 0 010 8"/><path d="M5.2 5.2a9.6 9.6 0 000 13.6M18.8 5.2a9.6 9.6 0 010 13.6"/>
+  </symbol>
+  <symbol id="i-note" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6.5 3.5h8l4 4v13h-12z"/><path d="M14.5 3.5v4h4"/><path d="M9.5 12.5h5M9.5 16h5"/>
+  </symbol>
+  <symbol id="i-plus-options" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="6" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18" cy="12" r="1.2"/>
+  </symbol>
+</svg>
+<!-- Icônes ajoutées par la direction B (même style : 24 x 24, trait 1.75, arrondi) -->
+<svg class="sprite" aria-hidden="true">
+  <symbol id="i-supprimer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 7h15"/><path d="M9.5 7V5a1.5 1.5 0 011.5-1.5h2A1.5 1.5 0 0114.5 5v2"/><path d="M6.5 7l.8 11.6a2 2 0 002 1.9h5.4a2 2 0 002-1.9L17.5 7"/><path d="M10 11v5.5M14 11v5.5"/>
+  </symbol>
+  <symbol id="i-associer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/>
+  </symbol>
+</svg>
+<a class="lien-evitement" href="#contenu">Aller aux résultats</a>
+
+<header class="barre">
+  <div class="barre-interieur">
+    <a class="logo" href="accueil.html" aria-label="MetroTrack, accueil">
+      <span class="logo-marque"><svg class="ic" aria-hidden="true"><use href="#i-puce"/></svg></span>
+      MetroTrack
+    </a>
+    <nav class="nav" aria-label="Navigation principale">
+      <ul>
+        <li><a href="accueil.html">Accueil</a></li>
+        <li><a href="recherche.html" aria-current="page">Inventaire</a></li>
+        <li><a href="accueil.html#lecteurs">Postes</a></li>
+        <li><a href="accueil.html#puces">Puces inconnues <span class="compteur">2<span class="vh"> à traiter</span></span></a></li>
+      </ul>
+    </nav>
+    <div class="barre-recherche">
+      <form class="recherche recherche--compacte" action="recherche.html" method="get" role="search">
+        <svg class="ic" aria-hidden="true"><use href="#i-recherche"/></svg>
+        <input type="search" name="q" value="multi" autocomplete="off" aria-keyshortcuts="Control+K"
+               aria-label="Rechercher un objet ou un poste" placeholder="Où est… ?">
+        <kbd><kbd>Ctrl</kbd><kbd>K</kbd></kbd>
+      </form>
+    </div>
+    <a class="utilisateur" href="#" aria-label="Claire Martin, mon compte">
+      <span class="avatar" aria-hidden="true">CM</span>
+      <span class="utilisateur-nom" aria-hidden="true">Claire Martin</span>
+    </a>
+  </div>
+</header>
+
+<main id="contenu" class="page">
+
+  <div class="resultats-entete">
+    <h1>3 objets pour « multi »</h1>
+    <p>Le plus récemment déplacé apparaît en premier.</p>
+  </div>
+
+  <article class="carte resultat resultat--vedette">
+    <div>
+      <span class="badge badge--ok resultat-rang"><svg class="ic" aria-hidden="true"><use href="#i-valide"/></svg>Meilleur résultat</span>
+      <h2><a class="lien-etendu" href="fiche.html"><mark>Multi</mark>mètre Fluke 87V n° 7</a></h2>
+      <p class="etiquette">Emplacement actuel</p>
+      <p class="emplacement emplacement--xl"><svg class="ic" aria-hidden="true"><use href="#i-poste"/></svg>Poste B · Banc d'essais</p>
+      <p class="depuis">
+        <span>depuis <strong><time datetime="2026-11-25T16:06" title="mercredi 25 novembre 2026 à 16 h 06">4 min</time></strong> — aujourd'hui à 16 h 06</span>
+        <span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"/></svg>Scanné</span>
+      </p>
+    </div>
+    <span class="resultat-ouvrir" aria-hidden="true">Ouvrir la fiche <kbd><kbd>Entrée</kbd></kbd><svg class="ic" aria-hidden="true"><use href="#i-chevron"/></svg></span>
+  </article>
+
+  <div class="resultats-autres">
+    <article class="carte resultat resultat--ligne">
+      <div>
+        <h2><a class="lien-etendu" href="#"><mark>Multi</mark>mètre Fluke 87V n° 3</a></h2>
+        <p class="depuis"><span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"/></svg>Scanné</span></p>
+      </div>
+      <div>
+        <p class="emplacement emplacement--lg"><span class="vh">Emplacement actuel : </span><svg class="ic" aria-hidden="true"><use href="#i-poste"/></svg>Poste A · Réception</p>
+        <p class="depuis"><span>depuis <time datetime="2026-11-24T16:12" title="mardi 24 novembre 2026 à 16 h 12">hier à 16 h 12</time></span></p>
+      </div>
+      <svg class="ic ic-chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
+    </article>
+
+    <article class="carte resultat resultat--ligne">
+      <div>
+        <h2><a class="lien-etendu" href="#"><mark>Multi</mark>mètre de table Keithley 2110</a></h2>
+        <p class="depuis"><span class="badge badge--main"><svg class="ic" aria-hidden="true"><use href="#i-main"/></svg>Corrigé à la main</span></p>
+      </div>
+      <div>
+        <p class="emplacement emplacement--lg"><span class="vh">Emplacement actuel : </span><svg class="ic" aria-hidden="true"><use href="#i-poste"/></svg>Magasin</p>
+        <p class="depuis"><span>depuis <time datetime="2026-11-13T10:40" title="vendredi 13 novembre 2026 à 10 h 40">12 jours</time> — 13 nov. à 10 h 40</span></p>
+      </div>
+      <svg class="ic ic-chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
+    </article>
+  </div>
+
+  <p class="astuce"><kbd><kbd>↑</kbd><kbd>↓</kbd></kbd> pour choisir · <kbd><kbd>Entrée</kbd></kbd> pour ouvrir la fiche</p>
+
+</main>
+</body>
+</html>

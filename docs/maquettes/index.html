@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MetroTrack · Directions visuelles</title>
+<link rel="stylesheet" href="assets/fonts.css">
+<style>
+  :root {
+    --fond: #F5F4EF; --carte: #FBFBF8; --structure: #0F1B2D; --texte: #0F1B2D;
+    --texte-doux: #4A5566; --accent: #17756C; --bordure: #DCDFD8; --secondaire: #E4EAEE;
+    --rayon: 14px; --ombre: 0 1px 2px rgba(15,27,45,.06), 0 6px 20px rgba(15,27,45,.06);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fond); color: var(--texte); font: 16px/1.55 "Inter", system-ui, sans-serif; }
+  header { background: var(--structure); color: var(--carte); padding: 40px 48px 36px; }
+  header h1 { font: 700 32px/1.2 "Space Grotesk", sans-serif; margin: 0 0 8px; letter-spacing: -0.01em; }
+  header p { margin: 0; max-width: 72ch; color: #C9D2DD; }
+  main { max-width: 1200px; margin: 0 auto; padding: 36px 48px 64px; }
+  .grille { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .direction { background: var(--carte); border: 1px solid var(--bordure); border-radius: var(--rayon); box-shadow: var(--ombre); padding: 24px; display: flex; flex-direction: column; gap: 12px; }
+  .lettre { font: 700 14px/1 "JetBrains Mono", monospace; color: var(--accent); letter-spacing: .08em; }
+  .direction h2 { font: 700 22px/1.25 "Space Grotesk", sans-serif; margin: 0; }
+  .direction p { margin: 0; color: var(--texte-doux); }
+  .direction ul { margin: 0; padding-left: 18px; color: var(--texte-doux); }
+  .liens { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 8px; }
+  .liens a { display: inline-block; padding: 8px 14px; border-radius: 999px; background: var(--secondaire); color: var(--texte); text-decoration: none; font-weight: 600; font-size: 14px; }
+  .liens a:first-child { background: var(--accent); color: #FFFFFF; }
+  .liens a:hover { text-decoration: underline; }
+  a:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .note { margin-top: 32px; color: var(--texte-doux); font-size: 14px; }
+  @media (max-width: 1000px) { .grille { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>MetroTrack · trois directions visuelles</h1>
+  <p>Les trois maquettes montrent exactement le même contenu (le multimètre n° 7, le Poste C silencieux, deux puces inconnues), pour comparer uniquement le style. Ce sont des images interactives statiques : rien n'est branché.</p>
+</header>
+<main>
+  <div class="grille">
+    <section class="direction">
+      <span class="lettre">DIRECTION A</span>
+      <h2>Atelier chaleureux</h2>
+      <p>Fidèle au brief : barre latérale bleu nuit, fond blanc cassé, cartes douces, vert canard pour agir.</p>
+      <ul><li>Structure classique d'application de bureau</li><li>Navigation toujours visible à gauche</li></ul>
+      <div class="liens"><a href="direction-a/accueil.html">Accueil</a><a href="direction-a/recherche.html">Recherche</a><a href="direction-a/fiche.html">Fiche</a></div>
+    </section>
+    <section class="direction">
+      <span class="lettre">DIRECTION B</span>
+      <h2>Clair et aéré</h2>
+      <p>Un challenge du brief : pas de bloc sombre, barre supérieure fine, beaucoup d'espace, recherche en grande pilule.</p>
+      <ul><li>Calme, très lisible, esprit application moderne</li><li>Le bleu nuit seulement pour le texte</li></ul>
+      <div class="liens"><a href="direction-b/accueil.html">Accueil</a><a href="direction-b/recherche.html">Recherche</a><a href="direction-b/fiche.html">Fiche</a></div>
+    </section>
+    <section class="direction">
+      <span class="lettre">DIRECTION C</span>
+      <h2>Plan des postes</h2>
+      <p>Plus affirmée : on pense en lieux. L'accueil montre les postes en tuiles à côté du direct ; bandeau bleu nuit avec la recherche.</p>
+      <ul><li>Les problèmes (poste silencieux, puces) sautent aux yeux</li><li>Typographie expressive</li></ul>
+      <div class="liens"><a href="direction-c/accueil.html">Accueil</a><a href="direction-c/recherche.html">Recherche</a><a href="direction-c/fiche.html">Fiche</a></div>
+    </section>
+  </div>
+  <p class="note">Polices embarquées (Space Grotesk, Inter, JetBrains Mono — licence SIL OFL), icônes dessinées pour le projet. Aucune ressource n'est chargée depuis Internet. Taille de fenêtre visée : 1440 × 900.</p>
+</main>
+</body>
+</html>

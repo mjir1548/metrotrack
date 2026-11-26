@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "maquettes",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "docs/maquettes/apercu.mjs"
+      ],
+      "port": 8790
+    }
+  ]
+}

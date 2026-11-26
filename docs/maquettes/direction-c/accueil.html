@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accueil · MetroTrack</title>
+  <link rel="stylesheet" href="../assets/fonts.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-recherche" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>
+  </symbol>
+  <symbol id="i-accueil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 10.5L12 4l8 6.5"/><path d="M6 9v10.5h4.5V15h3v4.5H18V9"/>
+  </symbol>
+  <symbol id="i-objet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3.5l7.5 4v9L12 20.5l-7.5-4v-9z"/><path d="M4.5 7.5L12 11.5l7.5-4"/><path d="M12 11.5v9"/>
+  </symbol>
+  <symbol id="i-poste" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0113 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/>
+  </symbol>
+  <symbol id="i-lecteur" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="6" y="9" width="12" height="11" rx="2.5"/><path d="M9.5 6.2a4 4 0 015 0"/><path d="M7.4 3.9a7 7 0 019.2 0"/><circle cx="12" cy="14.5" r="1.6"/>
+  </symbol>
+  <symbol id="i-puce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="6.5" y="6.5" width="11" height="11" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/>
+    <path d="M9.5 3.5v3M14.5 3.5v3M9.5 17.5v3M14.5 17.5v3M3.5 9.5h3M3.5 14.5h3M17.5 9.5h3M17.5 14.5h3"/>
+  </symbol>
+  <symbol id="i-horloge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>
+  </symbol>
+  <symbol id="i-historique" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.8 12a8.2 8.2 0 102.4-5.8"/><path d="M3.5 4v4.2h4.2"/><path d="M12 8v4l2.8 1.8"/>
+  </symbol>
+  <symbol id="i-deplace" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 8h13"/><path d="M14 4.5L17.5 8 14 11.5"/><path d="M20 16H7"/><path d="M10 12.5L6.5 16l3.5 3.5"/>
+  </symbol>
+  <symbol id="i-modifier" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 19.5l1-4.2L15.8 5a2 2 0 012.8 0l.4.4a2 2 0 010 2.8L8.7 18.5z"/><path d="M13.5 7.3l3.2 3.2"/>
+  </symbol>
+  <symbol id="i-main" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 12.5V6.8a1.5 1.5 0 013 0V11"/><path d="M11 10.5V5.3a1.5 1.5 0 013 0v5.2"/><path d="M14 10.5V7a1.5 1.5 0 013 0v6.5a6.5 6.5 0 01-6.5 6.5h-.4a6 6 0 01-4.8-2.4L3.6 14.6a1.5 1.5 0 012.2-2L8 14.5"/>
+  </symbol>
+  <symbol id="i-ajouter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 5v14M5 12h14"/>
+  </symbol>
+  <symbol id="i-valide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="8.5"/><path d="M8.3 12.2l2.5 2.5 4.9-5"/>
+  </symbol>
+  <symbol id="i-attention" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10.3 4.3L3 17.5A2 2 0 004.7 20.5h14.6a2 2 0 001.7-3L13.7 4.3a2 2 0 00-3.4 0z"/><path d="M12 9.5v4.5"/><path d="M12 17.3v.2"/>
+  </symbol>
+  <symbol id="i-silence" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="6" y="9" width="12" height="11" rx="2.5"/><path d="M9.5 6.2a4 4 0 015 0"/><path d="M3.5 3.5l17 17"/>
+  </symbol>
+  <symbol id="i-aide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.4a2.5 2.5 0 014.8.9c0 1.7-2.4 2.2-2.4 3.7"/><path d="M12 16.9v.2"/>
+  </symbol>
+  <symbol id="i-reglages" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>
+  </symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.5 6l6 6-6 6"/>
+  </symbol>
+  <symbol id="i-fermer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>
+  </symbol>
+  <symbol id="i-copier" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6.5a2 2 0 00-2-2h-7a2 2 0 00-2 2v7a2 2 0 002 2h2"/>
+  </symbol>
+  <symbol id="i-utilisateur" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0114 0"/>
+  </symbol>
+  <symbol id="i-direct" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="2.2"/><path d="M8 8a5.7 5.7 0 000 8M16 8a5.7 5.7 0 010 8"/><path d="M5.2 5.2a9.6 9.6 0 000 13.6M18.8 5.2a9.6 9.6 0 010 13.6"/>
+  </symbol>
+  <symbol id="i-note" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6.5 3.5h8l4 4v13h-12z"/><path d="M14.5 3.5v4h4"/><path d="M9.5 12.5h5M9.5 16h5"/>
+  </symbol>
+  <symbol id="i-plus-options" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="6" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18" cy="12" r="1.2"/>
+  </symbol>
+  <!-- Icône ajoutée par la direction C (même style : 24 x 24, trait 1.75, arrondi) -->
+  <symbol id="i-supprimer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 7h15"/><path d="M9.5 7V5.2a1.7 1.7 0 011.7-1.7h1.6a1.7 1.7 0 011.7 1.7V7"/><path d="M6.5 7l.9 11.7a2 2 0 002 1.8h5.2a2 2 0 002-1.8L17.5 7"/><path d="M10.2 11v5.5M13.8 11v5.5"/>
+  </symbol>
+</svg>
+
+<a class="lien-evitement" href="#contenu">Aller au contenu</a>
+
+<header class="bandeau">
+  <div class="conteneur bandeau__barre">
+    <a class="marque" href="accueil.html">
+      <span class="marque__logo"><svg class="ic" aria-hidden="true"><use href="#i-puce"/></svg></span>
+      <span>
+        <span class="marque__nom">MetroTrack</span>
+        <span class="marque__site">Laboratoire Lyon-Gerland</span>
+      </span>
+    </a>
+
+    <nav class="onglets" aria-label="Navigation principale">
+      <ul>
+        <li><a href="accueil.html" aria-current="page"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-accueil"/></svg>Accueil</a></li>
+        <li><a href="recherche.html"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-objet"/></svg>Inventaire</a></li>
+        <li><a href="accueil.html#postes"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-poste"/></svg>Postes</a></li>
+        <li><a href="accueil.html#puces"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-puce"/></svg>Puces inconnues <span class="pastille">2<span class="visuellement-cache"> à traiter</span></span></a></li>
+      </ul>
+    </nav>
+
+    <div class="utilisateur">
+      <span class="utilisateur__avatar" aria-hidden="true">CM</span>
+      <span>
+        <span class="utilisateur__nom">Claire Martin</span>
+        <span class="utilisateur__role">Responsable du matériel</span>
+      </span>
+    </div>
+  </div>
+
+  <div class="conteneur heros">
+    <form class="heros__recherche" role="search" action="recherche.html" method="get">
+      <label class="heros__question" for="q">Où est… ?</label>
+      <div class="recherche recherche--grande">
+        <svg class="ic recherche__icone" aria-hidden="true"><use href="#i-recherche"/></svg>
+        <input class="recherche__champ" id="q" name="q" type="search" autocomplete="off"
+               placeholder="Nom d'un objet, marque, numéro de série…"
+               aria-describedby="q-aide" aria-keyshortcuts="Control+K">
+        <span class="recherche__raccourci" aria-hidden="true"><kbd>Ctrl</kbd><kbd>K</kbd></span>
+      </div>
+      <p class="heros__aide" id="q-aide">Tapez quelques lettres : l'emplacement s'affiche tout de suite. Raccourci <kbd>Ctrl</kbd> <kbd>K</kbd> depuis n'importe quel écran.</p>
+    </form>
+
+    <dl class="chiffres" aria-label="Le site en chiffres">
+      <div><dt>objets</dt><dd>248</dd></div>
+      <div><dt>postes</dt><dd>4</dd></div>
+      <div><dt>lecteurs</dt><dd>4</dd></div>
+    </dl>
+  </div>
+</header>
+
+<main id="contenu" class="conteneur page">
+  <h1 class="visuellement-cache">Accueil — Laboratoire Lyon-Gerland</h1>
+
+  <div class="grille-accueil">
+    <div class="colonne">
+
+      <!-- Postes -->
+      <section id="postes" aria-labelledby="titre-postes">
+        <div class="section__tete">
+          <h2 class="section__titre" id="titre-postes"><svg class="ic" aria-hidden="true"><use href="#i-poste"/></svg>Postes</h2>
+          <ul class="etat-lecteurs" aria-label="État des lecteurs">
+            <li class="ok"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-valide"/></svg>3 lecteurs fonctionnent normalement</li>
+            <li class="souci"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-attention"/></svg>1 lecteur silencieux</li>
+          </ul>
+        </div>
+
+        <ul class="tuiles">
+          <li class="tuile">
+            <div class="tuile__tete">
+              <h3><span class="tuile__lettre">Poste A</span><span class="tuile__nom">Réception</span></h3>
+              <p class="tuile__nombre"><strong>38</strong><span>objets présents</span></p>
+            </div>
+            <p class="tuile__dernier">Dernier arrivé : <strong>Oscilloscope Rigol DS1054Z</strong>,
+              <time datetime="2026-11-25T15:45" title="mercredi 25 novembre 2026 à 15 h 45">il y a 25 min</time></p>
+            <p class="tuile__lecteur"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-lecteur"/></svg>Lecteur actif
+              <span class="doux">· dernier scan</span> <time datetime="2026-11-25T15:45" title="mercredi 25 novembre 2026 à 15 h 45">il y a 25 min</time></p>
+          </li>
+
+          <li class="tuile">
+            <div class="tuile__tete">
+              <h3><span class="tuile__lettre">Poste B</span><span class="tuile__nom">Banc d'essais</span></h3>
+              <p class="tuile__nombre"><strong>54</strong><span>objets présents</span></p>
+            </div>
+            <p class="tuile__dernier">Dernier arrivé : <strong>Multimètre Fluke 87V n° 7</strong>,
+              <time datetime="2026-11-25T16:06" title="mercredi 25 novembre 2026 à 16 h 06">il y a 4 min</time></p>
+            <p class="tuile__lecteur"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-lecteur"/></svg>Lecteur actif
+              <span class="doux">· dernier scan</span> <time datetime="2026-11-25T16:06" title="mercredi 25 novembre 2026 à 16 h 06">il y a 4 min</time></p>
+          </li>
+
+          <li class="tuile tuile--silencieux">
+            <div class="tuile__tete">
+              <h3><span class="tuile__lettre">Poste C</span><span class="tuile__nom">Atelier mécanique</span></h3>
+              <p class="tuile__nombre"><strong>21</strong><span>objets présents</span></p>
+            </div>
+            <p class="tuile__signal"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-silence"/></svg>Lecteur silencieux</p>
+            <p class="tuile__dernier">Aucun scan reçu depuis 3 jours (dernier le
+              <time datetime="2026-11-22T17:48" title="dimanche 22 novembre 2026 à 17 h 48">dimanche 22 nov. à 17 h 48</time>).
+              Vérifiez qu'il est bien branché.</p>
+          </li>
+
+          <li class="tuile">
+            <div class="tuile__tete">
+              <h3><span class="tuile__lettre" aria-hidden="true">&nbsp;</span><span class="tuile__nom">Magasin</span></h3>
+              <p class="tuile__nombre"><strong>135</strong><span>objets présents</span></p>
+            </div>
+            <p class="tuile__dernier">Dernier arrivé : <strong>Clé dynamométrique Facom</strong>,
+              <time datetime="2026-11-25T15:08" title="mercredi 25 novembre 2026 à 15 h 08">il y a 1 h</time> (corrigé à la main)</p>
+            <p class="tuile__lecteur"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-lecteur"/></svg>Lecteur actif
+              <span class="doux">· dernier scan</span> <time datetime="2026-11-24T18:02" title="mardi 24 novembre 2026 à 18 h 02">hier à 18 h 02</time></p>
+          </li>
+        </ul>
+      </section>
+
+      <!-- Puces inconnues -->
+      <section id="puces" aria-labelledby="titre-puces">
+        <div class="section__tete">
+          <h2 class="section__titre" id="titre-puces"><svg class="ic" aria-hidden="true"><use href="#i-puce"/></svg>Puces inconnues à traiter <span class="pastille">2</span></h2>
+          <p class="section__meta">Une puce scannée qui ne correspond à aucune fiche.</p>
+        </div>
+        <ul class="puces">
+          <li class="puce-inconnue">
+            <span class="puce-inconnue__icone"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-puce"/></svg></span>
+            <div>
+              <p class="puce-inconnue__titre">Puce inconnue au Poste B · Banc d'essais</p>
+              <p class="puce-inconnue__detail">Scannée <time datetime="2026-11-25T15:58" title="mercredi 25 novembre 2026 à 15 h 58">il y a 12 min</time></p>
+            </div>
+            <div class="puce-inconnue__actions">
+              <a class="bouton bouton--primaire" href="#"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-ajouter"/></svg>Créer une fiche</a>
+              <a class="bouton bouton--secondaire" href="#">Associer à une fiche existante</a>
+            </div>
+          </li>
+          <li class="puce-inconnue">
+            <span class="puce-inconnue__icone"><svg class="ic ic--lg" aria-hidden="true"><use href="#i-puce"/></svg></span>
+            <div>
+              <p class="puce-inconnue__titre">Puce inconnue au Poste A · Réception</p>
+              <p class="puce-inconnue__detail">Scannée <time datetime="2026-11-24T11:20" title="mardi 24 novembre 2026 à 11 h 20">hier à 11 h 20</time></p>
+            </div>
+            <div class="puce-inconnue__actions">
+              <a class="bouton bouton--primaire" href="#"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-ajouter"/></svg>Créer une fiche</a>
+              <a class="bouton bouton--secondaire" href="#">Associer à une fiche existante</a>
+            </div>
+          </li>
+        </ul>
+      </section>
+    </div>
+
+    <div class="colonne">
+      <!-- En direct -->
+      <section class="carte direct" aria-labelledby="titre-direct">
+        <div class="direct__tete">
+          <h2 class="direct__titre" id="titre-direct"><span class="direct__pouls" aria-hidden="true"></span>En direct</h2>
+          <span class="section__meta">Derniers mouvements</span>
+        </div>
+        <ol class="mouvements">
+          <li class="mouvement mouvement--nouveau">
+            <span class="mouvement__icone"><svg class="ic" aria-hidden="true"><use href="#i-deplace"/></svg></span>
+            <div>
+              <p class="mouvement__objet"><a href="fiche.html">Multimètre Fluke 87V n° 7</a></p>
+              <p class="mouvement__vers"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-poste"/></svg>Poste B · Banc d'essais</p>
+              <p class="mouvement__pied">
+                <span class="badge badge--nouveau"><svg class="ic" aria-hidden="true"><use href="#i-direct"/></svg>Nouveau</span>
+                <span>Scanné <time datetime="2026-11-25T16:06" title="mercredi 25 novembre 2026 à 16 h 06">il y a 4 min</time></span>
+              </p>
+            </div>
+          </li>
+          <li class="mouvement">
+            <span class="mouvement__icone"><svg class="ic" aria-hidden="true"><use href="#i-deplace"/></svg></span>
+            <div>
+              <p class="mouvement__objet"><a href="#">Oscilloscope Rigol DS1054Z</a></p>
+              <p class="mouvement__vers"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-poste"/></svg>Poste A · Réception</p>
+              <p class="mouvement__pied"><span>Scanné <time datetime="2026-11-25T15:45" title="mercredi 25 novembre 2026 à 15 h 45">il y a 25 min</time></span></p>
+            </div>
+          </li>
+          <li class="mouvement mouvement--main">
+            <span class="mouvement__icone"><svg class="ic" aria-hidden="true"><use href="#i-main"/></svg></span>
+            <div>
+              <p class="mouvement__objet"><a href="#">Clé dynamométrique Facom 40–200 N·m</a></p>
+              <p class="mouvement__vers"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-poste"/></svg>Magasin</p>
+              <p class="mouvement__pied">
+                <span class="badge badge--main"><svg class="ic" aria-hidden="true"><use href="#i-main"/></svg>Corrigé à la main par Claire Martin</span>
+                <time datetime="2026-11-25T15:08" title="mercredi 25 novembre 2026 à 15 h 08">il y a 1 h</time>
+              </p>
+            </div>
+          </li>
+          <li class="mouvement">
+            <span class="mouvement__icone"><svg class="ic" aria-hidden="true"><use href="#i-deplace"/></svg></span>
+            <div>
+              <p class="mouvement__objet"><a href="#">Caméra thermique FLIR E8</a></p>
+              <p class="mouvement__vers"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-poste"/></svg>Poste B · Banc d'essais</p>
+              <p class="mouvement__pied"><span>Scanné <time datetime="2026-11-25T14:02" title="mercredi 25 novembre 2026 à 14 h 02">il y a 2 h</time></span></p>
+            </div>
+          </li>
+          <li class="mouvement">
+            <span class="mouvement__icone"><svg class="ic" aria-hidden="true"><use href="#i-deplace"/></svg></span>
+            <div>
+              <p class="mouvement__objet"><a href="#">Alimentation de labo Keysight E36313A</a></p>
+              <p class="mouvement__vers"><svg class="ic ic--sm" aria-hidden="true"><use href="#i-poste"/></svg>Poste A · Réception</p>
+              <p class="mouvement__pied"><span>Scanné <time datetime="2026-11-25T09:31" title="mercredi 25 novembre 2026 à 9 h 31">ce matin à 9 h 31</time></span></p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <details class="aide">
+        <summary>
+          <svg class="ic" aria-hidden="true"><use href="#i-aide"/></svg>
+          Comment ça marche ?
+          <svg class="ic ic--sm aide__chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
+        </summary>
+        <div class="aide__corps">
+          <p>Chaque objet porte une puce. En arrivant à un poste, on la passe devant le lecteur : MetroTrack note que l'objet est là.</p>
+          <p>Si un objet a bougé sans être scanné, corrigez son emplacement depuis sa fiche.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+</main>
+</body>
+</html>

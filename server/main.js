@@ -110,8 +110,8 @@ function devSeed() {
   db.exec('BEGIN IMMEDIATE');
   try {
     const station = db.prepare('INSERT INTO stations (name, created_at) VALUES (?, ?)').run('Poste 1', now);
-    db.prepare('INSERT INTO readers (id, station_id, aead_key, created_at) VALUES (1, ?, ?, ?)')
-      .run(station.lastInsertRowid, key, now);
+    db.prepare('INSERT INTO readers (id, station_id, name, aead_key, created_at) VALUES (1, ?, ?, ?, ?)')
+      .run(station.lastInsertRowid, 'Boîtier de démonstration', key, now);
     // « Multimètre démo » (UID 04A1B2C3D4E5F6) et le lecteur 1 : inchangés, le simulateur et
     // les tests en dépendent.
     db.prepare('INSERT INTO items (uid_nfc, name, created_at, updated_at) VALUES (?, ?, ?, ?)')

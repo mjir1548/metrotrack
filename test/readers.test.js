@@ -9,7 +9,10 @@ import { ingestFrame } from '../server/ingest.js';
 import { encodeFrame } from '../server/protocol.js';
 import {
   createReader, assignReader, deactivateReader, replaceReader, listReaders, getReader, readerScans, MAX_READER_ID,
+  renameReader, validateReaderName, MAX_READER_NAME_CHARS,
 } from '../server/readers.js';
+import { MAX_STATION_NAME_CHARS } from '../server/stations.js';
+import { readerLabel } from '../server/views.js';
 
 const T0 = '2026-11-18T10:00:00.000Z';
 const T1 = '2026-11-18T11:00:00.000Z';
@@ -46,14 +49,14 @@ test('création : identifiant MAX(id)+1 (1 sur une base vide), clé de 32 octets
   assert.ok(Buffer.isBuffer(first.key) && first.key.length === 32);
   assert.deepEqual(first.station, { id: 1, name: 'Banc 1' });
   assert.ok(storedKey(1).equals(first.key));
-  assert.deepEqual(lastAudit(), { at: T0, user_id: alice, action: 'reader.create', entity_id: 1, details: { id: 1, station: { id: 1, name: 'Banc 1' } } });
+  assert.deepEqual(lastAudit(), { at: T0, user_id: alice, action: 'reader.create', entity_id: 1, details: { id: 1, name: '', station: { id: 1, name: 'Banc 1' } } });
 
   db.prepare('INSERT INTO readers (id, aead_key, created_at) VALUES (41, ?, ?)').run(Buffer.alloc(32, 1), T0);
   const second = createReader(db, alice, null, T0);
   assert.equal(second.id, 42);
   assert.equal(second.station, null);
   assert.equal(getReader(db, 42).station_id, null);
-  assert.deepEqual(lastAudit().details, { id: 42, station: null });
+  assert.deepEqual(lastAudit().details, { id: 42, name: '', station: null });
   assert.ok(!second.key.equals(first.key), 'clés distinctes');
   for (const row of db.prepare('SELECT details FROM audit_log').all()) {
     assert.ok(!containsKey(row.details, first.key) && !containsKey(row.details, second.key));
@@ -143,7 +146,7 @@ test('remplacement : nouveau lecteur (nouvel id, nouvelle clé, même poste), an
   assert.deepEqual(replaced.station, { id: 2, name: 'Banc 2' });
   assert.ok(!replaced.key.equals(old.key));
   assert.deepEqual({ ...getReader(db, replaced.id) }, {
-    id: replaced.id, station_id: 2, station_name: 'Banc 2', active: 1, created_at: T1, last_scan_at: null, last_counter: null,
+    id: replaced.id, name: '', station_id: 2, station_name: 'Banc 2', active: 1, created_at: T1, last_scan_at: null, last_counter: null,
   });
   assert.equal(getReader(db, old.id).active, 0);
   // Deux lignes dans la même transaction : reader.replace sur l'ancien, reader.create sur le nouveau.
@@ -151,7 +154,7 @@ test('remplacement : nouveau lecteur (nouvel id, nouvelle clé, même poste), an
     .reverse().map((r) => ({ ...r, details: JSON.parse(r.details) }));
   assert.deepEqual(lines, [
     { at: T1, user_id: alice, action: 'reader.replace', entity_id: old.id, details: { old_id: old.id, new_id: replaced.id, station: { id: 2, name: 'Banc 2' } } },
-    { at: T1, user_id: alice, action: 'reader.create', entity_id: replaced.id, details: { replaces: old.id, station: { id: 2, name: 'Banc 2' } } },
+    { at: T1, user_id: alice, action: 'reader.create', entity_id: replaced.id, details: { replaces: old.id, name: '', station: { id: 2, name: 'Banc 2' } } },
   ]);
   assert.equal(db.prepare('SELECT count(*) AS n FROM audit_log WHERE entity_id = ? AND action = ?').get(replaced.id, 'reader.create').n, 1);
   // L'ancien est refusé ; le nouveau repart de son propre compteur.
@@ -211,4 +214,77 @@ test('plans : liste, fiche et derniers scans d\'un lecteur lus par l\'index (rea
     assert.ok(plan.some((d) => /INDEX sqlite_autoindex_scans_1/.test(d)), plan.join('\n'));
     assert.ok(!plan.some((d) => /^SCAN (s|s2|scans)\b/.test(d)), plan.join('\n'));
   }
+});
+
+// ---------------------------------------------------------------- nom libre (D-019)
+
+test('nom : validateReaderName nettoie comme les noms de postes ; vide permis ; invisible seul ou trop long refusé', () => {
+  assert.equal(MAX_READER_NAME_CHARS, MAX_STATION_NAME_CHARS);
+  assert.deepEqual(validateReaderName(undefined), { ok: true, name: '', error: null });
+  assert.deepEqual(validateReaderName('   '), { ok: true, name: '', error: null });
+  // NFC (i + accent circonflexe combinant U+0302), blancs réduits (espace insécable U+00A0),
+  // contrôles (U+0007), bidi (U+202E) et invisibles (U+200B) retirés (cleanLine). Caractères
+  // construits par leur code : aucun invisible littéral dans les sources (sources-invisibles.test.js).
+  const cp = (code) => String.fromCodePoint(code);
+  const raw = `  Boi${cp(0x302)}tier ${cp(0x202E)}établi${cp(0x200B)} ${cp(0xA0)} gauche${cp(0x7)} `;
+  assert.deepEqual(validateReaderName(raw), { ok: true, name: 'Boîtier établi gauche', error: null });
+  // Fait seulement de caractères sans glyphe que cleanLine garde (remplissage hangul, braille vide).
+  for (const value of [cp(0x3164), cp(0x2800).repeat(2)]) {
+    const r = validateReaderName(value);
+    assert.equal(r.ok, false, JSON.stringify(value));
+    assert.match(r.error, /au moins une lettre/);
+  }
+  assert.equal(validateReaderName('x'.repeat(MAX_READER_NAME_CHARS)).ok, true);
+  const long = validateReaderName('x'.repeat(MAX_READER_NAME_CHARS + 1));
+  assert.equal(long.ok, false);
+  assert.match(long.error, /ne doit pas dépasser 100 caractères \(101 saisis\)/);
+});
+
+test('nom : création avec nom (audit), renommage avec avant/après, sans changement rien n\'est écrit, lecteur désactivé renommable', () => {
+  const { id, name } = createReader(db, alice, 1n, T0, 'Boîtier établi gauche');
+  assert.equal(name, 'Boîtier établi gauche');
+  assert.equal(getReader(db, id).name, 'Boîtier établi gauche');
+  assert.deepEqual(lastAudit().details, { id, name: 'Boîtier établi gauche', station: { id: 1, name: 'Banc 1' } });
+
+  const before = state();
+  assert.deepEqual(renameReader(db, alice, id, 'Boîtier établi gauche', T1), { changed: false });
+  assert.equal(state(), before, 'rien n\'est écrit');
+
+  assert.deepEqual(renameReader(db, alice, id, 'Boîtier droit', T1), { changed: true });
+  assert.deepEqual(lastAudit(), { at: T1, user_id: alice, action: 'reader.rename', entity_id: id, details: { name: { before: 'Boîtier établi gauche', after: 'Boîtier droit' } } });
+  assert.deepEqual(renameReader(db, alice, id, '', T1), { changed: true });
+  assert.deepEqual(lastAudit().details, { name: { before: 'Boîtier droit', after: '' } });
+
+  assert.equal(deactivateReader(db, alice, id, T1), 'ok');
+  assert.deepEqual(renameReader(db, alice, id, 'Retiré', T1), { changed: true });
+  assert.equal(getReader(db, id).name, 'Retiré');
+  assert.equal(renameReader(db, alice, 999, 'X', T1), 'no_reader');
+});
+
+test('nom : le remplaçant d\'un lecteur reprend son nom ; noms en double permis', () => {
+  const old = createReader(db, alice, 2n, T0, 'Boîtier établi gauche');
+  createReader(db, alice, 1n, T0, 'Boîtier établi gauche');
+  const replaced = replaceReader(db, alice, old.id, T1);
+  assert.equal(replaced.name, 'Boîtier établi gauche');
+  assert.equal(getReader(db, replaced.id).name, 'Boîtier établi gauche');
+  assert.deepEqual(lastAudit().details, { replaces: old.id, name: 'Boîtier établi gauche', station: { id: 2, name: 'Banc 2' } });
+});
+
+test('nom : CHECK de la table (migration 007) — au plus 100 caractères, jamais NULL, vide par défaut', () => {
+  db.prepare('INSERT INTO readers (id, aead_key, created_at) VALUES (5, ?, ?)').run(Buffer.alloc(32, 5), T0);
+  assert.equal(getReader(db, 5).name, '');
+  db.prepare('UPDATE readers SET name = ? WHERE id = 5').run('é'.repeat(100));
+  assert.throws(() => db.prepare('UPDATE readers SET name = ? WHERE id = 5').run('é'.repeat(101)), /CHECK constraint failed/);
+  assert.throws(() => db.prepare('UPDATE readers SET name = NULL WHERE id = 5').run(), /NOT NULL constraint failed/);
+});
+
+test('readerLabel : nom, sinon « Lecteur du poste … » si affecté, sinon « Lecteur n° … »', () => {
+  assert.equal(readerLabel({ id: 7, name: 'Boîtier établi gauche', station_id: 1, station_name: 'Banc 1' }), 'Boîtier établi gauche');
+  assert.equal(readerLabel({ id: 7, name: 'Boîtier établi gauche', station_id: null, station_name: null }), 'Boîtier établi gauche');
+  assert.equal(readerLabel({ id: 7, name: '', station_id: 1, station_name: 'Banc 1' }), 'Lecteur du poste Banc 1');
+  assert.equal(readerLabel({ id: 7, name: '', station_id: null, station_name: null }), 'Lecteur n° 7');
+  // Les lectures fournissent les colonnes attendues.
+  createReader(db, alice, 1n, T0);
+  createReader(db, alice, null, T0, 'Mobile');
+  assert.deepEqual(listReaders(db).map(readerLabel), ['Lecteur du poste Banc 1', 'Mobile']);
 });

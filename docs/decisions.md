@@ -186,9 +186,9 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
 
 ## Limites acceptées pour le MVP (étape 6)
 
-- La clé d'un lecteur s'affiche dans la réponse au formulaire de création ou de remplacement. Recharger cette page, ou cliquer deux fois, crée un lecteur de plus dont personne n'a la clé. Ce lecteur est inutilisable : il suffit de le désactiver. La page en avertit.
+- La clé d'un lecteur s'affiche dans la réponse au formulaire de création ou de remplacement. Recharger cette page, ou cliquer deux fois, crée un lecteur de plus dont personne n'a la clé. Ce lecteur est inutilisable : il suffit de le désactiver. La page en avertit. Ce lecteur porte le même nom que l'original (D-019) : on le reconnaît à son numéro, affiché dans les listes.
 - Malgré `Cache-Control: no-store`, certains navigateurs peuvent remontrer la page de clé avec le bouton Retour dans le même onglet. La page demande de fermer l'onglet une fois la clé injectée.
-- Un lecteur désactivé ne se réactive pas et ne change plus de poste. Le poste auquel il était affecté ne peut donc plus être supprimé, mais il peut être renommé.
+- Un lecteur désactivé ne se réactive pas et ne change plus de poste. Le poste auquel il était affecté ne peut donc plus être supprimé, mais il peut être renommé. Le lecteur désactivé peut lui aussi être renommé (D-019).
 
 ## Limites acceptées pour le MVP (étape 7)
 
@@ -267,3 +267,33 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
   - **`--test-type`** : une option de test de Chromium qui masque le bandeau « indicateur de ligne de commande non pris en charge ». Elle peut aussi masquer d'autres avertissements. Acceptée **pour le lanceur de démonstration seulement**, à retirer ou remplacer dans le vrai `.exe`. **Choix à confirmer par l'humain** : la garder, ou l'enlever et accepter le bandeau.
 - **Appels sortants d'Edge** : Edge reste un navigateur Microsoft (télémétrie, SmartScreen, mises à jour). Ce ne sont pas des appels de MetroTrack, mais un audit SSI les relèvera. Pour un déploiement réel, il faudra brider Edge par des stratégies de groupe, ou passer à WebView2 avec une configuration contrôlée.
 - **À venir** : le vrai `.exe` signé (étapes U8 et U9 de `docs/ux/plan.md`). Pour l'instant, l'humain a choisi de garder le raccourci.
+
+## D-019 — Nom libre pour les lecteurs
+
+- **Date** : 2026-11-26 · **Statut** : Validée (2026-11-26, accord de l'humain)
+- **Décision** :
+  - les lecteurs reçoivent un nom libre et facultatif (par exemple « Boîtier établi gauche »), modifiable dans l'interface ;
+  - à l'écran, le lecteur est désigné par son nom s'il en a un, sinon par « Lecteur du <poste> » s'il est affecté, et en dernier recours par « Lecteur n° X » ;
+  - le numéro reste visible sur la fiche du lecteur et sur la page de clé, car c'est lui qu'on configure dans le boîtier ;
+  - migration 007 : colonne `name` sur `readers`, texte borné et nettoyé comme les autres noms ;
+  - le contrat avec les boîtiers est inchangé : la trame porte toujours le numéro.
+- **Raison** : l'audit UX relève que « Lecteur n° 7 » ne permet pas de savoir de quel boîtier physique il s'agit.
+- **Mise en œuvre (2026-11-26)** :
+  - une seule fonction construit la désignation : `readerLabel` (`server/views.js`). Libellé retenu : « Lecteur du poste <nom> », plutôt que « Lecteur du <nom> », qui donnerait « Lecteur du Atelier » (**à confirmer par l'humain**) ;
+  - nom facultatif, 100 caractères au plus (CHECK en base, migration 007), nettoyé par `cleanLine` ; s'il n'est pas vide, il doit contenir au moins un caractère visible ;
+  - pas d'unicité : un lecteur remplacé et son remplaçant portent le même nom (le remplaçant reprend le nom), et le poste et l'état les distinguent ;
+  - « Renommer » reste possible sur un lecteur désactivé. Audit : `reader.rename` `{name: {before, after}}`. Le nom figure aussi dans `reader.create` ;
+  - frise des scans d'un objet : « Scanné par <nom> » seulement si le lecteur a un nom. C'est le nom **actuel** du lecteur : seul le poste du scan est historique. La pastille « lecteur non affecté » reste un état, sans nom ;
+  - le numéro reste affiché comme « Numéro à configurer dans le boîtier » (fiche et page de clé), et en information secondaire dans les listes de lecteurs et sur la fiche poste ;
+  - le nom n'existe que côté serveur : il ne transite jamais par la radio, et `docs/protocole.md` est inchangé ;
+  - limite acceptée : un nom peut imiter un libellé automatique (par exemple « Lecteur n° 3 »). Seuls les utilisateurs connectés peuvent renommer un lecteur.
+
+## D-020 — Ouverture concurrente de la base
+
+- **Date** : 2026-11-26 · **Statut** : Proposée
+- **Décision** (`server/db.js`) :
+  - `busy_timeout` est réglé en premier ;
+  - le passage en WAL est réessayé sur `SQLITE_BUSY` seulement, toutes les 10 ms et au plus pendant 5 s ;
+  - `user_version` est relu sous `BEGIN IMMEDIATE`, ce qui rend toute double migration impossible.
+- **Raison** : sur une base neuve, deux processus qui l'ouvraient en même temps pouvaient échouer tous les deux (« database is locked »). Cas constaté avec le lanceur.
+- **Alternative écartée** : un verrou de fichier externe, plus complexe.

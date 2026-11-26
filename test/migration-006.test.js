@@ -85,7 +85,10 @@ function reference(db, itemId) {
   return { at: last.t, arrived: events[first].t, station: last.station_id };
 }
 
-const dumpTables = (db) => JSON.stringify(TABLES.map((t) => db.prepare(`SELECT * FROM ${t} ORDER BY rowid`).all()));
+// readers : colonnes de la version 6, explicites. La migration 007 (D-019) ajoute readers.name
+// (test/migration-007.test.js) ; les données existantes, elles, ne doivent pas changer.
+const columnsOf = (t) => (t === 'readers' ? 'id, station_id, aead_key, active, created_at' : '*');
+const dumpTables = (db) => JSON.stringify(TABLES.map((t) => db.prepare(`SELECT ${columnsOf(t)} FROM ${t} ORDER BY rowid`).all()));
 const dumpView = (db) => JSON.stringify(db.prepare('SELECT * FROM item_locations ORDER BY item_id').all());
 const indexesOnScans = (db) => db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'scans' AND sql IS NOT NULL ORDER BY name").all()
   .map((r) => ({ ...r }));
@@ -102,7 +105,7 @@ test('migration 006 : base en version 5 avec des données → version 6, donnée
 
     const db = openDb(path);
     try {
-      assert.equal(db.prepare('PRAGMA user_version').get().user_version, 6);
+      assert.equal(db.prepare('PRAGMA user_version').get().user_version, 7);
       assert.equal(dumpTables(db), tablesBefore, 'aucune donnée modifiée');
       assert.equal(dumpView(db), viewBefore, 'vue item_locations identique');
       assert.deepEqual(indexesOnScans(db), [
@@ -145,7 +148,7 @@ test('migration 006 : base en version 5 avec des données → version 6, donnée
       db.close();
     }
     const again = openDb(path); // aucune migration rejouée
-    assert.equal(again.prepare('PRAGMA user_version').get().user_version, 6);
+    assert.equal(again.prepare('PRAGMA user_version').get().user_version, 7);
     assert.equal(indexesOnScans(again).length, 2);
     again.close();
   } finally {

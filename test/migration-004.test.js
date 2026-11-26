@@ -180,7 +180,7 @@ test('migration 004 : base en version 3 avec des données → version 4, localis
     try {
       // openDb applique aussi les migrations suivantes (005 : postes et lecteurs ; 006 : index
       // scans_by_uid élargi, étape U0).
-      assert.equal(db.prepare('PRAGMA user_version').get().user_version, 6);
+      assert.equal(db.prepare('PRAGMA user_version').get().user_version, 7);
       // Reconstruction de items (AUTOINCREMENT) : données et localisations identiques.
       assert.deepEqual(db.prepare('SELECT * FROM items ORDER BY id').all().map((r) => ({ ...r })), itemsBefore);
       assert.deepEqual(rowsOf(db, 'item_locations'), before);
@@ -221,7 +221,7 @@ test('migration 004 : base en version 3 avec des données → version 4, localis
       db.close();
     }
     const again = openDb(path); // aucune migration rejouée
-    assert.equal(again.prepare('PRAGMA user_version').get().user_version, 6);
+    assert.equal(again.prepare('PRAGMA user_version').get().user_version, 7);
     again.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });

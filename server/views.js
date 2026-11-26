@@ -13,7 +13,7 @@ import {
   MAX_NAME_CHARS, MAX_NOTES_CHARS, MAX_PROPERTIES, MAX_PROPERTY_KEY_CHARS, MAX_PROPERTY_VALUE_CHARS,
 } from './items.js';
 import { MAX_STATION_NAME_CHARS, MAX_STATION_DESCRIPTION_CHARS, hasHistory } from './stations.js';
-import { MAX_READER_ID } from './readers.js';
+import { MAX_READER_ID, MAX_READER_NAME_CHARS } from './readers.js';
 import { AIDE } from './aide.js';
 import { icon, spriteFor } from './icones.js';
 
@@ -46,6 +46,8 @@ const READER_NOTICES = {
   affecte: 'Poste du lecteur modifié. Les scans déjà enregistrés gardent leur poste.',
   inchange: 'Aucune modification : le lecteur était déjà à ce poste.',
   desactive: 'Lecteur désactivé. Ses scans sont désormais refusés.',
+  renomme: 'Nom du lecteur enregistré.',
+  nom_inchange: 'Aucune modification : le lecteur portait déjà ce nom.',
 };
 
 // Marque : pastille + nom. Dans l'application, c'est un lien vers l'inventaire.
@@ -390,7 +392,8 @@ ${item.properties.map(([key, value]) => html`<div><dt>${key}</dt><dd>${value}</d
 
   // Derniers scans de la puce, en frise verticale (le plus récent en haut). Le premier est
   // marqué « Emplacement actuel » quand c'est lui qui donne l'emplacement (pas de correction
-  // manuelle plus récente).
+  // manuelle plus récente). Lecteur nommé (D-019) : « Scanné par <nom> » ; sans nom, le poste
+  // du scan suffit (et « Lecteur non affecté » mène déjà au lecteur).
   let scanHistory;
   if (item.uid_nfc === null) scanHistory = html`<p class="texte-doux">Aucune puce associée.</p>`;
   else if (scans.length === 0) scanHistory = html`<p class="texte-doux">Aucun scan pour cette puce.</p>`;
@@ -403,7 +406,7 @@ ${scans.map((scan, i) => {
 <span class="frise-noeud">${icon('lecteur')}</span>
 <div class="frise-contenu">
 <p class="frise-lieu">${scan.station_id === null ? html`<a class="lien-simple" href="/readers/${scan.reader_id}">Lecteur non affecté</a>` : scan.station_name}</p>
-<p class="frise-detail">Scanné${current ? html` <span class="badge badge--ok">Emplacement actuel</span>` : null}</p>
+<p class="frise-detail">Scanné${scan.reader_name === '' ? null : html` par ${readerLabel({ id: scan.reader_id, name: scan.reader_name, station_id: null })}`}${current ? html` <span class="badge badge--ok">Emplacement actuel</span>` : null}</p>
 </div>
 </li>
 `;
@@ -645,7 +648,34 @@ const stationsSection = { section: SECTION_STATIONS };
 const readersSection = { section: SECTION_READERS };
 const STATIONS_TRAIL = ['/stations', 'Postes'];
 const READERS_TRAIL = ['/readers', 'Lecteurs'];
-const readerTrail = (reader) => [READERS_TRAIL, [`/readers/${reader.id}`, `Lecteur n° ${reader.id}`]];
+
+/**
+ * Désignation d'un lecteur à l'écran (D-019), SEULE fonction qui la construit :
+ *   1. son nom, s'il en a un ;
+ *   2. sinon « Lecteur du poste <nom du poste> », s'il est affecté ;
+ *   3. sinon « Lecteur n° <numéro> ».
+ * Texte brut : échappé par le gabarit html`...` là où il est inséré.
+ * Deux lecteurs peuvent porter la même désignation (remplaçant qui reprend le nom, deux
+ * lecteurs sans nom au même poste) : les tableaux de lecteurs (liste, fiche poste) affichent
+ * donc aussi le numéro, dans une colonne « N° boîtier ».
+ * @param {{id: number, name: string, station_id: number|null, station_name?: string|null}} reader
+ *   station : poste ACTUEL du lecteur (readers.station_id), pas celui d'un scan passé.
+ */
+export function readerLabel(reader) {
+  if (reader.name) return reader.name;
+  if (reader.station_id !== null && reader.station_name) return `Lecteur du poste ${reader.station_name}`;
+  return `Lecteur n° ${reader.id}`;
+}
+
+const readerTrail = (reader) => [READERS_TRAIL, [`/readers/${reader.id}`, readerLabel(reader)]];
+
+// Sous-titre des pages d'action sur un lecteur : sa désignation, puis son poste quand la
+// désignation ne le contient pas déjà (lecteur nommé, ou non affecté).
+function readerSubtitle(reader) {
+  const label = readerLabel(reader);
+  if (reader.name === '' && reader.station_id !== null) return label;
+  return `${label} · ${reader.station_id === null ? 'non affecté' : reader.station_name}`;
+}
 
 /**
  * Page d'information (introuvable, action impossible) : encadré centré.
@@ -674,7 +704,7 @@ export function readerNotFoundPage(user) {
 export function readerInactivePage(user, { reader }) {
   return messagePage(user, {
     title: 'Lecteur désactivé',
-    text: `Le lecteur n° ${reader.id} est désactivé définitivement : il ne peut plus changer de poste, ni être désactivé ou remplacé une seconde fois.`,
+    text: `${readerLabel(reader)} est désactivé définitivement : il ne peut plus changer de poste, ni être désactivé ou remplacé une seconde fois.`,
     hint: 'Pour remettre un boîtier en service, créez un nouveau lecteur.',
     parents: readerTrail(reader),
     action: { href: '/readers/new', label: 'Nouveau lecteur' },
@@ -750,10 +780,11 @@ export function stationPage(user, { station, readers, items, deletable, now, not
   const readerList = readers.length === 0
     ? html`<p class="texte-doux">Aucun lecteur n'est affecté à ce poste. On affecte un lecteur depuis sa fiche («&nbsp;Changer de poste&nbsp;»), ou à sa création.</p>`
     : html`<table class="tableau tableau-lecteurs-poste">
-<thead><tr><th scope="col">Lecteur</th><th scope="col">État</th><th scope="col">Créé</th></tr></thead>
+<thead><tr><th scope="col">Lecteur</th><th scope="col">N° boîtier</th><th scope="col">État</th><th scope="col">Créé</th></tr></thead>
 <tbody>
 ${readers.map((reader) => html`<tr>
-<td><a class="lien-objet" href="/readers/${reader.id}">Lecteur n° ${reader.id}</a></td>
+<td><a class="lien-objet" href="/readers/${reader.id}">${readerLabel(reader)}</a></td>
+<td data-label="N° boîtier"><span class="numero-boitier">${reader.id}</span></td>
 <td data-label="État">${readerBadge(reader)}</td>
 <td data-label="Créé">${formatDateTime(reader.created_at)}</td>
 </tr>
@@ -894,10 +925,11 @@ export function readersPage(user, { readers, now }) {
 <p class="texte-doux">Créez un lecteur avec le bouton «&nbsp;Nouveau lecteur&nbsp;» : l'application lui attribue un numéro et une clé, à installer dans le boîtier.</p>`)
     : html`<div class="panneau-tableau">
 <table class="tableau tableau-lecteurs">
-<thead><tr><th scope="col">Lecteur</th><th scope="col">Poste</th><th scope="col">État</th><th scope="col">Dernier scan</th><th scope="col">Créé</th></tr></thead>
+<thead><tr><th scope="col">Lecteur</th><th scope="col">N° boîtier</th><th scope="col">Poste</th><th scope="col">État</th><th scope="col">Dernier scan</th><th scope="col">Créé</th></tr></thead>
 <tbody>
 ${readers.map((reader) => html`<tr>
-<td><a class="lien-objet" href="/readers/${reader.id}">Lecteur n° ${reader.id}</a></td>
+<td><a class="lien-objet" href="/readers/${reader.id}">${readerLabel(reader)}</a></td>
+<td data-label="N° boîtier"><span class="numero-boitier">${reader.id}</span></td>
 <td data-label="Poste">${stationLink(reader.station_id, reader.station_name)}</td>
 <td data-label="État">${readerBadge(reader)}</td>
 <td data-label="Dernier scan">${reader.last_scan_at === null ? html`<span class="texte-doux">aucun</span>` : timeTag(reader.last_scan_at, now)}</td>
@@ -922,13 +954,19 @@ ${body}`, { ...readersSection, exact: true });
  */
 export function readerPage(user, { reader, scans, now, notice = null }) {
   const active = reader.active === 1;
+  const label = readerLabel(reader);
+  // « Renommer » reste proposé sur un lecteur désactivé : le nom aide à le reconnaître dans
+  // l'historique.
   const actions = active
     ? html`<div class="actions-page">
 <a class="bouton" href="/readers/${reader.id}/station">Changer de poste</a>
+<a class="bouton bouton-secondaire" href="/readers/${reader.id}/rename">${icon('modifier')}Renommer</a>
 <a class="bouton bouton-secondaire" href="/readers/${reader.id}/replace">Remplacer la clé</a>
 <a class="lien-danger" href="/readers/${reader.id}/deactivate">Désactiver</a>
 </div>`
-    : null;
+    : html`<div class="actions-page">
+<a class="bouton bouton-secondaire" href="/readers/${reader.id}/rename">${icon('modifier')}Renommer</a>
+</div>`;
 
   const scanList = scans.length === 0
     ? html`<p class="texte-doux">Aucun scan reçu de ce lecteur.</p>`
@@ -943,9 +981,9 @@ ${scans.map((scan) => html`<tr>
 `)}</tbody>
 </table>`;
 
-  return appLayout(user, `Lecteur n° ${reader.id}`, html`${trail([READERS_TRAIL], `Lecteur n° ${reader.id}`)}
+  return appLayout(user, label, html`${trail([READERS_TRAIL], label)}
 ${noticeFor(READER_NOTICES, notice)}<div class="entete-page entete-actions">
-<div class="titre-icone">${icon('lecteur')}<h1>Lecteur n° ${reader.id}</h1></div>
+<div class="titre-icone">${icon('lecteur')}<h1>${label}</h1></div>
 ${actions}
 </div>
 ${AIDE.lecteur}<div class="fiche">
@@ -959,7 +997,9 @@ ${AIDE.lecteur}<div class="fiche">
 <section class="carte carte-corps" aria-labelledby="titre-identification">
 <h2 id="titre-identification" class="carte-titre">${icon('note')}Identification</h2>
 <dl class="proprietes">
+<div><dt>Nom</dt><dd>${reader.name === '' ? html`<span class="texte-doux">aucun</span>` : reader.name}</dd></div>
 <div><dt>Poste</dt><dd>${stationLink(reader.station_id, reader.station_name)}</dd></div>
+<div><dt>Numéro à configurer dans le boîtier</dt><dd><span class="numero-boitier">${reader.id}</span></dd></div>
 <div><dt>Créé</dt><dd>${formatDateTime(reader.created_at)}</dd></div>
 <div><dt>Dernier scan</dt><dd>${reader.last_scan_at === null ? html`<span class="texte-doux">aucun</span>` : timeTag(reader.last_scan_at, now)}</dd></div>
 </dl>
@@ -983,17 +1023,28 @@ ${stations.map((station) => html`<option value="${station.id}"${String(station.i
 ${fieldError('station-erreur', error)}</div>`;
 }
 
+// Champ « Nom » d'un lecteur (création, renommage) : facultatif, une ligne.
+function readerNameField({ value, error }) {
+  return html`<div class="champ">
+<label for="name">Nom <span class="obligatoire">(facultatif)</span></label>
+<input id="name" name="name" value="${value}" maxlength="${MAX_READER_NAME_CHARS}" autocomplete="off" aria-describedby="${describedBy('name-aide', 'name-erreur', error)}"${invalid(error)}>
+<p class="aide" id="name-aide">Pour reconnaître le boîtier, par exemple «&nbsp;Boîtier établi gauche&nbsp;». Sans nom, le lecteur est désigné par son poste. ${MAX_READER_NAME_CHARS} caractères au plus.</p>
+${fieldError('name-erreur', error)}</div>`;
+}
+
 /**
- * Création d'un lecteur : choix facultatif du poste.
- * @param {{stations: {id, name}[], selected?: string, error?: string|null}} data
+ * Création d'un lecteur : nom et poste facultatifs.
+ * @param {{stations: {id, name}[], selected?: string, error?: string|null, name?: string, nameError?: string|null}} data
+ *   error : erreur sur le poste ; name : saisie du nom à réafficher.
  */
-export function readerFormPage(user, { stations, selected = '', error = null }) {
+export function readerFormPage(user, { stations, selected = '', error = null, name = '', nameError = null }) {
   return appLayout(user, 'Nouveau lecteur', html`${trail([READERS_TRAIL], 'Nouveau lecteur')}
 <div class="entete-page">
 <h1>Nouveau lecteur</h1>
 </div>
-${AIDE.nouveauLecteur}<form class="formulaire-page" method="post" action="/readers/new">
+${AIDE.nouveauLecteur}${error === null && nameError === null ? null : html`<p class="erreur" role="alert">Le lecteur n'a pas été créé. Corrigez les champs signalés ci-dessous : votre saisie est conservée.</p>\n`}<form class="formulaire-page" method="post" action="/readers/new">
 <input type="hidden" name="csrf" value="${user.csrf}">
+${readerNameField({ value: name, error: nameError })}
 ${stationSelect({ stations, selected, error, help: 'Facultatif : le lecteur peut être affecté à un poste plus tard.' })}
 <p class="aide">L'application attribue le numéro du lecteur et crée sa clé. La clé sera affichée une seule fois, sur la page suivante, pour être installée dans le boîtier.</p>
 <div class="actions-formulaire">
@@ -1013,11 +1064,33 @@ export function readerStationPage(user, { reader, stations, selected = null, err
   return appLayout(user, 'Changer de poste', html`${trail(readerTrail(reader), 'Changer de poste')}
 <div class="entete-page">
 <h1>Changer de poste</h1>
-<p class="sous-titre-page">Lecteur n° ${reader.id}</p>
+<p class="sous-titre-page">${readerSubtitle(reader)}</p>
 </div>
 ${AIDE.changerPoste}${error === null ? null : html`<p class="erreur" role="alert">Le poste n'a pas été changé.</p>\n`}<form class="formulaire-page" method="post" action="/readers/${reader.id}/station">
 <input type="hidden" name="csrf" value="${user.csrf}">
 ${stationSelect({ stations, selected: current, error, help: 'Les scans déjà enregistrés gardent leur poste : seuls les prochains scans de ce lecteur seront rattachés au poste choisi.' })}
+<div class="actions-formulaire">
+<button class="bouton" type="submit">Enregistrer</button>
+<a class="lien-annuler" href="/readers/${reader.id}">Annuler</a>
+</div>
+</form>`, readersSection);
+}
+
+/**
+ * Renommage d'un lecteur (actif ou désactivé). Nom vide : le lecteur redevient désigné par son
+ * poste (readerLabel).
+ * @param {{reader: object, name?: string|null, error?: string|null}} data
+ *   name : saisie à réafficher (par défaut le nom actuel).
+ */
+export function readerRenamePage(user, { reader, name = null, error = null }) {
+  return appLayout(user, 'Renommer le lecteur', html`${trail(readerTrail(reader), 'Renommer')}
+<div class="entete-page">
+<h1>Renommer le lecteur</h1>
+<p class="sous-titre-page">${readerSubtitle(reader)}</p>
+</div>
+${AIDE.renommerLecteur}${error === null ? null : html`<p class="erreur" role="alert">Le nom n'a pas été enregistré. Corrigez le champ signalé ci-dessous : votre saisie est conservée.</p>\n`}<form class="formulaire-page" method="post" action="/readers/${reader.id}/rename">
+<input type="hidden" name="csrf" value="${user.csrf}">
+${readerNameField({ value: name ?? reader.name, error })}
 <div class="actions-formulaire">
 <button class="bouton" type="submit">Enregistrer</button>
 <a class="lien-annuler" href="/readers/${reader.id}">Annuler</a>
@@ -1030,7 +1103,7 @@ export function deactivateReaderPage(user, { reader }) {
   return appLayout(user, 'Désactiver le lecteur', html`${trail(readerTrail(reader), 'Désactiver')}
 <div class="entete-page">
 <h1>Désactiver le lecteur</h1>
-<p class="sous-titre-page">Lecteur n° ${reader.id} · ${reader.station_id === null ? 'non affecté' : reader.station_name}</p>
+<p class="sous-titre-page">${readerSubtitle(reader)}</p>
 </div>
 ${AIDE.desactiverLecteur}<div class="panneau panneau-danger">
 <p>Ses scans seront refusés dès maintenant.</p>
@@ -1052,11 +1125,11 @@ export function replaceReaderPage(user, { reader }) {
   return appLayout(user, 'Remplacer la clé', html`${trail(readerTrail(reader), 'Remplacer la clé')}
 <div class="entete-page">
 <h1>Remplacer la clé</h1>
-<p class="sous-titre-page">Lecteur n° ${reader.id} · ${station}</p>
+<p class="sous-titre-page">${readerSubtitle(reader)}</p>
 </div>
 ${AIDE.remplacerCle}<div class="panneau panneau-danger">
-<p>Un <strong>nouveau lecteur</strong> sera créé, avec un nouveau numéro et une nouvelle clé, au même poste (${station}).</p>
-<p>Le lecteur n° ${reader.id} sera <strong>désactivé définitivement</strong> : ses scans seront refusés dès maintenant, jusqu'à ce que le boîtier reçoive le nouveau numéro et la nouvelle clé.</p>
+<p>Un <strong>nouveau lecteur</strong> sera créé, avec un nouveau numéro et une nouvelle clé, au même poste (${station})${reader.name === '' ? null : html`, sous le même nom`}.</p>
+<p>Ce lecteur sera <strong>désactivé définitivement</strong> : ses scans seront refusés dès maintenant, jusqu'à ce que le boîtier reçoive le nouveau numéro et la nouvelle clé.</p>
 <p class="texte-doux">La nouvelle clé sera affichée une seule fois, sur la page suivante : préparez-vous à l'installer dans le boîtier. Les scans passés sont conservés.</p>
 <form method="post" action="/readers/${reader.id}/replace">
 <input type="hidden" name="csrf" value="${user.csrf}">
@@ -1072,19 +1145,21 @@ ${AIDE.remplacerCle}<div class="panneau panneau-danger">
  * Page UNIQUE où la clé d'un lecteur est affichée : réponse directe au POST de création ou de
  * remplacement (aucune redirection, aucune URL ne la contient), envoyée avec
  * Cache-Control: no-store comme toute page (web.js, sendHtml). Elle n'est jamais réaffichée.
- * @param {{id: number, station: {id, name}|null, keyHex: string, oldId?: number|null}} data
+ * @param {{id: number, name: string, station: {id, name}|null, keyHex: string, oldId?: number|null}} data
  *   keyHex : 64 caractères hexadécimaux en minuscules, le format du fichier lu par
  *   tools/simulateur.js --key-file (comme dev/reader-1.key) ; oldId : lecteur remplacé.
  */
-export function readerKeyPage(user, { id, station, keyHex, oldId = null }) {
+export function readerKeyPage(user, { id, name, station, keyHex, oldId = null }) {
+  const reader = { id, name, station_id: station?.id ?? null, station_name: station?.name ?? null };
+  const label = readerLabel(reader);
   const done = oldId === null
-    ? `Lecteur n° ${id} créé.`
-    : `Clé remplacée : lecteur n° ${id} créé, lecteur n° ${oldId} désactivé.`;
-  return appLayout(user, `Clé du lecteur n° ${id}`, html`${trail([READERS_TRAIL], `Clé du lecteur n° ${id}`)}
+    ? `Lecteur créé : ${label}.`
+    : `Clé remplacée : nouveau numéro ${id}. L'ancien numéro (${oldId}) est désactivé.`;
+  return appLayout(user, `Clé : ${label}`, html`${trail([READERS_TRAIL, [`/readers/${id}`, label]], 'Clé')}
 <p class="succes" role="status">${done}</p>
 <div class="entete-page">
-<h1>Clé du lecteur n° ${id}</h1>
-<p class="sous-titre-page">Poste : ${station === null ? 'non affecté' : station.name}</p>
+<h1>Clé du lecteur</h1>
+<p class="sous-titre-page">${readerSubtitle(reader)}</p>
 </div>
 <div class="panneau panneau-alerte" role="alert">
 <p><strong>Cette clé ne sera plus jamais affichée.</strong> Installez-la maintenant dans le boîtier, avec son numéro de lecteur. Si elle est perdue, remplacez la clé depuis la fiche du lecteur.</p>
@@ -1092,7 +1167,7 @@ export function readerKeyPage(user, { id, station, keyHex, oldId = null }) {
 <p>Fermez cet onglet une fois la clé installée dans le boîtier.</p>
 </div>
 <section class="carte carte-corps carte-cle" aria-labelledby="titre-numero">
-<h2 id="titre-numero" class="etiquette">Numéro du lecteur</h2>
+<h2 id="titre-numero" class="etiquette">Numéro à configurer dans le boîtier</h2>
 <p class="numero-lecteur">${id}</p>
 <h2 id="titre-cle" class="etiquette">Clé secrète</h2>
 <pre class="cle">${keyHex}</pre>

@@ -55,9 +55,17 @@ const scanAt = (readerId, uid, at) => ingestFrame(db, encodeFrame({ readerId, co
 // ---------------------------------------------------------------- nettoyage
 
 test('cleanLine : contrôles C0, DEL, C1 et bidi retirés, espaces de bord retirés', () => {
-  assert.equal(cleanLine(`  a${C0}b${C1_DEL}c${BIDI}d  `), 'abcd');
+  // C0 contient tabulation et sauts de ligne, C1 contient NEL (U+0085) : changés en espace
+  // (réduite à une seule), les autres contrôles retirés.
+  assert.equal(cleanLine(`  a${C0}b${C1_DEL}c${BIDI}d  `), 'a b cd');
+  const breaks = [0x9, 0xA, 0xB, 0xC, 0xD, 0x85, 0x2028, 0x2029];
+  const others = [...Array.from({ length: 32 }, (_, i) => i), 0x7F, ...Array.from({ length: 32 }, (_, i) => 0x80 + i)].filter((c) => !breaks.includes(c));
+  assert.equal(cleanLine(`a${ch(...others)}b`), 'ab');
+  for (const c of breaks) assert.equal(cleanLine(`mot1${ch(c)}mot2`), 'mot1 mot2', c.toString(16));
   assert.equal(cleanLine(`${ch(0x202E)}evil.exe`), 'evil.exe');
-  assert.equal(cleanLine('ligne 1\nligne 2\ttab'), 'ligne 1ligne 2tab');
+  // Copier-coller sur plusieurs lignes : les mots ne sont plus collés.
+  assert.equal(cleanLine('ligne 1\nligne 2\ttab'), 'ligne 1 ligne 2 tab');
+  assert.equal(cleanLine('line1\r\nline2'), 'line1 line2');
   assert.equal(cleanLine(null), '');
   assert.equal(cleanLine(undefined), '');
   assert.equal(cleanLine(42), '');
@@ -83,7 +91,9 @@ test('propriétés : clés identiques à l\'œil (espaces insécables ou multipl
 
 test('cleanLine et cleanNotes : invisibles retirés (U+200B, U+200E, U+200F, U+061C, U+FEFF, U+2028, U+2029, U+00AD) ; U+200C et U+200D gardés', () => {
   const invisible = ch(0x200B, 0x200E, 0x200F, 0x061C, 0xFEFF, 0x2028, 0x2029, 0x00AD);
-  assert.equal(cleanLine(`Mul${invisible}ti`), 'Multi');
+  // cleanLine : U+2028 et U+2029 sont des coupures de ligne, changées en espace (comme \n).
+  assert.equal(cleanLine(`Mul${ch(0x200B, 0x200E, 0x200F, 0x061C, 0xFEFF, 0x00AD)}ti`), 'Multi');
+  assert.equal(cleanLine(`Mul${invisible}ti`), 'Mul ti');
   assert.equal(cleanNotes(`a${invisible}\nb`), 'a\nb');
   for (const joiner of [0x200C, 0x200D]) {
     assert.equal(cleanLine(`a${ch(joiner)}b`), `a${ch(joiner)}b`, joiner.toString(16));

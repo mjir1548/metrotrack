@@ -113,11 +113,13 @@ before(async () => {
   // Lecteur 2 non affecté, puis remplacé (lecteur 3) : page de la nouvelle clé, lecteur désactivé.
   await post('/readers/new', { station: '' });
   pages.set('POST /readers/2/replace (clé)', await post('/readers/2/replace', {}));
+  // Lecteur 4 nommé et non affecté (D-019).
+  pages.set('POST /readers/new (clé, nommé)', await post('/readers/new', { name: 'Boîtier mobile', station: '' }));
   pages.set('POST /items/new (erreurs)', await post('/items/new', { name: '' }));
 
   const connected = ['/', '/?q=Multi', '/?q=introuvable', '/items/new', '/items/1', '/items/1/edit', '/items/1/delete', '/items/1/location',
     '/items/2', '/items/999', '/items/abc', '/stations', '/stations/new', '/stations/1', '/stations/1/edit', '/stations/1/delete', '/stations/2',
-    '/readers', '/readers/new', '/readers/1', '/readers/1/station', '/readers/1/replace', '/readers/1/deactivate', '/readers/2', '/readers/3',
+    '/readers', '/readers/new', '/readers/1', '/readers/1/station', '/readers/1/replace', '/readers/1/deactivate', '/readers/1/rename', '/readers/2', '/readers/3', '/readers/4', '/readers/4/rename',
     '/chips', `/chips/${UID_UNKNOWN}/new`, `/chips/${UID_UNKNOWN}/associate`, `/chips/${UID_UNKNOWN}/associate?q=pied`,
     `/chips/${UID_UNKNOWN}/associate/2`, '/inconnu', '/logout', '/static/inconnu.css'];
   for (const path of connected) pages.set(path, await send({ path }));
@@ -206,16 +208,28 @@ test('vocabulaire du client : aucun terme technique banni dans le texte rendu (t
   assert.deepEqual(found, []);
 });
 
-// Plan U1 : « plus de “lecteur n°” ». Encore affiché à l'écran (bandeau de la fiche lecteur,
-// listes, page de clé, avertissements). Marqué « todo » pour ne pas casser la suite : à
-// décider (nom de lecteur ? numéro présenté autrement ?) avant de lever le marqueur.
-test('vocabulaire du client : plus de « lecteur n° » à l\'écran (plan U1)', { todo: '« Lecteur n° » encore affiché : voir rapport du testeur' }, () => {
+// Plan U1 : « plus de “lecteur n°” », résolu par D-019 (nom libre des lecteurs). Un lecteur est
+// désigné par son nom, sinon par son poste ; « Lecteur n° X » ne reste permis que pour un
+// lecteur ni nommé ni affecté (ici les lecteurs 2 et 3). Le numéro, lui, reste affiché comme
+// « Numéro à configurer dans le boîtier ».
+test('vocabulaire du client : plus de « lecteur n° » pour un lecteur nommé ou affecté (plan U1, D-019)', () => {
+  const readers = db.prepare('SELECT id, name, station_id FROM readers').all();
+  const allowed = new Set(readers.filter((r) => r.name === '' && r.station_id === null).map((r) => r.id));
+  // Le jeu de données couvre les trois cas : affecté sans nom, nommé, ni l'un ni l'autre.
+  assert.ok(readers.some((r) => r.name === '' && r.station_id !== null));
+  assert.ok(readers.some((r) => r.name !== ''));
+  assert.ok(allowed.size > 0);
   const found = [];
   for (const [name, { body }] of pages) {
-    const m = /.{0,30}lecteur n°.{0,30}/i.exec(visibleText(body));
-    if (m) found.push(`${name} : « ${m[0].trim()} »`);
+    const text = visibleText(body);
+    for (const m of text.matchAll(/lecteur n°\s*(\d+)/gi)) {
+      if (!allowed.has(Number(m[1]))) found.push(`${name} : « ${text.slice(Math.max(0, m.index - 30), m.index + 40).trim()} »`);
+    }
   }
   assert.deepEqual(found, []);
+  // Lecteur nommé : son nom est affiché, sur sa fiche comme dans la liste.
+  assert.ok(pages.get('/readers/4').body.includes('<h1>Boîtier mobile</h1>'));
+  assert.ok(pages.get('/readers').body.includes('<a class="lien-objet" href="/readers/4">Boîtier mobile</a>'));
 });
 
 // ---------------------------------------------------------------- route statique

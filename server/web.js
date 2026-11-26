@@ -33,7 +33,7 @@ import {
   listStationSummaries, stationReaders, stationItems,
 } from './stations.js';
 import {
-  createReader, assignReader, deactivateReader, replaceReader, listReaders, getReader, readerScans,
+  createReader, assignReader, deactivateReader, replaceReader, renameReader, validateReaderName, listReaders, getReader, readerScans,
 } from './readers.js';
 import {
   listUnknownChips, getChip, chipPreviousOwner, createItemForChip, associateChip, MAX_ASSOCIATE_RESULTS,
@@ -44,7 +44,7 @@ import {
   itemFormPage, deleteItemPage as deleteView, locationPage as locationView,
   stationsPage, stationPage as stationView, stationFormPage, deleteStationPage as deleteStationView, stationNotFoundPage,
   readersPage, readerPage as readerView, readerFormPage, readerStationPage, deactivateReaderPage as deactivateView,
-  replaceReaderPage as replaceView, readerKeyPage, readerNotFoundPage, readerInactivePage, readerIdsExhaustedPage,
+  replaceReaderPage as replaceView, readerRenamePage, readerKeyPage, readerNotFoundPage, readerInactivePage, readerIdsExhaustedPage,
   chipsPage, associateSearchPage, associateConfirmPage, chipNotFoundPage, chipKnownPage,
 } from './views.js';
 
@@ -180,6 +180,7 @@ const STATION_ROUTES = {
 const READER_ROUTES = {
   '': { GET: readerPage },
   station: { GET: readerStationForm, POST: assignReaderAction },
+  rename: { GET: readerRenameForm, POST: renameReaderAction },
   deactivate: { GET: deactivateReaderPage, POST: deactivateReaderAction },
   replace: { GET: replaceReaderPage, POST: replaceReaderAction },
 };
@@ -566,11 +567,16 @@ function newReaderPage(ctx, req, res) {
 function createReaderAction(ctx, req, res) {
   postForm(ctx, req, res, (session, form) => {
     const user = pageUser(session);
+    const name = validateReaderName(form.get('name'));
     const stationId = stationChoice(form);
-    const outcome = stationId === undefined ? 'no_station' : createReader(ctx.db, session.userId, stationId);
-    if (outcome === 'no_station') {
-      return sendHtml(res, 400, readerFormPage(user, { stations: listStations(ctx.db), selected: form.get('station') ?? '', error: STATION_GONE }));
-    }
+    // Formulaire réaffiché en 400 avec les deux erreurs possibles (nom, poste) et la saisie
+    // nettoyée ; rien n'est écrit tant que le nom est invalide.
+    const again = (stationError) => sendHtml(res, 400, readerFormPage(user, {
+      stations: listStations(ctx.db), selected: form.get('station') ?? '', error: stationError, name: name.name, nameError: name.error,
+    }));
+    if (!name.ok) return again(stationId === undefined ? STATION_GONE : null);
+    const outcome = stationId === undefined ? 'no_station' : createReader(ctx.db, session.userId, stationId, undefined, name.name);
+    if (outcome === 'no_station') return again(STATION_GONE);
     if (outcome === 'ids_exhausted') {
       ctx.log('création de lecteur refusée : plus aucun numéro de lecteur disponible');
       return sendHtml(res, 409, readerIdsExhaustedPage(user));
@@ -605,6 +611,31 @@ function assignReaderAction(ctx, req, res, idText) {
     }
     if (outcome.changed) ctx.log(`lecteur ${reader.id} changé de poste par ${session.username}`);
     redirect(res, `/readers/${reader.id}?ok=${outcome.changed ? 'affecte' : 'inchange'}`);
+  });
+}
+
+// Renommage (D-019) : permis aussi pour un lecteur désactivé (le nom ne change rien à la
+// réception des scans, il aide seulement à reconnaître le boîtier dans l'historique).
+function readerRenameForm(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const reader = findReader(ctx, res, user, idText);
+  if (!reader) return;
+  sendHtml(res, 200, readerRenamePage(user, { reader }));
+}
+
+function renameReaderAction(ctx, req, res, idText) {
+  postForm(ctx, req, res, (session, form) => {
+    const user = pageUser(session);
+    const reader = findReader(ctx, res, user, idText);
+    if (!reader) return;
+    const name = validateReaderName(form.get('name'));
+    if (!name.ok) return sendHtml(res, 400, readerRenamePage(user, { reader, name: name.name, error: name.error }));
+    const outcome = renameReader(ctx.db, session.userId, reader.id, name.name);
+    if (outcome === 'no_reader') return sendHtml(res, 404, readerNotFoundPage(user));
+    if (outcome.changed) ctx.log(`lecteur ${reader.id} renommé par ${session.username}`);
+    redirect(res, `/readers/${reader.id}?ok=${outcome.changed ? 'renomme' : 'nom_inchange'}`);
   });
 }
 
@@ -665,7 +696,7 @@ function replaceReaderAction(ctx, req, res, idText) {
  * minuscules, celui du fichier lu par tools/simulateur.js --key-file.
  */
 function sendKeyPage(res, user, created, oldId) {
-  sendHtml(res, 200, readerKeyPage(user, { id: created.id, station: created.station, keyHex: created.key.toString('hex'), oldId }));
+  sendHtml(res, 200, readerKeyPage(user, { id: created.id, name: created.name, station: created.station, keyHex: created.key.toString('hex'), oldId }));
 }
 
 /** Lecteur désigné par le segment d'URL, ou null après avoir répondu 404 (format invalide ou inexistant). */

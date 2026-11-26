@@ -319,11 +319,15 @@ export function propertyPairs(json) {
     .map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]);
 }
 
-/** Derniers scans d'une puce, du plus récent au plus ancien (index scans_by_uid). */
+/**
+ * Derniers scans d'une puce, du plus récent au plus ancien (index scans_by_uid).
+ * reader_name : nom ACTUEL du lecteur (D-019, '' si sans nom), lu par clé primaire.
+ */
 export function recentScans(db, uid, limit = RECENT_SCANS) {
   return db.prepare(
-    `SELECT s.received_at, s.reader_id, s.station_id, st.name AS station_name
+    `SELECT s.received_at, s.reader_id, r.name AS reader_name, s.station_id, st.name AS station_name
        FROM scans s
+       JOIN readers r ON r.id = s.reader_id
        LEFT JOIN stations st ON st.id = s.station_id
       WHERE s.uid_nfc = ?
       ORDER BY s.received_at DESC, s.id DESC

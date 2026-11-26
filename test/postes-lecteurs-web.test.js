@@ -397,15 +397,16 @@ test('création d\'un lecteur : page de clé unique (200, no-store, sans redirec
   key2 = keyFrom(res);
   shownKeys.push({ id: reader2, hex: key2, page: res.body });
   assert.ok(Buffer.from(db.prepare('SELECT aead_key FROM readers WHERE id = 2').get().aead_key).equals(Buffer.from(key2, 'hex')));
-  assert.ok(res.body.includes('<p class="succes" role="status">Lecteur n° 2 créé.</p>'));
-  assert.ok(res.body.includes('<h1>Clé du lecteur n° 2</h1>'));
+  // D-019 : lecteur sans nom, affecté → désigné par son poste ; le numéro reste affiché.
+  assert.ok(res.body.includes('<p class="succes" role="status">Lecteur créé : Lecteur du poste Banc 2.</p>'));
+  assert.ok(res.body.includes('<h1>Clé du lecteur</h1>\n<p class="sous-titre-page">Lecteur du poste Banc 2</p>'));
   assert.ok(res.body.includes('<p class="numero-lecteur">2</p>'));
   assert.ok(res.body.includes('Cette clé ne sera plus jamais affichée.'));
   assert.ok(res.body.includes('Installez-la maintenant dans le boîtier'));
   assert.ok(res.body.includes('Si elle est perdue, remplacez la clé'));
   assert.ok(res.body.includes('Ne rechargez pas cette page : le navigateur proposerait de renvoyer le formulaire, ce qui créerait un autre lecteur.'));
   assert.ok(res.body.includes('<p>Fermez cet onglet une fois la clé installée dans le boîtier.</p>'));
-  assert.ok(res.body.includes('<section class="carte carte-corps carte-cle" aria-labelledby="titre-numero">\n<h2 id="titre-numero" class="etiquette">Numéro du lecteur</h2>'));
+  assert.ok(res.body.includes('<section class="carte carte-corps carte-cle" aria-labelledby="titre-numero">\n<h2 id="titre-numero" class="etiquette">Numéro à configurer dans le boîtier</h2>'));
   // Étape U1 : libellé sans jargon (« AES-256 », « hexadécimaux »).
   assert.ok(res.body.includes('<h2 id="titre-cle" class="etiquette">Clé secrète</h2>'));
   assert.ok(!res.body.includes('AES') && !res.body.includes('hexadécima'));
@@ -414,7 +415,7 @@ test('création d\'un lecteur : page de clé unique (200, no-store, sans redirec
   assert.ok(res.body.includes('<a class="bouton" href="/readers">Retour aux lecteurs</a>'));
   assert.equal(res.body.split(key2).length - 1, 1, 'clé affichée une seule fois dans la page');
   assertSafePage(res.body, 'page de clé');
-  assert.deepEqual(lastAudit(), { user_id: aliceId, action: 'reader.create', entity_id: 2, details: { id: 2, station: { id: banc, name: 'Banc 2' } } });
+  assert.deepEqual(lastAudit(), { user_id: aliceId, action: 'reader.create', entity_id: 2, details: { id: 2, name: '', station: { id: banc, name: 'Banc 2' } } });
   assert.ok(logs.includes('lecteur 2 créé par alice'));
 });
 
@@ -438,13 +439,15 @@ test('bout en bout : le simulateur, avec la clé affichée, est accepté (204) ;
 test('liste et fiche du lecteur : poste, état, dernier scan, derniers scans avec l\'objet ; ni compteur ni clé', async () => {
   const list = await page('/readers');
   // Étape U1 : la colonne « Dernier compteur » n'est plus affichée (terme technique).
-  assert.match(list.body, /<a class="lien-objet" href="\/readers\/2">Lecteur n° 2<\/a><\/td>\n<td data-label="Poste"><a class="lien-simple" href="\/stations\/\d+">Banc 2<\/a><\/td>\n<td data-label="État"><span class="etat etat-actif">actif<\/span><\/td>\n<td data-label="Dernier scan"><time [^>]*>à l&#39;instant<\/time><\/td>\n<td data-label="Créé">/);
+  assert.match(list.body, /<a class="lien-objet" href="\/readers\/2">Lecteur du poste Banc 2<\/a><\/td>\n<td data-label="N° boîtier"><span class="numero-boitier">2<\/span><\/td>\n<td data-label="Poste"><a class="lien-simple" href="\/stations\/\d+">Banc 2<\/a><\/td>\n<td data-label="État"><span class="etat etat-actif">actif<\/span><\/td>\n<td data-label="Dernier scan"><time [^>]*>à l&#39;instant<\/time><\/td>\n<td data-label="Créé">/);
   assert.ok(!list.body.includes('ompteur'));
-  assert.match(list.body, /href="\/readers\/1">Lecteur n° 1<\/a>[\s\S]*?<td data-label="Dernier scan"><span class="texte-doux">aucun<\/span>/);
+  assert.match(list.body, /href="\/readers\/1">Lecteur du poste Atelier<\/a>[\s\S]*?<td data-label="Dernier scan"><span class="texte-doux">aucun<\/span>/);
   assertSafePage(list.body, 'liste des lecteurs');
   const sheet = await page('/readers/2');
   assert.equal(sheet.status, 200);
-  assert.ok(sheet.body.includes('<h1>Lecteur n° 2</h1>'));
+  assert.ok(sheet.body.includes('<h1>Lecteur du poste Banc 2</h1>'));
+  assert.ok(sheet.body.includes('<div><dt>Numéro à configurer dans le boîtier</dt><dd><span class="numero-boitier">2</span></dd></div>'));
+  assert.ok(sheet.body.includes('<div><dt>Nom</dt><dd><span class="texte-doux">aucun</span></dd></div>'));
   assert.ok(sheet.body.includes('<a class="bouton" href="/readers/2/station">Changer de poste</a>'));
   assert.ok(sheet.body.includes('<a class="bouton bouton-secondaire" href="/readers/2/replace">Remplacer la clé</a>'));
   assert.ok(sheet.body.includes('<a class="lien-danger" href="/readers/2/deactivate">Désactiver</a>'));
@@ -452,7 +455,7 @@ test('liste et fiche du lecteur : poste, état, dernier scan, derniers scans ave
   assert.ok(!sheet.body.includes('ompteur') && !sheet.body.includes('trame'));
   assertSafePage(sheet.body, 'fiche du lecteur');
   const station = await page(`/stations/${stationId('Banc 2')}`);
-  assert.ok(station.body.includes('<a class="lien-objet" href="/readers/2">Lecteur n° 2</a>'));
+  assert.ok(station.body.includes('<a class="lien-objet" href="/readers/2">Lecteur du poste Banc 2</a>'));
   assert.ok(station.body.includes('<a class="lien-objet" href="/items/1">Multimètre</a>'), 'objet présent au poste');
   assert.ok(!station.body.includes('class="lien-danger"'), 'poste avec historique : pas de lien Supprimer');
   assert.ok(station.body.includes('Ce poste a un historique'));
@@ -512,15 +515,16 @@ test('remplacement de clé : confirmation, puis page de la nouvelle clé ; ancie
   key3 = keyFrom(res);
   shownKeys.push({ id: reader3, hex: key3, page: res.body });
   assert.notEqual(key3, key2);
-  assert.ok(res.body.includes('Clé remplacée : lecteur n° 3 créé, lecteur n° 2 désactivé.'));
-  assert.ok(res.body.includes('<p class="sous-titre-page">Poste : Atelier</p>'));
+  assert.ok(res.body.includes('Clé remplacée : nouveau numéro 3. L&#39;ancien numéro (2) est désactivé.'));
+  assert.ok(res.body.includes('<p class="sous-titre-page">Lecteur du poste Atelier</p>'));
+  assert.ok(res.body.includes('<p class="numero-lecteur">3</p>'));
   assert.ok(!res.body.includes('simulateur'), 'aucune procédure de développement sur la page de clé');
   assertSafePage(res.body, 'page de clé (remplacement)');
   const lines = db.prepare('SELECT user_id, action, entity_id, details FROM audit_log ORDER BY id DESC LIMIT 2').all()
     .reverse().map((r) => ({ ...r, details: JSON.parse(r.details) }));
   assert.deepEqual(lines, [
     { user_id: aliceId, action: 'reader.replace', entity_id: 2, details: { old_id: 2, new_id: 3, station: { id: 1, name: 'Atelier' } } },
-    { user_id: aliceId, action: 'reader.create', entity_id: 3, details: { replaces: 2, station: { id: 1, name: 'Atelier' } } },
+    { user_id: aliceId, action: 'reader.create', entity_id: 3, details: { replaces: 2, name: '', station: { id: 1, name: 'Atelier' } } },
   ]);
   assert.deepEqual(db.prepare('SELECT id, station_id, active FROM readers WHERE id IN (2, 3) ORDER BY id').all().map((r) => ({ ...r })),
     [{ id: 2, station_id: 1, active: 0 }, { id: 3, station_id: 1, active: 1 }]);
@@ -572,8 +576,8 @@ test('lecteur non affecté : création sans poste ; un scan donne « lecteur non
   assert.equal(res.status, 200);
   const hex = keyFrom(res);
   shownKeys.push({ id: 4, hex, page: res.body });
-  assert.ok(res.body.includes('<p class="sous-titre-page">Poste : non affecté</p>'));
-  assert.deepEqual(lastAudit().details, { id: 4, station: null });
+  assert.ok(res.body.includes('<p class="sous-titre-page">Lecteur n° 4 · non affecté</p>'));
+  assert.deepEqual(lastAudit().details, { id: 4, name: '', station: null });
   assert.equal((await postFrame(4, 1, Buffer.from(hex, 'hex'))).status, 204);
   const list = await page('/');
   assert.ok(list.body.includes('<a class="lien-etat" href="/readers/4"><span class="etat etat-inconnue">lecteur non affecté</span></a>'));
@@ -581,7 +585,7 @@ test('lecteur non affecté : création sans poste ; un scan donne « lecteur non
   const sheet = await page('/items/1');
   assert.ok(sheet.body.includes('<a class="lien-etat" href="/readers/4"><span class="etat etat-inconnue">'));
   const readers = await page('/readers');
-  assert.match(readers.body, /href="\/readers\/4">Lecteur n° 4<\/a><\/td>\n<td data-label="Poste"><span class="texte-doux">non affecté<\/span>/);
+  assert.match(readers.body, /href="\/readers\/4">Lecteur n° 4<\/a><\/td>\n<td data-label="N° boîtier"><span class="numero-boitier">4<\/span><\/td>\n<td data-label="Poste"><span class="texte-doux">non affecté<\/span>/);
   // Champ « station » forgé : refusé, aucun lecteur créé.
   const before = snapshot();
   for (const station of ['abc', '999', '-1']) {

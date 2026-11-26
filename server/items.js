@@ -35,14 +35,22 @@ export const ACTIONS = {
 // la ligne (U+000A) et la tabulation (U+0009), qui sont gardés.
 const NOTES_CONTROL_CHARS = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u00AD\u061C\u200B\u200E\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069\uFEFF]/g;
 
+// Coupures de ligne et tabulations d'une saisie sur une ligne (souvent un copier-coller) :
+// tabulation, saut de ligne, tabulation verticale, saut de page, retour chariot, NEL (U+0085),
+// séparateurs de ligne et de paragraphe (U+2028, U+2029). Remplacées par une espace AVANT le
+// retrait des contrôles, sinon « ligne1⏎ligne2 » deviendrait « ligne1ligne2 ». Échappements
+// \x et \u{...} : aucun caractère invisible littéral dans les sources.
+const LINE_BREAKS = /[\t\n\v\f\r\x85\u{2028}\u{2029}]/gu;
+
 /**
- * Saisie sur une ligne (nom, clé, valeur) : contrôles, bidi et invisibles retirés, forme NFC
- * (un « é » saisi précomposé ou décomposé est le même texte), suites de blancs réduites à
- * une espace ordinaire (LINE_BLANKS), espaces de bord retirés.
+ * Saisie sur une ligne (nom, clé, valeur) : coupures de ligne et tabulations changées en
+ * espace (LINE_BREAKS), contrôles, bidi et invisibles retirés, forme NFC (un « é » saisi
+ * précomposé ou décomposé est le même texte), suites de blancs réduites à une espace
+ * ordinaire (LINE_BLANKS), espaces de bord retirés.
  */
 export function cleanLine(value) {
   return typeof value === 'string'
-    ? value.replace(CONTROL_CHARS, '').normalize('NFC').replace(LINE_BLANKS, ' ').trim()
+    ? value.replace(LINE_BREAKS, ' ').replace(CONTROL_CHARS, '').normalize('NFC').replace(LINE_BLANKS, ' ').trim()
     : '';
 }
 

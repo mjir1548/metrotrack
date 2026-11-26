@@ -231,6 +231,12 @@ time { white-space: nowrap; }
   white-space: nowrap;
 }
 
+/* Numéro d'un lecteur (à configurer dans le boîtier) : chasse fixe, information secondaire. */
+.numero-boitier {
+  font-family: var(--police-mono);
+  font-weight: 500;
+}
+
 /* --------------------------------------------------------------------------
    3. Barre supérieure
    -------------------------------------------------------------------------- */
@@ -796,6 +802,7 @@ select:focus-visible {
   padding: 0;
   font-weight: 600;
 }
+/* Mention à côté d'une étiquette : « (obligatoire) » ou « (facultatif) ». */
 .obligatoire { color: var(--texte-doux); font-size: var(--t-sm); font-weight: 400; }
 .aide { margin-top: var(--e-2); color: var(--texte-doux); font-size: var(--t-sm); }
 .erreur-champ {

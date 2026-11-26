@@ -187,9 +187,17 @@ export function listStationSummaries(db) {
     .sort((a, b) => collator.compare(a.name, b.name) || a.id - b.id);
 }
 
-/** Lecteurs affectés à un poste, actifs d'abord : [{id, active, created_at}]. Jamais la clé. */
+/**
+ * Lecteurs affectés à un poste, actifs d'abord : [{id, name, station_id, station_name, active,
+ * created_at}] (colonnes de readerLabel, server/views.js). Jamais la clé.
+ */
 export function stationReaders(db, id) {
-  return db.prepare('SELECT id, active, created_at FROM readers WHERE station_id = ? ORDER BY active DESC, id').all(id);
+  return db.prepare(
+    `SELECT r.id, r.name, r.station_id, st.name AS station_name, r.active, r.created_at
+       FROM readers r JOIN stations st ON st.id = r.station_id
+      WHERE r.station_id = ?
+      ORDER BY r.active DESC, r.id`
+  ).all(id);
 }
 
 /**

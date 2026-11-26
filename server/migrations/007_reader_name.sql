@@ -1,0 +1,16 @@
+-- Migration 007 : nom libre des lecteurs (D-019).
+--
+-- Nom facultatif, chaîne vide par défaut : les lecteurs existants restent sans nom et
+-- s'affichent comme avant D-019 (« Lecteur du poste … » ou « Lecteur n° … », server/views.js,
+-- readerLabel). Le nettoyage (une ligne, NFC, invisibles et bidi retirés, au moins un
+-- caractère visible si non vide) est fait par l'application (server/readers.js,
+-- validateReaderName), comme pour les noms de postes.
+--
+-- Borne de longueur : 100, comme MAX_STATION_NAME_CHARS. SQLite compte en caractères
+-- (points de code), l'application en unités UTF-16 : un nom accepté par l'application
+-- (au plus 100 unités UTF-16) a donc au plus 100 points de code. Le CHECK est un filet de
+-- défense en profondeur contre une écriture hors de l'interface, pas la règle de saisie.
+--
+-- ADD COLUMN ne reconstruit pas la table : clés étrangères, triggers et vues inchangés.
+-- Le contrat avec les boîtiers est inchangé (la trame porte toujours le numéro).
+ALTER TABLE readers ADD COLUMN name TEXT NOT NULL DEFAULT '' CHECK (length(name) <= 100);

@@ -669,3 +669,19 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
   - JavaScript local (`Ctrl K`, direct) ;
   - agent `revue-ux` ;
   - affichage des numéros de puce.
+
+### 2026-11-26 — Nom libre des lecteurs (D-019)
+- Accord de l'humain → D-019 (Validée) : nom libre et facultatif pour chaque lecteur. Affichage : le nom, sinon « Lecteur du <poste> », sinon « Lecteur n° X ». Migration 007. Le contrat avec les boîtiers est inchangé.
+- Agent `dev` lancé : nom des lecteurs et correctif du démarrage concurrent sur une base neuve (`server/db.js`).
+- Rapport de `dev` (D-019) : migration 007, renommage avec audit, nom repris au remplacement de clé, `readerLabel()` partout, et correctif `db.js` (`busy_timeout` d'abord, réessais du passage en WAL, `user_version` relu après `BEGIN IMMEDIATE`). 543 tests verts, plus aucun `todo`.
+  - Écart : le libellé est « Lecteur du poste X », plus correct en français.
+- Orchestrateur : 543/543 ; capture de la liste des lecteurs vérifiée. Testeur et revue lancés en parallèle.
+- Revue (D-019) : **OK pour commit**. Point important : afficher le numéro dans les listes pour distinguer les homonymes. Les compléments de documentation sont faits par l'orchestrateur (D-019, limites de l'étape 6, D-020 pour le correctif `db.js`).
+- Testeur (D-019) : aucun défaut, 547 tests. Contre-épreuve : 6 `serve` sur une base neuve démarrent tous (contre 0 sur 5 essais avant).
+- `dev` (aller-retour 2/3) :
+  - colonne « N° boîtier » dans les listes de lecteurs et sur la fiche poste ;
+  - vérification du passage en mode WAL au démarrage ;
+  - `cleanLine` remplace les tabulations et retours à la ligne par une espace.
+
+  548 tests verts.
+- **D-019 et D-020 commités et poussés** (voir git log). Démo redémarrée pour appliquer la migration 007.

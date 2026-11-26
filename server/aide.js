@@ -165,16 +165,18 @@ const lecteurs = encadre(html`<p>Un lecteur est le boîtier posé sur un poste :
 <li>Un lecteur «&nbsp;non affecté&nbsp;» n'est rattaché à aucun poste : les objets qu'il scanne ont pour emplacement «&nbsp;lecteur non affecté&nbsp;». Rattachez-le à un poste depuis sa fiche.</li>
 </ul>`);
 
-const nouveauLecteur = encadre(html`<p>Choisissez le poste du lecteur si vous le connaissez, puis cliquez sur «&nbsp;Créer le lecteur&nbsp;».</p>
+const nouveauLecteur = encadre(html`<p>Donnez un nom au lecteur et choisissez son poste si vous le connaissez, puis cliquez sur «&nbsp;Créer le lecteur&nbsp;».</p>
 <ul>
+<li>Le nom est facultatif : il sert à reconnaître le boîtier, par exemple «&nbsp;Boîtier établi gauche&nbsp;». Sans nom, le lecteur est désigné par son poste, ou par son numéro s'il n'est rattaché à aucun poste. Vous pourrez le renommer depuis sa fiche.</li>
 <li>Le poste est facultatif : vous pourrez le rattacher plus tard.</li>
 <li>L'application crée le numéro du lecteur et sa clé secrète.</li>
 <li>La page suivante affiche la clé une seule fois. La personne qui prépare le boîtier doit l'y installer tout de suite, avec le numéro du lecteur.</li>
 <li>Si la clé est perdue, remplacez-la depuis la fiche du lecteur.</li>
 </ul>`);
 
-const lecteur = encadre(html`<p>La fiche du lecteur montre son poste, son état et les derniers scans qu'il a envoyés.</p>
+const lecteur = encadre(html`<p>La fiche du lecteur montre son nom, son poste, son état, le numéro à configurer dans le boîtier et les derniers scans qu'il a envoyés.</p>
 <ul>
+<li>«&nbsp;Renommer&nbsp;» : donner au lecteur un nom qui permet de reconnaître le boîtier. Le numéro, lui, ne change pas.</li>
 <li>«&nbsp;Changer de poste&nbsp;» : rattacher le lecteur à un autre poste, par exemple quand le boîtier est déplacé. Les scans déjà enregistrés gardent leur poste : l'historique n'est pas réécrit.</li>
 <li>«&nbsp;Remplacer la clé&nbsp;» : si la clé est perdue ou a pu être vue. Un nouveau lecteur est créé, avec un nouveau numéro et une nouvelle clé, et celui-ci est désactivé.</li>
 <li>«&nbsp;Désactiver&nbsp;» : les scans de ce lecteur sont refusés. C'est définitif ; ses scans passés sont conservés.</li>
@@ -188,6 +190,13 @@ const changerPoste = encadre(html`<p>Choisissez le poste où se trouve désormai
 <li>«&nbsp;Non affecté&nbsp;» détache le lecteur de tout poste : les objets qu'il scanne auront pour emplacement «&nbsp;lecteur non affecté&nbsp;».</li>
 </ul>`);
 
+const renommerLecteur = encadre(html`<p>Saisissez le nom du boîtier, puis cliquez sur «&nbsp;Enregistrer&nbsp;».</p>
+<ul>
+<li>Le nom apparaît partout où le lecteur est désigné : listes, fiche du poste, historique des scans d'un objet.</li>
+<li>Laissez le champ vide pour retirer le nom : le lecteur est alors désigné par son poste, ou par son numéro s'il n'est rattaché à aucun poste.</li>
+<li>Le numéro configuré dans le boîtier ne change pas : rien n'est à refaire sur le boîtier.</li>
+</ul>`);
+
 const desactiverLecteur = encadre(html`<p>Désactivez un lecteur hors service, perdu ou retiré.</p>
 <ul>
 <li>Ses scans sont refusés dès la confirmation.</li>
@@ -198,7 +207,7 @@ const desactiverLecteur = encadre(html`<p>Désactivez un lecteur hors service, p
 
 const remplacerCle = encadre(html`<p>Remplacez la clé si elle a été perdue ou a pu être vue.</p>
 <ul>
-<li>Un nouveau lecteur est créé au même poste, avec un nouveau numéro et une nouvelle clé.</li>
+<li>Un nouveau lecteur est créé au même poste et sous le même nom, avec un nouveau numéro et une nouvelle clé.</li>
 <li>L'ancien lecteur est désactivé définitivement : le boîtier ne fonctionne plus tant que la personne qui le prépare n'y a pas installé le nouveau numéro et la nouvelle clé.</li>
 <li>La nouvelle clé n'est affichée qu'une fois, sur la page suivante.</li>
 <li>Les scans passés sont conservés.</li>
@@ -252,6 +261,7 @@ export const AIDE = Object.freeze({
   nouveauLecteur,
   lecteur,
   changerPoste,
+  renommerLecteur,
   desactiverLecteur,
   remplacerCle,
   puces,

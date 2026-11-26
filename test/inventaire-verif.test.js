@@ -105,12 +105,20 @@ const idOf = (name) => db.prepare('SELECT id FROM items WHERE name = ?').get(nam
 const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<\/details>/, '');
 const rowOf = (html, id) => /<tbody>([\s\S]*?)<\/tbody>/.exec(html)?.[1]
   .split('</tr>').find((r) => r.includes(`href="/items/${id}"`));
-const historyStations = (html) => [...(/<table class="tableau tableau-scans">([\s\S]*?)<\/table>/.exec(html)?.[1] ?? '')
-  .matchAll(/<td data-label="Poste">([\s\S]*?)<\/td>/g)].map((m) => m[1]);
+// Derniers scans de la fiche : frise verticale depuis l'étape U1 (un lieu par étape).
+const historyStations = (html) => [...(/<ol class="frise">([\s\S]*?)<\/ol>/.exec(html)?.[1] ?? '')
+  .matchAll(/<p class="frise-lieu">([\s\S]*?)<\/p>/g)].map((m) => m[1]);
+// Page sans les icônes du gabarit (sprite constant et <svg><use> décoratifs, server/icones.js) :
+// tout autre <svg> serait une injection.
+const SPRITE_BLOCK = /^<svg class="sprite" aria-hidden="true">\n(?:<symbol id="i-[a-z]+" [^\n]*<\/symbol>\n)*<\/svg>$/m;
+const ICON_TAG = /<svg class="ic" aria-hidden="true"><use href="#i-[a-z]+"><\/use><\/svg>/g;
+const LOGO_TAG = /<svg class="logo-image" viewBox="0 0 900 900" aria-hidden="true">[\s\S]*?<\/svg>/g;
+const withoutIcons = (html) => html.replace(SPRITE_BLOCK, '').replace(ICON_TAG, '').replace(LOGO_TAG, '');
 
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
-  'ul', 'li', 'details', 'summary']); // ul, li, details, summary : aide « Comment ça marche ? »
+  'ul', 'li', 'details', 'summary',
+  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g']); // ul, li, details, summary : aide « Comment ça marche ? »
 
 /**
  * Aucune balise ni aucun attribut injecté. Les valeurs d'attribut (toutes entre guillemets
@@ -122,7 +130,7 @@ function assertNoInjection(html, what) {
   const skeleton = html.replace(/"[^"]*"/g, '""');
   for (const [, tag] of skeleton.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)) assert.ok(ALLOWED_TAGS.has(tag.toLowerCase()), `${what} : balise <${tag}>`);
   assert.doesNotMatch(skeleton, /<[^>]*\s(on[a-z]+|style|src|srcdoc|formaction)\s*=/i, `${what} : attribut injecté`);
-  for (const [, url] of html.matchAll(/\b(?:href|action)="([^"]*)"/g)) assert.match(url, /^\/(?!\/)/, `${what} : URL ${url}`);
+  for (const [, url] of html.matchAll(/\b(?:href|action)="([^"]*)"/g)) assert.match(url, /^(?:\/(?!\/)|#[a-z][a-z-]*$)/, `${what} : URL ${url}`);
   for (const tag of ['td', 'tr', 'table', 'dl', 'dd', 'dt', 'p', 'section', 'h1', 'a']) {
     const open = skeleton.match(new RegExp(`<${tag}[\\s>]`, 'g'))?.length ?? 0;
     const close = skeleton.match(new RegExp(`</${tag}>`, 'g'))?.length ?? 0;
@@ -151,7 +159,7 @@ test('recette XSS : chaque charge est affichée échappée dans la liste (nom) e
     assert.ok(sheet.body.includes(`<p class="notes">ligne 1 ${esc(p)}\nligne 2 ${esc(p)}\n\n  ligne 4</p>`), `notes ${i}`);
   }
   // Rien d'exécutable n'apparaît en clair, quelle que soit la page.
-  assert.doesNotMatch(list.body, /<script|<img|<svg|<\/textarea|href="javascript/i);
+  assert.doesNotMatch(withoutIcons(list.body), /<script|<img|<svg|<\/textarea|href="javascript/i);
 });
 
 test('recette XSS : « &amp; » est ré-échappé (&amp;amp;), jamais interprété ; « \' » devient &#39;', async () => {

@@ -103,9 +103,10 @@ const scan = (readerId, uid) => ingestFrame(db, encodeFrame({ readerId, counter:
 // Balises autorisées : celles des gabarits (formulaires compris). Toute autre serait une injection.
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
-  'textarea', 'select', 'option', 'fieldset', 'legend', 'ul', 'li', 'details', 'summary']);
+  'textarea', 'select', 'option', 'fieldset', 'legend', 'ul', 'li', 'details', 'summary',
+  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g']);
 const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form',
-  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'fieldset', 'legend', 'button', 'label', 'ul', 'li', 'details', 'summary'];
+  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'fieldset', 'legend', 'button', 'label', 'ul', 'li', 'details', 'summary', 'ol', 'svg', 'symbol', 'use'];
 
 function assertSafePage(html, what) {
   for (const [, tag] of html.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)) assert.ok(ALLOWED_TAGS.has(tag.toLowerCase()), `${what} : balise <${tag}>`);
@@ -117,7 +118,7 @@ function assertSafePage(html, what) {
   assert.doesNotMatch(html, /<[^>]*\son[a-z]+\s*=/i, what);
   assert.equal((html.match(/"/g)?.length ?? 0) % 2, 0, `${what} : guillemets déséquilibrés`);
   // Aucune ressource externe, aucun script ni style en ligne.
-  for (const [, url] of html.matchAll(/\b(?:src|href|action)\s*=\s*"([^"]*)"/gi)) assert.match(url, /^\/(?!\/)/, `${what} : URL ${url}`);
+  for (const [, url] of html.matchAll(/\b(?:src|href|action)\s*=\s*"([^"]*)"/gi)) assert.match(url, /^(?:\/(?!\/)|#[a-z][a-z-]*$)/, `${what} : URL ${url}`);
   assert.doesNotMatch(html, /https?:|\/\//i, what);
   assert.doesNotMatch(html, /<script|<style|\sstyle\s*=/i, what);
   // Un seul bouton principal par page (plein, bleu ou rouge).
@@ -220,9 +221,10 @@ test('correction de localisation sans aucun poste : message explicatif et lien v
   assert.ok(res.body.includes("Il faut d'abord créer un poste pour pouvoir y localiser un objet."));
   assert.ok(!res.body.includes('<select'));
   assert.ok(res.body.includes('<a class="bouton" href="/stations/new">Créer un poste</a>'));
-  // Liens : bandeau (Inventaire, Postes et lecteurs, Puces inconnues depuis l'étape 7), retour à
-  // la fiche, création d'un poste (étape 6).
-  assert.deepEqual([...res.body.matchAll(/href="([^"]*)"/g)].map((m) => m[1]).filter((h) => !h.startsWith('/static/')).sort(), ['/', '/chips', '/items/1', '/stations', '/stations/new']);
+  // Liens (sans doublons) : marque et bandeau (Inventaire, Postes, Lecteurs, Puces inconnues ;
+  // étape U1), fil d'Ariane (inventaire, fiche), création d'un poste (étape 6). Les ancres de la
+  // page (« Aller au contenu », icônes) ne sont pas des liens vers d'autres pages.
+  assert.deepEqual([...new Set([...res.body.matchAll(/href="([^"]*)"/g)].map((m) => m[1]).filter((h) => !h.startsWith('/static/') && !h.startsWith('#')))].sort(), ['/', '/chips', '/items/1', '/readers', '/stations', '/stations/new']);
   const before = snapshot();
   const sent = await post('/items/1/location', { station: '1' });
   assert.equal(sent.status, 400);
@@ -231,14 +233,15 @@ test('correction de localisation sans aucun poste : message explicatif et lien v
 
 // ---------------------------------------------------------------- création
 
-test('liste et fiche : bouton principal « Nouvelle fiche » ; fiche : Modifier, Corriger la localisation, Supprimer', async () => {
+test('liste et fiche : bouton principal « Nouvelle fiche » ; fiche : Corriger l\'emplacement, Modifier la fiche, Supprimer', async () => {
   const list = await page('/');
-  assert.ok(list.body.includes('<a class="bouton" href="/items/new">Nouvelle fiche</a>'));
+  assert.ok(list.body.includes('<a class="bouton" href="/items/new"><svg class="ic" aria-hidden="true"><use href="#i-ajouter"></use></svg>Nouvelle fiche</a>'));
   assert.ok(list.body.includes('<button class="bouton bouton-secondaire" type="submit">Rechercher</button>'));
   const sheet = await page('/items/1');
-  assert.ok(sheet.body.includes('<a class="bouton" href="/items/1/edit">Modifier</a>'));
-  assert.ok(sheet.body.includes('<a class="bouton bouton-secondaire" href="/items/1/location">Corriger la localisation</a>'));
-  assert.ok(sheet.body.includes('<a class="lien-danger" href="/items/1/delete">Supprimer</a>'));
+  // Étape U1 (maquette B) : la correction d'emplacement devient l'action principale de la fiche.
+  assert.ok(sheet.body.includes('<a class="bouton" href="/items/1/location"><svg class="ic" aria-hidden="true"><use href="#i-deplace"></use></svg>Corriger l\'emplacement</a>'));
+  assert.ok(sheet.body.includes('<a class="bouton bouton-secondaire" href="/items/1/edit"><svg class="ic" aria-hidden="true"><use href="#i-modifier"></use></svg>Modifier la fiche</a>'));
+  assert.ok(sheet.body.includes('<a class="lien-danger" href="/items/1/delete"><svg class="ic" aria-hidden="true"><use href="#i-supprimer"></use></svg>Supprimer</a>'));
   assert.ok(sheet.body.includes('Aucune modification enregistrée.'));
 });
 
@@ -280,8 +283,8 @@ test('création : 303 vers la fiche avec ?ok=cree, une ligne d\'audit item.creat
   assert.equal(sheet.status, 200);
   assert.ok(sheet.body.includes('<p class="succes" role="status">Fiche créée.</p>'));
   assert.ok(sheet.body.includes('<p class="notes">Salle 2\nArmoire B</p>'));
-  assert.ok(sheet.body.includes('<h2 id="titre-modifications">Historique des modifications</h2>'));
-  assert.match(sheet.body, /<td data-label="Auteur">alice<\/td>\n<td data-label="Modification">Fiche créée<\/td>/);
+  assert.ok(sheet.body.includes('<h2 id="titre-modifications" class="carte-titre"><svg class="ic" aria-hidden="true"><use href="#i-modifier"></use></svg>Historique des modifications</h2>'));
+  assert.match(sheet.body, /<p class="frise-lieu">Fiche créée<\/p>\n<p class="frise-detail">par alice<\/p>/);
   assertSafePage(sheet.body, 'fiche créée');
   assert.ok(logs.includes(`fiche ${id} créée par alice`));
 });
@@ -477,7 +480,7 @@ test('modification : formulaire prérempli ; envoi → 303 ?ok=modifie, audit av
   assert.equal(row.created_at, NOW);
   const sheet = await page('/items/1?ok=modifie');
   assert.ok(sheet.body.includes('<p class="succes" role="status">Modifications enregistrées.</p>'));
-  assert.ok(sheet.body.includes('<td data-label="Modification">Fiche modifiée : nom, propriétés</td>'));
+  assert.ok(sheet.body.includes('<p class="frise-lieu">Fiche modifiée : nom, propriétés</p>'));
 });
 
 test('modification sans changement : 303 ?ok=inchange, aucune ligne d\'audit, updated_at inchangé', async () => {
@@ -531,7 +534,7 @@ test('correction : postes triés par nom ; poste inexistant, vide ou forgé → 
 
 test('correction : 303 ?ok=corrige, localisation changée (liste et fiche, « correction manuelle par alice ») ; un scan ultérieur reprend la main', async () => {
   assert.equal(scan(1, UID).ok, true);
-  assert.ok((await page('/items/1')).body.includes('· scan, lecteur n° 1</p>'));
+  assert.ok((await page('/items/1')).body.includes('· scanné</p>'));
 
   const auditBefore = count('audit_log');
   const res = await post('/items/1/location', { station: '3' });
@@ -543,18 +546,18 @@ test('correction : 303 ?ok=corrige, localisation changée (liste et fiche, « co
   assert.deepEqual({ ...db.prepare('SELECT item_id, station_id, user_id FROM location_corrections').get() }, { item_id: 1, station_id: 3, user_id: aliceId });
 
   const sheet = await page(res.headers.location);
-  assert.ok(sheet.body.includes('<p class="succes" role="status">Localisation corrigée.</p>'));
+  assert.ok(sheet.body.includes('<p class="succes" role="status">Emplacement corrigé.</p>'));
   assert.ok(sheet.body.includes('<span class="etat etat-poste">étuve</span>'));
-  assert.match(sheet.body, /<p class="localisation-detail"><time [^>]*>à l&#39;instant<\/time> · correction manuelle par alice<\/p>/);
-  assert.ok(sheet.body.includes('<td data-label="Modification">Localisation corrigée : étuve</td>'));
+  assert.match(sheet.body, /<p class="localisation-detail">Depuis : <time [^>]*>à l&#39;instant<\/time> · correction manuelle par alice<\/p>/);
+  assert.ok(sheet.body.includes('<p class="frise-lieu">Emplacement corrigé : étuve</p>'));
   const list = await page('/');
   assert.match(list.body, /href="\/items\/1">Multimètre Fluke 87V<\/a>[\s\S]*?<span class="etat etat-poste">étuve<\/span>/);
 
   // Scan ultérieur (lecteur 2, non affecté) : la localisation suit de nouveau les scans.
   assert.equal(scan(2, UID).ok, true);
   const after = await page('/items/1');
-  assert.ok(after.body.includes('<span class="etat etat-inconnue">inconnue (lecteur n° 2 non affecté)</span>'));
-  assert.ok(after.body.includes('· scan, lecteur n° 2</p>'));
+  assert.ok(after.body.includes('<a class="lien-etat" href="/readers/2"><span class="etat etat-inconnue">lecteur non affecté</span></a>'));
+  assert.ok(after.body.includes('· scanné</p>'));
 });
 
 // ---------------------------------------------------------------- messages de confirmation
@@ -599,8 +602,8 @@ test('suppression : confirmation rappelant le nom et ce qui part ; envoi → 303
   const confirm = await page('/items/1/delete');
   assert.equal(confirm.status, 200);
   assert.ok(confirm.body.includes('<strong class="nom-confirme">Multi &lt;script&gt;&quot;x&quot;&lt;/script&gt;</strong>'));
-  assert.ok(confirm.body.includes("l'historique de ses corrections manuelles de localisation seront supprimés avec elle"));
-  assert.ok(confirm.body.includes('Le journal des scans de sa puce et le journal des modifications sont conservés.'));
+  assert.ok(confirm.body.includes("l'historique de ses corrections manuelles d'emplacement seront supprimés avec elle"));
+  assert.ok(confirm.body.includes("Les scans de sa puce et l'historique des modifications sont conservés."));
   assert.ok(confirm.body.includes('<form method="post" action="/items/1/delete">'));
   assert.ok(confirm.body.includes('<button class="bouton bouton-danger" type="submit">Supprimer définitivement</button>'));
   assertSafePage(confirm.body, 'confirmation de suppression');

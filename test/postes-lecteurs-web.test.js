@@ -135,9 +135,10 @@ function keyFrom(res) {
 // Balises autorisées : celles des gabarits. Toute autre serait une injection.
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
-  'textarea', 'select', 'option', 'ul', 'li', 'pre', 'details', 'summary']);
+  'textarea', 'select', 'option', 'ul', 'li', 'pre', 'details', 'summary',
+  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g']);
 const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form',
-  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'button', 'label', 'ul', 'li', 'pre', 'nav', 'details', 'summary'];
+  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'button', 'label', 'ul', 'li', 'pre', 'nav', 'details', 'summary', 'ol', 'svg', 'symbol', 'use'];
 
 function assertSafePage(html, what) {
   for (const [, tag] of html.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)) assert.ok(ALLOWED_TAGS.has(tag.toLowerCase()), `${what} : balise <${tag}>`);
@@ -148,7 +149,7 @@ function assertSafePage(html, what) {
   }
   assert.doesNotMatch(html, /<[^>]*\son[a-z]+\s*=/i, what);
   assert.equal((html.match(/"/g)?.length ?? 0) % 2, 0, `${what} : guillemets déséquilibrés`);
-  for (const [, url] of html.matchAll(/\b(?:src|href|action)\s*=\s*"([^"]*)"/gi)) assert.match(url, /^\/(?!\/)/, `${what} : URL ${url}`);
+  for (const [, url] of html.matchAll(/\b(?:src|href|action)\s*=\s*"([^"]*)"/gi)) assert.match(url, /^(?:\/(?!\/)|#[a-z][a-z-]*$)/, `${what} : URL ${url}`);
   assert.doesNotMatch(html, /https?:|\/\//i, `${what} : URL externe`);
   assert.doesNotMatch(html, /<script|<style|\sstyle\s*=/i, `${what} : script ou style`);
   assert.ok((html.match(/class="bouton( bouton-danger)?"/g)?.length ?? 0) <= 1, `${what} : un bouton principal au plus`);
@@ -254,23 +255,28 @@ test('méthodes : 405 avec Allow sur les nouvelles routes', async () => {
 
 // ---------------------------------------------------------------- bandeau et listes
 
-test('bandeau : « Postes et lecteurs » actif sur la rubrique, « Inventaire » actif sur l\'inventaire ; onglets', async () => {
+// Étape U1 : rubriques séparées « Postes » et « Lecteurs » dans le bandeau (plus d'onglets) ;
+// rubrique courante en aria-current="page" sur sa liste, "true" sur ses sous-pages.
+test('bandeau : « Postes » et « Lecteurs » sont deux rubriques ; rubrique courante signalée sur la liste et ses sous-pages', async () => {
+  const ICON_ADD = '<svg class="ic" aria-hidden="true"><use href="#i-ajouter"></use></svg>';
   const stations = await page('/stations');
   assert.equal(stations.status, 200);
-  assert.ok(stations.body.includes('<a href="/">Inventaire</a>'));
-  assert.ok(stations.body.includes('<a class="actif" href="/stations" aria-current="page">Postes et lecteurs</a>'));
-  assert.ok(stations.body.includes('<a class="actif" aria-current="page" href="/stations">Postes</a>'));
-  assert.ok(stations.body.includes('<a href="/readers">Lecteurs</a>'));
-  assert.ok(stations.body.includes('<a class="bouton" href="/stations/new">Nouveau poste</a>'));
+  assert.ok(stations.body.includes('<li><a href="/">Inventaire</a></li>'));
+  assert.ok(stations.body.includes('<li><a href="/stations" aria-current="page">Postes</a></li>'));
+  assert.ok(stations.body.includes('<li><a href="/readers">Lecteurs</a></li>'));
+  assert.ok(stations.body.includes(`<a class="bouton" href="/stations/new">${ICON_ADD}Nouveau poste</a>`));
+  assert.ok(!stations.body.includes('class="onglets"'));
   const readers = await page('/readers');
-  assert.ok(readers.body.includes('<a class="actif" href="/stations">Postes et lecteurs</a>'));
-  assert.ok(readers.body.includes('<a class="actif" aria-current="page" href="/readers">Lecteurs</a>'));
-  assert.ok(readers.body.includes('<a class="bouton" href="/readers/new">Nouveau lecteur</a>'));
+  assert.ok(readers.body.includes('<li><a href="/stations">Postes</a></li>'));
+  assert.ok(readers.body.includes('<li><a href="/readers" aria-current="page">Lecteurs</a></li>'));
+  assert.ok(readers.body.includes(`<a class="bouton" href="/readers/new">${ICON_ADD}Nouveau lecteur</a>`));
+  assert.ok((await page('/readers/1')).body.includes('<li><a href="/readers" aria-current="true">Lecteurs</a></li>'));
+  assert.ok((await page('/stations/new')).body.includes('<li><a href="/stations" aria-current="true">Postes</a></li>'));
   const list = await page('/');
-  assert.ok(list.body.includes('<a class="actif" href="/" aria-current="page">Inventaire</a>'));
-  assert.ok(list.body.includes('<a href="/stations">Postes et lecteurs</a>'));
+  assert.ok(list.body.includes('<li><a href="/" aria-current="page">Inventaire</a></li>'));
+  assert.ok(list.body.includes('<li><a href="/stations">Postes</a></li>'));
   const sheet = await page('/items/1');
-  assert.ok(sheet.body.includes('<a class="actif" href="/">Inventaire</a>'));
+  assert.ok(sheet.body.includes('<li><a href="/" aria-current="true">Inventaire</a></li>'));
 });
 
 // ---------------------------------------------------------------- postes
@@ -293,7 +299,7 @@ test('création d\'un poste : 303 vers sa fiche avec ?ok=cree, audit station.cre
   assert.ok(sheet.body.includes('<p class="succes" role="status">Poste créé.</p>'));
   assert.ok(sheet.body.includes('<h1>Banc 2</h1>'));
   assert.ok(sheet.body.includes('<p class="notes">Mesures\nélectriques</p>'));
-  assert.ok(sheet.body.includes(`<a class="lien-danger" href="/stations/${id}/delete">Supprimer</a>`), 'sans historique : supprimable');
+  assert.ok(sheet.body.includes(`<a class="lien-danger" href="/stations/${id}/delete"><svg class="ic" aria-hidden="true"><use href="#i-supprimer"></use></svg>Supprimer</a>`), 'sans historique : supprimable');
   const list = await page('/stations');
   assert.match(list.body, new RegExp(`href="/stations/${id}">Banc 2</a><span class="description-courte">Mesures\nélectriques</span>`));
 });
@@ -395,12 +401,14 @@ test('création d\'un lecteur : page de clé unique (200, no-store, sans redirec
   assert.ok(res.body.includes('<h1>Clé du lecteur n° 2</h1>'));
   assert.ok(res.body.includes('<p class="numero-lecteur">2</p>'));
   assert.ok(res.body.includes('Cette clé ne sera plus jamais affichée.'));
-  assert.ok(res.body.includes('Injectez-la maintenant dans le boîtier'));
+  assert.ok(res.body.includes('Installez-la maintenant dans le boîtier'));
   assert.ok(res.body.includes('Si elle est perdue, remplacez la clé'));
   assert.ok(res.body.includes('Ne rechargez pas cette page : le navigateur proposerait de renvoyer le formulaire, ce qui créerait un autre lecteur.'));
-  assert.ok(res.body.includes('<p>Fermez cet onglet une fois la clé injectée dans le boîtier.</p>'));
-  assert.ok(res.body.includes('<section class="fiche-carte fiche-large" aria-labelledby="titre-numero">\n<h2 id="titre-numero">Numéro du lecteur</h2>'));
-  assert.ok(res.body.includes('<h2 id="titre-cle">Clé AES-256 (64 caractères hexadécimaux)</h2>'));
+  assert.ok(res.body.includes('<p>Fermez cet onglet une fois la clé installée dans le boîtier.</p>'));
+  assert.ok(res.body.includes('<section class="carte carte-corps carte-cle" aria-labelledby="titre-numero">\n<h2 id="titre-numero" class="etiquette">Numéro du lecteur</h2>'));
+  // Étape U1 : libellé sans jargon (« AES-256 », « hexadécimaux »).
+  assert.ok(res.body.includes('<h2 id="titre-cle" class="etiquette">Clé secrète</h2>'));
+  assert.ok(!res.body.includes('AES') && !res.body.includes('hexadécima'));
   // Page de production : aucune procédure de développement (simulateur, fichier de clé, chemins dev/).
   for (const absent of ['simulateur', '--key-file', '.key', 'dev/', 'fichier']) assert.ok(!res.body.includes(absent), absent);
   assert.ok(res.body.includes('<a class="bouton" href="/readers">Retour aux lecteurs</a>'));
@@ -427,9 +435,11 @@ test('bout en bout : le simulateur, avec la clé affichée, est accepté (204) ;
   assert.ok(sheet.body.includes('<span class="etat etat-poste">Banc 2</span>'));
 });
 
-test('liste et fiche du lecteur : poste, état, dernier scan, dernier compteur, derniers scans avec l\'objet ; pas de clé', async () => {
+test('liste et fiche du lecteur : poste, état, dernier scan, derniers scans avec l\'objet ; ni compteur ni clé', async () => {
   const list = await page('/readers');
-  assert.match(list.body, /<a class="lien-objet" href="\/readers\/2">Lecteur n° 2<\/a><\/td>\n<td data-label="Poste"><a class="lien-simple" href="\/stations\/\d+">Banc 2<\/a><\/td>\n<td data-label="État"><span class="etat etat-actif">actif<\/span><\/td>\n<td data-label="Dernier scan"><time [^>]*>à l&#39;instant<\/time><\/td>\n<td data-label="Dernier compteur">2<\/td>/);
+  // Étape U1 : la colonne « Dernier compteur » n'est plus affichée (terme technique).
+  assert.match(list.body, /<a class="lien-objet" href="\/readers\/2">Lecteur n° 2<\/a><\/td>\n<td data-label="Poste"><a class="lien-simple" href="\/stations\/\d+">Banc 2<\/a><\/td>\n<td data-label="État"><span class="etat etat-actif">actif<\/span><\/td>\n<td data-label="Dernier scan"><time [^>]*>à l&#39;instant<\/time><\/td>\n<td data-label="Créé">/);
+  assert.ok(!list.body.includes('ompteur'));
   assert.match(list.body, /href="\/readers\/1">Lecteur n° 1<\/a>[\s\S]*?<td data-label="Dernier scan"><span class="texte-doux">aucun<\/span>/);
   assertSafePage(list.body, 'liste des lecteurs');
   const sheet = await page('/readers/2');
@@ -438,7 +448,8 @@ test('liste et fiche du lecteur : poste, état, dernier scan, dernier compteur, 
   assert.ok(sheet.body.includes('<a class="bouton" href="/readers/2/station">Changer de poste</a>'));
   assert.ok(sheet.body.includes('<a class="bouton bouton-secondaire" href="/readers/2/replace">Remplacer la clé</a>'));
   assert.ok(sheet.body.includes('<a class="lien-danger" href="/readers/2/deactivate">Désactiver</a>'));
-  assert.match(sheet.body, /<td><span class="uid">04A1B2C3D4E5F6<\/span><\/td>\n<td data-label="Objet"><a class="lien-simple" href="\/items\/1">Multimètre<\/a><\/td>/);
+  assert.match(sheet.body, /<td><a class="lien-simple" href="\/items\/1">Multimètre<\/a><\/td>\n<td data-label="Poste">/);
+  assert.ok(!sheet.body.includes('ompteur') && !sheet.body.includes('trame'));
   assertSafePage(sheet.body, 'fiche du lecteur');
   const station = await page(`/stations/${stationId('Banc 2')}`);
   assert.ok(station.body.includes('<a class="lien-objet" href="/readers/2">Lecteur n° 2</a>'));
@@ -550,13 +561,13 @@ test('désactivation : confirmation, 303 ?ok=desactive, audit ; ses trames sont 
   assert.equal(res.status, 303);
   assert.equal(res.headers.location, '/readers/3?ok=desactive');
   assert.deepEqual(lastAudit(), { user_id: aliceId, action: 'reader.deactivate', entity_id: 3, details: { station: { id: 1, name: 'Atelier' } } });
-  assert.ok((await page(res.headers.location)).body.includes('Lecteur désactivé. Ses trames sont désormais refusées.'));
+  assert.ok((await page(res.headers.location)).body.includes('Lecteur désactivé. Ses scans sont désormais refusés.'));
   assert.equal((await postFrame(3, 5, Buffer.from(key3, 'hex'))).status, 400);
   const again = await post('/readers/3/deactivate');
   assert.equal(again.status, 409);
 });
 
-test('lecteur non affecté : création sans poste ; un scan donne « inconnue (lecteur n° X non affecté) », lien vers le lecteur', async () => {
+test('lecteur non affecté : création sans poste ; un scan donne « lecteur non affecté », lien vers le lecteur', async () => {
   const res = await post('/readers/new', { station: '' });
   assert.equal(res.status, 200);
   const hex = keyFrom(res);
@@ -565,7 +576,7 @@ test('lecteur non affecté : création sans poste ; un scan donne « inconnue (l
   assert.deepEqual(lastAudit().details, { id: 4, station: null });
   assert.equal((await postFrame(4, 1, Buffer.from(hex, 'hex'))).status, 204);
   const list = await page('/');
-  assert.ok(list.body.includes('<a class="lien-etat" href="/readers/4"><span class="etat etat-inconnue">inconnue (lecteur n° 4 non affecté)</span></a>'));
+  assert.ok(list.body.includes('<a class="lien-etat" href="/readers/4"><span class="etat etat-inconnue">lecteur non affecté</span></a>'));
   assertSafePage(list.body, 'inventaire avec lecteur non affecté');
   const sheet = await page('/items/1');
   assert.ok(sheet.body.includes('<a class="lien-etat" href="/readers/4"><span class="etat etat-inconnue">'));
@@ -613,7 +624,7 @@ test('suppression d\'un poste refusée pour chaque cause (scan, correction, lect
     assert.equal(snapshot(), before, cause);
   };
   await expect(banc, '<li>2 scans enregistrés à ce poste</li>');
-  await expect(zone, '<li>1 correction manuelle de localisation vers ce poste</li>');
+  await expect(zone, '<li>1 correction manuelle d&#39;emplacement vers ce poste</li>');
   await expect(quai, '<li>1 lecteur affecté à ce poste (actifs ou désactivés)</li>');
   assert.equal((await post('/readers/5/deactivate')).status, 303);
   await expect(quai, '<li>1 lecteur affecté à ce poste (actifs ou désactivés)</li>');

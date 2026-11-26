@@ -4,7 +4,7 @@
 //   fiche déjà localisée, ancienne puce de retour dans la liste avec son poste, scan ultérieur
 //   de l'ancienne puce sans effet sur la fiche, journal des scans identique octet pour octet,
 //   lignes d'audit exactes (auteur, fiche, détails) ;
-// - lecteur non affecté : libellé et lien dans la liste, localisation « inconnue (lecteur n° X
+// - lecteur non affecté : libellé et lien dans la liste, emplacement « lecteur non affecté » (avant l'étape U1 : « inconnue (lecteur n° X
 //   non affecté) » après création ;
 // - noms de fiche, de poste et saisies hostiles : échappés dans toutes les pages de l'étape ;
 // - UID très long, identifiants de fiche hors format : 404 sans écriture ;
@@ -109,8 +109,10 @@ const auditSince = (id) => db.prepare('SELECT user_id, action, entity_id, detail
   .map((row) => ({ ...row, details: JSON.parse(row.details) }));
 const lastAuditId = () => db.prepare('SELECT coalesce(max(id), 0) AS n FROM audit_log').get().n;
 const location = (itemId) => ({ ...db.prepare('SELECT station_id, source, reader_id FROM item_locations WHERE item_id = ?').get(itemId) });
-const chipRow = (html, uid) => /<table class="tableau tableau-puces">([\s\S]*?)<\/table>/.exec(html)?.[1]
-  .split('<tr>').find((row) => row.includes(`<span class="uid uid-puce">${uid}</span>`)) ?? null;
+// Une carte par puce depuis l'étape U1, numéro groupé par octets.
+const grouped = (uid) => uid.match(/../g).join(' ');
+const chipRow = (html, uid) => (/<ul class="carte liste-puces">([\s\S]*?)<\/ul>/.exec(html)?.[1] ?? '')
+  .split('<li class="encart">').find((row) => row.includes(`<p class="encart-texte">Puce <span class="uid">${grouped(uid)}</span></p>`)) ?? null;
 const createdId = (res) => Number(/^\/items\/(\d+)\?ok=/.exec(res.headers.location)?.[1]);
 
 // ---------------------------------------------------------------- parcours complet
@@ -122,7 +124,7 @@ test('parcours : puce inconnue → fiche créée, localisée tout de suite ; puc
   const row = chipRow((await page('/chips')).body, uid);
   assert.ok(row, 'puce listée');
   assert.match(row, /<span class="etat etat-poste">Atelier<\/span>/);
-  assert.match(row, /<td data-label="Scans">2<\/td>/);
+  assert.match(row, / · 2 scans<\/p>/);
   assert.match(row, /<time datetime="\d{4}-\d\d-\d\dT[\d:.]+Z"/);
 
   const dump = scansDump();
@@ -138,7 +140,7 @@ test('parcours : puce inconnue → fiche créée, localisée tout de suite ; puc
     details: { name: 'Oscilloscope', properties: { Marque: 'Tek' }, notes: 'n', uid },
   }]);
   const item = await page(`/items/${id}?ok=cree_puce`);
-  assert.ok(item.body.includes(`Fiche créée avec la puce <span class="uid">${uid}</span>`));
+  assert.ok(item.body.includes(`Fiche créée avec la puce <span class="uid">${grouped(uid)}</span>`));
   assert.equal(chipRow((await page('/chips')).body, uid), null);
 });
 
@@ -151,7 +153,7 @@ test('parcours : remplacement de la puce d\'une fiche localisée ; la fiche suit
   const confirm = await page(`/chips/${NEW}/associate/1`);
   assert.equal(confirm.status, 200);
   assert.ok(confirm.body.includes('panneau-danger'));
-  assert.ok(confirm.body.includes(`porte déjà la puce <span class="uid">${OLD}</span>`));
+  assert.ok(confirm.body.includes(`porte déjà une puce</strong> (<span class="uid">${grouped(OLD)}</span>)`));
   assert.ok(confirm.body.includes(`<input type="hidden" name="previous" value="${OLD}">`));
   assert.ok(confirm.body.includes('Labo'));
 
@@ -167,32 +169,32 @@ test('parcours : remplacement de la puce d\'une fiche localisée ; la fiche suit
   }]);
   assert.deepEqual(location(1), { station_id: 2, source: 'scan', reader_id: 2 });
   const item = await page('/items/1');
-  assert.ok(item.body.includes(`Puce associée : <span class="uid">${NEW}</span> (remplace <span class="uid">${OLD}</span>)`));
+  assert.ok(item.body.includes(`Puce associée : <span class="uid">${grouped(NEW)}</span> (remplace <span class="uid">${grouped(OLD)}</span>)`));
 
   const list = (await page('/chips')).body;
   assert.equal(chipRow(list, NEW), null);
   const oldRow = chipRow(list, OLD);
   assert.ok(oldRow, 'ancienne puce de retour');
   assert.match(oldRow, /<span class="etat etat-poste">Atelier<\/span>/);
-  assert.match(oldRow, /<td data-label="Scans">1<\/td>/);
+  assert.match(oldRow, / · 1 scan<\/p>/);
 
   // Un scan ultérieur de l'ancienne puce ne déplace plus la fiche.
   await scan(1, OLD);
   assert.deepEqual(location(1), { station_id: 2, source: 'scan', reader_id: 2 });
-  assert.match(chipRow((await page('/chips')).body, OLD), /<td data-label="Scans">2<\/td>/);
+  assert.match(chipRow((await page('/chips')).body, OLD), / · 2 scans<\/p>/);
 });
 
-test('lecteur non affecté : libellé et lien dans la liste et le formulaire ; fiche créée « inconnue (lecteur n° 3 non affecté) »', async () => {
+test('lecteur non affecté : libellé et lien dans la liste et le formulaire ; fiche créée « lecteur non affecté »', async () => {
   const uid = 'DEADBEEF';
   await scan(3, uid);
   const row = chipRow((await page('/chips')).body, uid);
-  assert.ok(row.includes('<a class="lien-etat" href="/readers/3"><span class="etat etat-inconnue">lecteur n° 3 non affecté</span></a>'), row);
+  assert.ok(row.includes('<a class="lien-etat" href="/readers/3"><span class="etat etat-inconnue">lecteur non affecté</span></a>'), row);
   const form = await page(`/chips/${uid}/new`);
-  assert.ok(form.body.includes('<a class="lien-simple" href="/readers/3">lecteur n° 3 non affecté</a>'));
+  assert.ok(form.body.includes('<a class="lien-simple" href="/readers/3">lecteur non affecté</a>'));
   const res = await post(`/chips/${uid}/new`, { name: 'Pince' });
   const id = createdId(res);
   assert.deepEqual(location(id), { station_id: null, source: 'scan', reader_id: 3 });
-  assert.ok((await page(`/items/${id}`)).body.includes('inconnue (lecteur n° 3 non affecté)'));
+  assert.ok((await page(`/items/${id}`)).body.includes('<a class="lien-etat" href="/readers/3"><span class="etat etat-inconnue">lecteur non affecté</span></a>'));
   assert.equal((await page('/readers/3')).status, 200);
 });
 
@@ -217,7 +219,7 @@ test('noms de fiche et de poste hostiles, saisie hostile en erreur : échappés 
   }
   // Formulaire en erreur : saisie conservée (échappée) et UID toujours affiché, en lecture seule.
   const failed = pages[5].body;
-  assert.ok(failed.includes(`<span class="uid">${uid}</span>`));
+  assert.ok(failed.includes(`<span class="uid">${grouped(uid)}</span>`));
   assert.ok(failed.includes(`action="/chips/${uid}/new"`));
   assert.ok(failed.includes('note &lt;img'));
   assert.ok(failed.includes('value="k&lt;img'));
@@ -273,7 +275,7 @@ test('suppression : association pendant la suppression sans 500 ; après suppres
   const id = createdId(await post(`/chips/${uid2}/new`, { name: 'Éphémère' }));
   assert.equal(chipRow((await page('/chips')).body, uid2), null);
   assert.equal((await post(`/items/${id}/delete`)).status, 303);
-  assert.match(chipRow((await page('/chips')).body, uid2), /<td data-label="Scans">1<\/td>/);
+  assert.match(chipRow((await page('/chips')).body, uid2), / · 1 scan<\/p>/);
   assert.equal(scansDump(), dump);
 });
 
@@ -301,7 +303,7 @@ test('correction manuelle plus récente que le scan : signalée à la confirmati
   await sleep(3);
   assert.equal((await post(`/items/${id}/location`, { station: '2' })).status, 303);
   const confirm = await page(`/chips/${uid}/associate/${id}`);
-  assert.ok(confirm.body.includes('Une correction manuelle de localisation plus récente que ce scan existe'));
+  assert.ok(confirm.body.includes('Une correction manuelle d\'emplacement plus récente que ce scan existe'));
   assert.equal((await post(`/chips/${uid}/associate/${id}`, { previous: '' })).status, 303);
   assert.deepEqual(location(id), { station_id: 2, source: 'manual', reader_id: null });
   await scan(1, uid);

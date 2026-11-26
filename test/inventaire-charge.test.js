@@ -69,7 +69,8 @@ function page(path) {
 }
 // Page sans son aide « Comment ça marche ? » (texte constant qui cite les pastilles, dont « jamais localisé »).
 const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<\/details>/, '');
-const historyRows = (html) => (/<table class="tableau tableau-scans">([\s\S]*?)<\/table>/.exec(html)?.[1].match(/<tr>/g)?.length ?? 1) - 1;
+// Derniers scans de la fiche : frise verticale depuis l'étape U1 (une étape par scan).
+const historyRows = (html) => /<ol class="frise">([\s\S]*?)<\/ol>/.exec(html)?.[1].match(/<li class="frise-etape/g)?.length ?? 0;
 
 test(`liste de ${ITEMS} objets avec ${SCANS} scans : toutes les lignes, en moins de ${MAX_MS} ms`, async (t) => {
   await page('/'); // échauffement
@@ -97,11 +98,14 @@ test(`fiche d'un objet à ${HOT_SCANS} scans : 20 scans affichés au plus, le pl
   assert.equal(res.status, 200);
   assert.equal(historyRows(res.body), 20);
   const last = db.prepare('SELECT received_at, station_id, reader_id FROM scans WHERE uid_nfc = ? ORDER BY received_at DESC, id DESC LIMIT 1').get(uidOf(0));
-  const datetimes = [...res.body.matchAll(/<td data-label="Heure"><time datetime="([^"]+)"/g)].map((m) => m[1]);
+  const datetimes = [...res.body.matchAll(/<p class="frise-quand"><time datetime="([^"]+)"/g)].map((m) => m[1]);
   assert.equal(datetimes[0], last.received_at);
   assert.deepEqual(datetimes, [...datetimes].sort().reverse());
-  const expected = last.station_id === null ? `inconnue (lecteur n° ${last.reader_id} non affecté)` : `Poste ${last.station_id}`;
-  assert.ok(res.body.includes(`<p><span class="etat`) && res.body.includes(`">${expected}</span></p>`));
+  // Emplacement en grand dans l'en-tête de la fiche (étape U1).
+  const expected = last.station_id === null
+    ? `<a class="lien-etat" href="/readers/${last.reader_id}"><span class="etat etat-inconnue">lecteur non affecté</span></a></p>`
+    : `<span class="etat etat-poste">Poste ${last.station_id}</span></p>`;
+  assert.ok(res.body.includes('<p class="emplacement') && res.body.includes(expected));
   assert.ok(res.ms < MAX_MS);
 });
 

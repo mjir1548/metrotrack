@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 900" role="img" aria-label="MetroTrack">
+  <!-- Logo MetroTrack, redessiné en vectoriel d'après le logo fourni (losange vert canard, repère bleu nuit). -->
+  <defs>
+    <clipPath id="mt-losange">
+      <rect x="167" y="172" width="566" height="566" rx="96" transform="rotate(45 450 455)"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#mt-losange)">
+    <rect x="0" y="0" width="900" height="900" fill="#0E95A4"/>
+    <rect x="238" y="455" width="426" height="460" fill="#03245A"/>
+  </g>
+  <circle cx="451" cy="455" r="213" fill="#FFFFFF"/>
+  <circle cx="451" cy="455" r="114" fill="#03245A"/>
+</svg>

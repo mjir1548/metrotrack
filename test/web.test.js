@@ -156,7 +156,7 @@ test('pages sans aucune ressource externe ni script ou style inline', async () =
     assert.ok(html.length > 100, name);
     for (const [, url] of html.matchAll(/\b(?:src|href|action)\s*=\s*"([^"]*)"/gi)) {
       // Chemin local : commence par une seule « / » (« / » seul accepté : lien vers l'inventaire).
-      assert.match(url, /^\/(?!\/)/, `${name} : URL non locale ${url}`);
+      assert.match(url, /^(?:\/(?!\/)|#[a-z][a-z-]*$)/, `${name} : URL non locale ${url}`);
     }
     assert.doesNotMatch(html, /https?:|\/\//i, name);
     assert.doesNotMatch(html, /<script|<style|\sstyle\s*=|\son[a-z]+\s*=/i, name);
@@ -205,7 +205,7 @@ test('connexion réussie : 303 vers /, cookie de session __Host- HttpOnly Secure
   const page = await home(value);
   assert.equal(page.status, 200);
   assert.equal(page.headers['cache-control'], 'no-store');
-  assert.match(page.body, /Connecté en tant que <strong>alice<\/strong>/);
+  assert.match(page.body, /<span class="visuellement-cache">Connecté en tant que <\/span><strong>alice<\/strong>/);
   assert.equal(hiddenCsrf(page.body), csrfTokenFor(value));
   assert.ok(logs.some((l) => /^connexion réussie : compte alice depuis /.test(l)));
 });

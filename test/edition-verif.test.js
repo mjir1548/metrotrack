@@ -260,7 +260,7 @@ test('numéro de fiche jamais réutilisé (AUTOINCREMENT, D-014), même pour la 
   assert.match(html, /etat-jamais">jamais localisé</);
   const history = html.slice(html.indexOf('titre-modifications'));
   assert.match(history, /Fiche créée/);
-  assert.doesNotMatch(history, /renommée|Fiche modifiée|Localisation corrigée|Fiche supprimée/);
+  assert.doesNotMatch(history, /renommée|Fiche modifiée|Emplacement corrigé|Fiche supprimée/);
 
   // Chaque entity_id désigne une seule fiche : la vie complète de l'ancienne, la création de la nouvelle.
   assert.deepEqual(auditsFor(oldId).map((a) => a.action), ['item.create', 'item.update', 'item.location_correct', 'item.delete']);

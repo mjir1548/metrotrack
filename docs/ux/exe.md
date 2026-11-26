@@ -63,4 +63,11 @@ Recommandation : **Artifact Signing** si l'entreprise y est éligible, sinon un 
 - Le pare-feu Windows doit autoriser le port d'écoute sur le réseau local : l'installateur crée la règle, limitée au réseau privé.
 - Nouveau point sensible à traiter : **le premier compte** sera créé dans l'assistant de premier lancement (au lieu de la ligne de commande). Cette page ne doit être accessible **que depuis le PC lui-même** et seulement tant qu'aucun compte n'existe.
 
+## 7. En attendant : lanceur de démonstration (D-018)
+
+Smart App Control bloque tout `.exe` non signé sur le PC de développement. Pour voir le logiciel dès maintenant :
+- `node tools/installer-raccourci.mjs` crée le raccourci « MetroTrack » sur le Bureau et dans le menu Démarrer (`--supprimer` pour le retirer). Le raccourci lance `node.exe`, qui est signé, avec `tools/lanceur.mjs`.
+- Le lanceur démarre le serveur de démonstration (`dev/demo/config.json`) s'il ne répond pas, puis ouvre Edge en mode application avec un profil dédié (`%LOCALAPPDATA%\MetroTrack\fenetre`), non relié au compte Microsoft et non synchronisé. La fenêtre ne fait confiance qu'au certificat de ce serveur (empreinte de sa clé publique), sans toucher au magasin de certificats de Windows.
+- Le serveur continue de tourner après la fermeture de la fenêtre ; `node tools/lanceur.mjs --arreter` l'arrête. Journal : `dev/demo/lanceur.log`.
+
 Sources consultées : [documentation Node.js — exécutables uniques](https://nodejs.org/api/single-executable-applications.md), [Microsoft — options de signature de code](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options), [Microsoft — tarifs d'Artifact Signing](https://azure.microsoft.com/pricing/details/artifact-signing/).

@@ -1,6 +1,6 @@
 // Interface web : connexion, déconnexion, inventaire (liste et fiche), édition des fiches
 // (création, modification, suppression, correction de localisation), postes et lecteurs
-// (étape 6), puces inconnues et association (étape 7), feuille de style.
+// (étape 6), puces inconnues et association (étape 7), fichiers statiques (feuilles de style et polices, en liste blanche).
 // HTML rendu côté serveur, sans JavaScript côté client, sans ressource externe.
 //
 // ÉCHAPPEMENT : toutes les pages sont produites par les gabarits de server/views.js, écrits
@@ -103,9 +103,28 @@ function loginAfterNoSession(req) {
 // les fermera après cette réponse. Références faibles : aucune fuite mémoire.
 const closingConnections = new WeakSet();
 
-// Feuille de style lue UNE fois au démarrage et servie depuis la mémoire : aucun chemin de
-// fichier n'est dérivé de l'URL (pas de traversée de répertoire possible).
-const STYLE_CSS = readFileSync(join(import.meta.dirname, '..', 'web', 'static', 'style.css'));
+// Fichiers statiques : LISTE BLANCHE de chemins exacts, lus UNE fois au démarrage et servis
+// depuis la mémoire. Aucun chemin de fichier n'est dérivé de l'URL : une adresse absente de
+// cette liste donne 404 (pas de traversée de répertoire possible, pas de listage).
+// Type MIME fixé par fichier (le navigateur ne devine rien : X-Content-Type-Options nosniff).
+// Cache : les polices ne changent pas (nouveau nom de fichier si elles changent un jour) et
+// peuvent être gardées une semaine ; les feuilles de style sont revalidées à chaque page
+// (no-cache), pour qu'une mise à jour du serveur soit vue tout de suite.
+// Polices : SIL Open Font License 1.1, licences dans web/static/fonts/OFL-*.txt.
+const STATIC_DIR = join(import.meta.dirname, '..', 'web', 'static');
+const CSS_TYPE = 'text/css; charset=utf-8';
+const FONT_TYPE = 'font/ttf';
+const STYLE_CACHE = 'no-cache';
+const FONT_CACHE = 'max-age=604800';
+const STATIC_FILES = new Map([
+  ['/static/style.css', ['style.css', CSS_TYPE, STYLE_CACHE]],
+  ['/static/fonts.css', ['fonts.css', CSS_TYPE, STYLE_CACHE]],
+  // Logo (icône de la fenêtre et des onglets) : SVG autonome, sans script ni ressource externe.
+  ['/static/logo.svg', ['logo.svg', 'image/svg+xml', STYLE_CACHE]],
+  ['/static/fonts/Inter-Variable.ttf', ['fonts/Inter-Variable.ttf', FONT_TYPE, FONT_CACHE]],
+  ['/static/fonts/SpaceGrotesk-Variable.ttf', ['fonts/SpaceGrotesk-Variable.ttf', FONT_TYPE, FONT_CACHE]],
+  ['/static/fonts/JetBrainsMono-Variable.ttf', ['fonts/JetBrainsMono-Variable.ttf', FONT_TYPE, FONT_CACHE]],
+].map(([path, [file, type, cache]]) => [path, { body: readFileSync(join(STATIC_DIR, file)), type, cache }]));
 
 // En-têtes de sécurité sur toutes les réponses de l'interface web.
 const SECURITY_HEADERS = {
@@ -135,7 +154,7 @@ const ROUTES = {
   '/': { GET: inventory },
   '/login': { GET: loginPage, POST: login },
   '/logout': { POST: logout },
-  '/static/style.css': { GET: styleSheet },
+  ...Object.fromEntries([...STATIC_FILES].map(([path, file]) => [path, { GET: (ctx, req, res) => sendStatic(res, file) }])),
   '/items/new': { GET: newItemPage, POST: createItemAction },
   '/stations': { GET: stationsList },
   '/stations/new': { GET: newStationPage, POST: createStationAction },
@@ -917,10 +936,12 @@ function postForm(ctx, req, res, onForm) {
   });
 }
 
-function styleSheet(ctx, req, res) {
-  res.setHeader('Content-Type', 'text/css; charset=utf-8');
+// Fichier de la liste blanche STATIC_FILES (une route n'existe que pour ces chemins exacts).
+function sendStatic(res, { body, type, cache }) {
+  res.setHeader('Content-Type', type);
+  res.setHeader('Cache-Control', cache);
   res.writeHead(200);
-  res.end(STYLE_CSS);
+  res.end(body);
 }
 
 // ---------------------------------------------------------------- requêtes

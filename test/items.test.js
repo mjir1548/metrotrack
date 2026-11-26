@@ -422,7 +422,7 @@ test('historique : du plus récent au plus ancien, libellés français, 20 ligne
   db.prepare("INSERT INTO audit_log (at, user_id, action, entity_id) VALUES (?, ?, 'station.create', ?)").run(T2, alice, id);
   assert.deepEqual(itemHistory(db, id), [
     { at: T2, username: null, label: 'Fiche modifiée : propriétés' },
-    { at: T2, username: 'alice', label: 'Localisation corrigée : Étuve' },
+    { at: T2, username: 'alice', label: 'Emplacement corrigé : Étuve' },
     { at: T1, username: 'bob', label: 'Fiche modifiée : nom, notes' },
     { at: T0, username: 'alice', label: 'Fiche créée' },
   ]);
@@ -454,7 +454,7 @@ test('auditLabel : détails illisibles ou incomplets → libellé générique, j
   assert.equal(auditLabel('item.update', 'pas du json'), 'Fiche modifiée');
   assert.equal(auditLabel('item.update', 'null'), 'Fiche modifiée');
   assert.equal(auditLabel('item.update', '{"autre":1}'), 'Fiche modifiée');
-  assert.equal(auditLabel('item.location_correct', '{}'), 'Localisation corrigée');
-  assert.equal(auditLabel('item.location_correct', '{"station":{"name":5}}'), 'Localisation corrigée');
+  assert.equal(auditLabel('item.location_correct', '{}'), 'Emplacement corrigé');
+  assert.equal(auditLabel('item.location_correct', '{"station":{"name":5}}'), 'Emplacement corrigé');
   assert.equal(auditLabel('item.delete', '{}'), 'Fiche supprimée');
 });

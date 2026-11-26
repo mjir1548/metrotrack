@@ -128,8 +128,14 @@ test('poste au nom et à la description piégés : réaffiché échappé sur tou
   for (const res of pages) {
     const where = res.path ?? 'page de clé';
     assert.ok(res.body.includes(escapedName), `${where} : nom affiché échappé`);
+    // Icônes du gabarit retirées d'abord (sprite et <svg><use> décoratifs, étape U1) : tout autre
+    // <svg> serait une injection.
+    const body = res.body
+      .replace(/^<svg class="sprite" aria-hidden="true">\n(?:<symbol id="i-[a-z]+" [^\n]*<\/symbol>\n)*<\/svg>$/m, '')
+      .replace(/<svg class="ic" aria-hidden="true"><use href="#i-[a-z]+"><\/use><\/svg>/g, '')
+      .replace(/<svg class="logo-image" viewBox="0 0 900 900" aria-hidden="true">[\s\S]*?<\/svg>/g, '');
     for (const raw of ['<script', '<img', '<svg', '<b>']) {
-      assert.ok(!res.body.includes(raw), `${where} : « ${raw} » non échappé`);
+      assert.ok(!body.includes(raw), `${where} : « ${raw} » non échappé`);
     }
     // Attribut d'événement dans une vraie balise (le texte échappé « onerror= » est inoffensif).
     assert.doesNotMatch(res.body, /<[^>]*\son[a-z]+\s*=/i, `${where} : attribut d'événement injecté`);

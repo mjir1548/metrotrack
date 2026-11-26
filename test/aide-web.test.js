@@ -244,9 +244,12 @@ test('liens internes de l\'aide (s\'il y en a) : chemins du site qui répondent 
 
 test('feuille de style : aide sobre, focus clavier visible, aucun marqueur natif ni ressource externe', () => {
   const css = readFileSync(join(import.meta.dirname, '..', 'web', 'static', 'style.css'), 'utf8');
-  assert.match(css, /details\.aide-page > summary:focus-visible \{\s*outline: 3px solid var\(--couleur-focus\);/);
+  // Étape U1 (direction B) : anneau de focus du design system, marqueur natif remplacé par une
+  // icône et un chevron dessinés en CSS, texte d'aide sur le fond de la page.
+  assert.match(css, /details\.aide-page > summary:focus-visible \{\s*outline: 2px solid var\(--focus\);/);
   assert.match(css, /details\.aide-page > summary \{[^}]*list-style: none;/);
-  assert.match(css, /\.aide-contenu \{[^}]*background: var\(--couleur-survol-ligne\);/);
+  assert.match(css, /details\.aide-page > summary::-webkit-details-marker \{ display: none; \}/);
+  assert.match(css, /\.aide-contenu \{[^}]*color: var\(--texte-doux\);/);
   assert.doesNotMatch(css, /url\(|@import/);
 });
 

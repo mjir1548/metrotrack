@@ -1,318 +1,186 @@
-/* MetroTrack : feuille de style locale.
-   Aucune ressource distante : polices du système uniquement, aucune image, aucune importation.
-   Les variables ci-dessous (couleurs, espacements, rayons, ombres) sont la base commune
-   des pages des étapes suivantes : les réutiliser plutôt que d'écrire des valeurs en dur. */
+/* ==========================================================================
+   MetroTrack — feuille de style de l'application
+   Direction visuelle B « Clair et aéré » (D-017), reprise de docs/maquettes/direction-b/.
 
+   Règles :
+   - aucune couleur écrite en dur hors des blocs de variables :root ci-dessous (vérifié par
+     test/design-system.test.js) ;
+   - contrastes WCAG AA vérifiés par le même test sur les couples principaux (texte 4,5:1,
+     contours des champs et focus 3:1), en thème clair comme en thème sombre ;
+   - aucune ressource externe ni adresse de fichier : les polices sont déclarées dans fonts.css,
+     servi localement ;
+   - le sens n'est jamais porté par la couleur seule (icône, texte, graisse, soulignement).
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Variables
+   -------------------------------------------------------------------------- */
 :root {
-  /* Couleurs */
-  --couleur-texte: #1b2430;
-  --couleur-texte-doux: #5a6676;
-  --couleur-fond: #eef1f5;
-  --couleur-surface: #ffffff;
-  --couleur-bordure: #d3d9e1;
-  --couleur-bordure-forte: #9aa6b5;
-  --couleur-primaire: #1d4f91;
-  --couleur-primaire-survol: #163d72;
-  --couleur-primaire-texte: #ffffff;
-  --couleur-focus: #2f7de1;
-  --couleur-erreur: #a11d1d;
-  --couleur-erreur-fond: #fdeeee;
-  --couleur-erreur-bordure: #e9b4b4;
-  --couleur-survol-ligne: #f5f8fc;
-  --couleur-entete-tableau: #f7f9fb;
-  /* États de localisation (contraste du texte sur son fond ≥ 4,5:1) */
-  --couleur-poste: #146c3c;
-  --couleur-poste-fond: #e7f5ed;
-  --couleur-poste-bordure: #b4dcc4;
-  --couleur-inconnue: #7a4a00;
-  --couleur-inconnue-fond: #fff4dc;
-  --couleur-inconnue-bordure: #efd29b;
-  --couleur-jamais: #5a6676;
-  --couleur-jamais-fond: #f1f3f6;
+  color-scheme: light;
 
-  /* Espacements (échelle de 4 px) */
-  --espace-1: 0.25rem;
-  --espace-2: 0.5rem;
-  --espace-3: 0.75rem;
-  --espace-4: 1rem;
-  --espace-5: 1.5rem;
-  --espace-6: 2rem;
-  --espace-7: 3rem;
+  /* Couleurs par rôle */
+  --fond: #F5F4EF;
+  --carte: #FBFBF8;
+  --zone: #E4EAEE;              /* zones secondaires, survols, pastilles neutres */
+  --texte: #0F1B2D;
+  --texte-doux: #4A5565;
+  --bordure: #DEDBD2;           /* filets décoratifs (cartes, séparateurs) */
+  --bordure-champ: #7D8690;     /* contour porteur de sens (champs) : 3:1 au moins */
+  --accent: #17756C;            /* actions, états OK, liens, focus */
+  --accent-fort: #115E57;
+  --accent-doux: #DCEDEA;
+  --sur-accent: #FBFBF8;
+  --attention: #F2A65A;         /* filet décoratif uniquement, jamais en texte */
+  --attention-texte: #A4490F;
+  --attention-doux: #FBE9D6;
+  --danger: #B3261E;            /* actions irréversibles, erreurs */
+  --danger-fort: #8C1D18;
+  --danger-doux: #FBE4E1;
+  --sur-danger: #FBFBF8;
+  --focus: #17756C;
+  --focus-halo: #DCEDEA;
+  --voile: rgba(15, 27, 45, 0.04);
+  --ombre-douce: 0 1px 2px rgba(15, 27, 45, 0.05);
+  --ombre-pilule: 0 1px 2px rgba(15, 27, 45, 0.04), 0 8px 24px rgba(15, 27, 45, 0.06);
 
-  /* Typographie : polices du système */
-  --police: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --police-mono: ui-monospace, "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, "Liberation Mono", monospace;
-  --taille-petite: 0.875rem;
-  --taille-normale: 1rem;
-  --taille-titre: 1.375rem;
+  /* Typographie */
+  --police-titre: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --police-texte: "Inter", system-ui, sans-serif;
+  --police-mono: "JetBrains Mono", ui-monospace, monospace;
+  --t-xs: 0.75rem;     /* 12 */
+  --t-sm: 0.8125rem;   /* 13 */
+  --t-base: 0.9375rem; /* 15 */
+  --t-md: 1.0625rem;   /* 17 */
+  --t-lg: 1.25rem;     /* 20 */
+  --t-xl: 1.625rem;    /* 26 */
+  --t-2xl: 2.25rem;    /* 36 */
+  --t-3xl: 2.75rem;    /* 44 */
+  --t-4xl: 3.5rem;     /* 56 */
+  --interligne: 1.5;
+  --interligne-serre: 1.15;
 
-  /* Formes */
-  --rayon: 0.5rem;
-  --rayon-petit: 0.375rem;
-  --ombre: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 16px rgba(16, 24, 40, 0.08);
-  --largeur-contenu: 64rem;
+  /* Espacements : échelle de 4 px */
+  --e-1: 4px;
+  --e-2: 8px;
+  --e-3: 12px;
+  --e-4: 16px;
+  --e-5: 20px;
+  --e-6: 24px;
+  --e-8: 32px;
+  --e-10: 40px;
+  --e-12: 48px;
+  --e-16: 64px;
+  --e-20: 80px;
+
+  /* Rayons */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-xl: 24px;
+  --r-pilule: 999px;
+
+  /* Dimensions */
+  --largeur-page: 1040px;
+  --largeur-barre: 1200px;
+  --hauteur-barre: 60px;
+
+  /* Animations (désactivées si l'utilisateur réduit les animations, section 18) */
+  --d-rapide: 120ms;
+  --d-normale: 200ms;
+  --courbe: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-*, *::before, *::after { box-sizing: border-box; }
+/* Mode sombre : simple redéfinition des variables (contrastes vérifiés par le même test). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --fond: #0F1620;
+    --carte: #161F2B;
+    --zone: #1F2A38;
+    --texte: #EEF0EC;
+    --texte-doux: #A7B1BD;
+    --bordure: #2A3646;
+    --bordure-champ: #6B7888;
+    --accent: #5CC4B6;
+    --accent-fort: #7AD3C7;
+    --accent-doux: #173733;
+    --sur-accent: #0B1F1C;
+    --attention: #F2A65A;
+    --attention-texte: #F4B47A;
+    --attention-doux: #35251A;
+    --danger: #F2958C;
+    --danger-fort: #F7B5AE;
+    --danger-doux: #3A1D1B;
+    --sur-danger: #2A0E0B;
+    --focus: #5CC4B6;
+    --focus-halo: #173733;
+    --voile: rgba(255, 255, 255, 0.03);
+    --ombre-douce: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --ombre-pilule: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+}
 
-html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* --------------------------------------------------------------------------
+   2. Base
+   -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
-  min-height: 100vh;
-  font-family: var(--police);
-  font-size: var(--taille-normale);
-  line-height: 1.5;
-  color: var(--couleur-texte);
-  background: var(--couleur-fond);
+  background: var(--fond);
+  color: var(--texte);
+  font-family: var(--police-texte);
+  font-size: var(--t-base);
+  line-height: var(--interligne);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
 }
 
-h1 {
-  margin: 0 0 var(--espace-2);
-  font-size: var(--taille-titre);
-  font-weight: 650;
-  line-height: 1.25;
-}
+h1, h2, h3, p, ul, ol, dl, dd, pre { margin: 0; }
 
-p { margin: 0 0 var(--espace-4); }
-
-a { color: var(--couleur-primaire); }
-a:hover { color: var(--couleur-primaire-survol); }
-
-/* ---------- Marque (texte seul, sans image) ---------- */
-
-.marque {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--espace-2);
-  font-weight: 700;
-  font-size: 1.125rem;
-  letter-spacing: 0.01em;
-  color: var(--couleur-texte);
-}
-
-.marque-logo {
-  display: inline-grid;
-  place-items: center;
-  width: 2rem;
-  height: 2rem;
-  border-radius: var(--rayon-petit);
-  background: var(--couleur-primaire);
-  color: var(--couleur-primaire-texte);
-  font-size: 0.8125rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-/* ---------- Page de connexion : carte centrée ---------- */
-
-.page-connexion {
-  display: grid;
-  place-items: center;
-  padding: var(--espace-5) var(--espace-4);
-}
-
-.carte {
-  width: 100%;
-  max-width: 24rem;
-  padding: var(--espace-6);
-  background: var(--couleur-surface);
-  border: 1px solid var(--couleur-bordure);
-  border-radius: var(--rayon);
-  box-shadow: var(--ombre);
-}
-
-.carte .marque { margin-bottom: var(--espace-5); }
-
-.sous-titre {
-  margin-bottom: var(--espace-5);
-  color: var(--couleur-texte-doux);
-  font-size: var(--taille-petite);
-}
-
-/* ---------- Formulaires ---------- */
-
-.formulaire { display: grid; gap: var(--espace-4); }
-
-.champ { display: grid; gap: var(--espace-1); }
-
-label {
-  font-size: var(--taille-petite);
+h1, h2, h3 {
+  font-family: var(--police-titre);
   font-weight: 600;
+  line-height: var(--interligne-serre);
+  letter-spacing: -0.01em;
 }
 
-input, textarea, select {
-  width: 100%;
-  min-height: 2.75rem; /* cible tactile confortable */
-  padding: var(--espace-2) var(--espace-3);
-  font: inherit;
-  color: inherit;
-  background: var(--couleur-surface);
-  border: 1px solid var(--couleur-bordure-forte);
-  border-radius: var(--rayon-petit);
+/* Liens : soulignés par défaut (un lien dans une phrase ne se distingue pas par la couleur seule). */
+a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
+a:hover { color: var(--accent-fort); text-decoration-thickness: 2px; }
 
-textarea { min-height: 8rem; resize: vertical; line-height: 1.5; }
+button, input, select, textarea { font: inherit; color: inherit; }
 
-input:hover, textarea:hover, select:hover { border-color: var(--couleur-texte-doux); }
-
-/* Focus toujours visible (clavier) : contour épais et contrasté. */
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible,
-button:focus-visible,
-a:focus-visible {
-  outline: 3px solid var(--couleur-focus);
+/* Focus clavier : anneau net + halo doux, sur tous les éléments interactifs. */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
-}
-input:focus-visible, textarea:focus-visible, select:focus-visible { border-color: var(--couleur-focus); }
-
-/* Champ en erreur : bordure rouge (le message est affiché sous le champ). */
-[aria-invalid="true"],
-[aria-invalid="true"]:hover { border-color: var(--couleur-erreur); box-shadow: inset 0 0 0 1px var(--couleur-erreur); }
-
-.bouton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 2.75rem;
-  padding: var(--espace-2) var(--espace-5);
-  font: inherit;
-  font-weight: 600;
-  color: var(--couleur-primaire-texte);
-  background: var(--couleur-primaire);
-  border: 1px solid var(--couleur-primaire);
-  border-radius: var(--rayon-petit);
-  text-decoration: none; /* aussi pour un lien présenté en bouton */
-  cursor: pointer;
-}
-.bouton:hover {
-  color: var(--couleur-primaire-texte);
-  background: var(--couleur-primaire-survol);
-  border-color: var(--couleur-primaire-survol);
+  box-shadow: 0 0 0 6px var(--focus-halo);
+  border-radius: var(--r-sm);
 }
 
-.formulaire .bouton { width: 100%; margin-top: var(--espace-2); }
-
-.bouton-secondaire {
-  min-height: 2.25rem;
-  padding: var(--espace-1) var(--espace-4);
-  color: var(--couleur-texte);
-  background: var(--couleur-surface);
-  border-color: var(--couleur-bordure-forte);
-}
-.bouton-secondaire:hover { color: var(--couleur-texte); background: var(--couleur-fond); border-color: var(--couleur-texte-doux); }
-
-/* Action destructrice confirmée (page de confirmation de suppression). */
-.bouton-danger { background: var(--couleur-erreur); border-color: var(--couleur-erreur); }
-.bouton-danger:hover { background: #7f1414; border-color: #7f1414; }
-
-/* Action destructrice discrète (lien vers la confirmation) et lien « Annuler ». */
-.lien-danger, .lien-annuler {
-  display: inline-flex;
-  align-items: center;
-  min-height: 2.25rem;
-  padding: var(--espace-1) 0; /* aucun retrait horizontal : aligné à gauche quand il passe à la ligne */
-  font-size: var(--taille-petite);
-  font-weight: 600;
-  border-radius: var(--rayon-petit);
-}
-.lien-danger { color: var(--couleur-erreur); text-decoration: none; }
-.lien-danger:hover { color: var(--couleur-erreur); text-decoration: underline; }
-.lien-annuler { color: var(--couleur-texte-doux); }
-.lien-annuler:hover { color: var(--couleur-texte); }
-
-/* ---------- Messages ---------- */
-
-.erreur {
-  margin: 0 0 var(--espace-5);
-  padding: var(--espace-3) var(--espace-4);
-  color: var(--couleur-erreur);
-  font-weight: 600;
-  background: var(--couleur-erreur-fond);
-  border: 1px solid var(--couleur-erreur-bordure);
-  border-left: 4px solid var(--couleur-erreur);
-  border-radius: var(--rayon-petit);
+.ic {
+  width: 1.25em;
+  height: 1.25em;
+  flex-shrink: 0;
+  vertical-align: -0.25em;
 }
 
-/* Confirmation après une action (fiche créée, modifiée...). */
-.succes {
-  margin: 0 0 var(--espace-4);
-  padding: var(--espace-3) var(--espace-4);
-  color: var(--couleur-poste);
-  font-weight: 600;
-  background: var(--couleur-poste-fond);
-  border: 1px solid var(--couleur-poste-bordure);
-  border-left: 4px solid var(--couleur-poste);
-  border-radius: var(--rayon-petit);
-}
+/* Sprite d'icônes intégré à la page : présent pour <use>, jamais affiché. */
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 
-/* Message d'erreur sous un champ. */
-.erreur-champ {
-  margin: 0;
-  font-size: var(--taille-petite);
-  font-weight: 600;
-  color: var(--couleur-erreur);
-  overflow-wrap: anywhere;
-}
-
-/* Aide courte sous un champ (format, limites). */
-.aide {
-  margin: 0;
-  font-size: var(--taille-petite);
-  color: var(--couleur-texte-doux);
-}
-
-.obligatoire { font-weight: 400; color: var(--couleur-texte-doux); }
-
-/* ---------- Pages de l'application : barre du haut + contenu ---------- */
-
-.barre {
-  background: var(--couleur-surface);
-  border-bottom: 1px solid var(--couleur-bordure);
-}
-
-.barre-interieur {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--espace-3);
-  max-width: var(--largeur-contenu);
-  margin: 0 auto;
-  padding: var(--espace-3) var(--espace-5);
-}
-
-.session {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--espace-3);
-  font-size: var(--taille-petite);
-  color: var(--couleur-texte-doux);
-}
-.session strong { color: var(--couleur-texte); overflow-wrap: anywhere; }
-.session form { margin: 0; }
-
-.contenu {
-  max-width: var(--largeur-contenu);
-  margin: 0 auto;
-  padding: var(--espace-6) var(--espace-5);
-}
-
-.panneau {
-  padding: var(--espace-5);
-  background: var(--couleur-surface);
-  border: 1px solid var(--couleur-bordure);
-  border-radius: var(--rayon);
-}
-.panneau > :last-child { margin-bottom: 0; }
-
-.texte-doux { color: var(--couleur-texte-doux); }
-
-/* Texte réservé aux lecteurs d'écran (libellé du champ de recherche). */
 .visuellement-cache {
-  position: absolute;
+  position: absolute !important;
   width: 1px;
   height: 1px;
   margin: -1px;
@@ -323,559 +191,1011 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { border-color
   border: 0;
 }
 
-/* ---------- Bandeau : marque et navigation ---------- */
-
-.barre-gauche {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--espace-5);
-}
-
-.navigation { display: flex; flex-wrap: wrap; gap: var(--espace-1); } /* trois rubriques : passent à la ligne à 375 px */
-
-.navigation a {
-  padding: var(--espace-1) var(--espace-3);
-  font-size: var(--taille-petite);
+/* « Aller au contenu » : hors écran, visible dès qu'il reçoit le focus clavier. */
+.lien-evitement {
+  position: absolute;
+  left: var(--e-4);
+  top: -100px;
+  z-index: 100;
+  padding: var(--e-2) var(--e-4);
+  background: var(--carte);
+  color: var(--texte);
+  border: 1px solid var(--bordure-champ);
+  border-radius: var(--r-md);
   font-weight: 600;
-  color: var(--couleur-texte-doux);
-  text-decoration: none;
-  border-radius: var(--rayon-petit);
 }
-.navigation a:hover { color: var(--couleur-texte); background: var(--couleur-fond); }
-.navigation a.actif { color: var(--couleur-primaire); background: #e8eef7; }
-
-/* ---------- En-têtes de page ---------- */
-
-.entete-page { margin-bottom: var(--espace-4); }
-.entete-page h1 { margin: 0; overflow-wrap: anywhere; }
-
-/* Titre et actions de la page sur une ligne ; les actions passent dessous si la place manque. */
-.entete-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--espace-3);
-}
-.entete-actions h1 { flex: 1 1 16rem; min-width: 0; }
-
-.actions-page {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--espace-2) var(--espace-4);
-}
-.actions-page .bouton-secondaire { min-height: 2.75rem; }
-
-/* Rappel du nom de la fiche sous le titre d'une page d'édition. */
-.sous-titre-page {
-  margin: var(--espace-1) 0 0;
-  color: var(--couleur-texte-doux);
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.retour { margin-bottom: var(--espace-3); font-size: var(--taille-petite); }
-.retour a { font-weight: 600; text-decoration: none; }
-.retour a:hover { text-decoration: underline; }
-
-/* ---------- Recherche ---------- */
-
-.recherche {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--espace-2);
-  max-width: 40rem;
-  margin-bottom: var(--espace-3);
-}
-.recherche input { flex: 1 1 10rem; min-width: 0; }
-.recherche .bouton { min-height: 2.75rem; } /* même hauteur que le champ */
-
-.resultats {
-  margin-bottom: var(--espace-4);
-  overflow-wrap: anywhere; /* saisie réaffichée, éventuellement sans espace */
-  font-size: var(--taille-petite);
-  color: var(--couleur-texte-doux);
-}
-.resultats a { font-weight: 600; }
-
-/* Inventaire vide, aucun résultat, fiche introuvable. */
-.vide {
-  padding: var(--espace-6) var(--espace-5);
-  overflow-wrap: anywhere;
-  text-align: center;
-  color: var(--couleur-texte-doux);
-  background: var(--couleur-surface);
-  border: 1px dashed var(--couleur-bordure-forte);
-  border-radius: var(--rayon);
-}
-.vide h1 { color: var(--couleur-texte); }
-.vide > :last-child { margin-bottom: 0; }
-
-/* ---------- Tableaux ---------- */
-
-.panneau-tableau {
-  overflow: hidden;
-  background: var(--couleur-surface);
-  border: 1px solid var(--couleur-bordure);
-  border-radius: var(--rayon);
-}
-
-.tableau { width: 100%; border-collapse: collapse; }
-
-.tableau th {
-  padding: var(--espace-3) var(--espace-4);
-  font-size: var(--taille-petite);
-  font-weight: 600;
-  text-align: left;
-  color: var(--couleur-texte-doux);
-  background: var(--couleur-entete-tableau);
-  border-bottom: 1px solid var(--couleur-bordure);
-}
-
-.tableau td {
-  padding: var(--espace-3) var(--espace-4);
-  vertical-align: middle;
-  overflow-wrap: anywhere; /* noms saisis sans espace : passent à la ligne au lieu de déborder */
-  border-bottom: 1px solid var(--couleur-bordure);
-}
-.tableau tbody tr:last-child td { border-bottom: 0; }
-.tableau tbody tr:hover { background: var(--couleur-survol-ligne); }
-
-/* Largeurs fixes : un contenu long dans une colonne ne peut pas écraser les autres. */
-.tableau-inventaire, .tableau-scans { table-layout: fixed; }
-.tableau-inventaire th:nth-child(2) { width: 38%; }
-.tableau-inventaire th:nth-child(3) { width: 11rem; }
-.tableau-scans th:nth-child(2) { width: 13rem; }
-.tableau-modifications { table-layout: fixed; }
-.tableau-modifications th:nth-child(1) { width: 13rem; }
-.tableau-modifications th:nth-child(2) { width: 12rem; }
-
-.lien-objet { font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
-.lien-objet:hover { text-decoration: underline; }
-
-/* UID de puce : police à chasse fixe. */
-.uid {
-  font-family: var(--police-mono);
-  font-size: 0.8125rem;
-  letter-spacing: 0.03em;
-  color: var(--couleur-texte-doux);
-}
-.cellule-objet .uid { display: block; margin-top: 0.125rem; }
-.proprietes .uid { color: var(--couleur-texte); font-size: var(--taille-petite); }
+.lien-evitement:focus,
+.lien-evitement:focus-visible { top: var(--e-3); }
 
 time { white-space: nowrap; }
 
-/* ---------- Puce d'état de la localisation ---------- */
+.texte-doux { color: var(--texte-doux); }
 
+.etiquette {
+  color: var(--texte-doux);
+  font-family: var(--police-texte);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: var(--interligne);
+  text-transform: uppercase;
+}
+
+/* Numéro de puce : groupé par octets, chasse fixe. */
+.uid {
+  font-family: var(--police-mono);
+  font-size: 0.92em;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  word-spacing: -0.1em;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   3. Barre supérieure
+   -------------------------------------------------------------------------- */
+.barre {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--carte);
+  border-bottom: 1px solid var(--bordure);
+}
+.barre-interieur {
+  display: flex;
+  align-items: center;
+  gap: var(--e-6);
+  max-width: var(--largeur-barre);
+  min-height: var(--hauteur-barre);
+  margin: 0 auto;
+  padding: 0 var(--e-6);
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e-2);
+  flex-shrink: 0;
+  color: var(--texte);
+  text-decoration: none;
+  font-family: var(--police-titre);
+  font-size: var(--t-md);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+a.logo:hover { color: var(--texte); }
+a.logo:focus-visible { border-radius: var(--r-md); }
+/* Logo officiel (couleurs de marque dans le SVG lui-même). */
+.logo-image { width: 28px; height: 28px; flex-shrink: 0; }
+.logo--grand { flex-direction: column; align-items: flex-start; gap: var(--e-3); font-size: var(--t-lg); }
+.logo--grand .logo-image { width: 56px; height: 56px; }
+
+.nav { flex-shrink: 0; }
+.nav ul { display: flex; gap: var(--e-1); margin: 0; padding: 0; list-style: none; }
+.nav a {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 var(--e-3);
+  border-radius: var(--r-pilule);
+  color: var(--texte-doux);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--d-rapide), color var(--d-rapide);
+}
+.nav a:hover { background: var(--zone); color: var(--texte); }
+/* Rubrique courante (la liste, ou l'une de ses sous-pages) : fond + graisse + couleur,
+   jamais la couleur seule ; aria-current l'annonce aux lecteurs d'écran. */
+.nav a[aria-current] {
+  background: var(--zone);
+  color: var(--texte);
+  font-weight: 600;
+}
+.nav a:focus-visible { border-radius: var(--r-pilule); }
+
+.barre-recherche {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+/* Recherche compacte : envoie vers la recherche de l'inventaire (GET /?q=). */
+.recherche-barre {
+  display: flex;
+  align-items: center;
+  gap: var(--e-2);
+  width: 100%;
+  max-width: 340px;
+  height: 40px;
+  padding: 0 var(--e-4) 0 var(--e-3);
+  background: var(--fond);
+  border: 1px solid var(--bordure-champ);
+  border-radius: var(--r-pilule);
+  color: var(--texte-doux);
+  transition: border-color var(--d-rapide), box-shadow var(--d-normale);
+}
+.recherche-barre:hover { border-color: var(--texte-doux); }
+.recherche-barre:focus-within { border-color: var(--focus); box-shadow: 0 0 0 4px var(--focus-halo); }
+.recherche-barre input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--texte);
+}
+.recherche-barre input::placeholder { color: var(--texte-doux); opacity: 1; }
+/* Le contour du champ porte déjà le focus (focus-within). */
+.recherche-barre input:focus-visible { outline: none; box-shadow: none; }
+
+.compte {
+  display: flex;
+  align-items: center;
+  gap: var(--e-2);
+  flex-shrink: 0;
+}
+.compte form { margin: 0; }
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--zone);
+  color: var(--texte);
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.compte-nom { font-weight: 500; }
+.compte-nom strong { font-weight: 600; }
+
+/* --------------------------------------------------------------------------
+   4. Mise en page et en-têtes
+   -------------------------------------------------------------------------- */
+.page {
+  max-width: var(--largeur-page);
+  margin: 0 auto;
+  padding: var(--e-8) var(--e-6) var(--e-20);
+}
+
+.fil {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--e-1);
+  margin-bottom: var(--e-4);
+  color: var(--texte-doux);
+  font-size: var(--t-sm);
+}
+.fil a { color: var(--texte-doux); text-decoration: none; }
+.fil a:hover { color: var(--texte); text-decoration: underline; }
+.fil .ic { width: 14px; height: 14px; }
+.fil span { overflow-wrap: anywhere; }
+
+.entete-page { margin-bottom: var(--e-6); }
+.entete-page h1 {
+  font-size: var(--t-2xl);
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+.entete-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--e-4);
+}
+.titre-icone { display: flex; align-items: center; gap: var(--e-3); min-width: 0; }
+.titre-icone > .ic { width: 30px; height: 30px; color: var(--texte-doux); }
+.actions-page { display: flex; align-items: center; flex-wrap: wrap; gap: var(--e-2); }
+.sous-titre-page {
+  margin-top: var(--e-2);
+  color: var(--texte-doux);
+  font-size: var(--t-md);
+  overflow-wrap: anywhere;
+}
+.intro { margin-top: var(--e-3); max-width: 70ch; color: var(--texte-doux); }
+
+.resultats { margin: var(--e-5) 0 var(--e-3); color: var(--texte-doux); font-size: var(--t-sm); }
+
+/* --------------------------------------------------------------------------
+   5. Cartes et panneaux
+   -------------------------------------------------------------------------- */
+.carte {
+  background: var(--carte);
+  border: 1px solid var(--bordure);
+  border-radius: var(--r-lg);
+}
+.carte-corps { padding: var(--e-6); }
+.carte-titre {
+  display: flex;
+  align-items: center;
+  gap: var(--e-2);
+  margin-bottom: var(--e-4);
+  font-family: var(--police-titre);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+.carte-titre .ic { color: var(--texte-doux); }
+.compte-titre {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 var(--e-2);
+  border-radius: var(--r-pilule);
+  background: var(--zone);
+  color: var(--texte);
+  font-family: var(--police-texte);
+  font-size: var(--t-xs);
+  font-weight: 700;
+}
+
+/* Encadrés de confirmation et d'avertissement : fond doux + filet + texte explicite. */
+.panneau {
+  margin-bottom: var(--e-6);
+  padding: var(--e-6);
+  background: var(--carte);
+  border: 1px solid var(--bordure);
+  border-radius: var(--r-lg);
+  overflow-wrap: anywhere;
+}
+.panneau > * + * { margin-top: var(--e-3); }
+.panneau a { color: var(--texte); }
+.panneau-danger { background: var(--danger-doux); border-color: var(--danger-doux); box-shadow: inset 4px 0 0 var(--danger); }
+.panneau-alerte { background: var(--attention-doux); border-color: var(--attention-doux); box-shadow: inset 4px 0 0 var(--attention); }
+.panneau-info { background: var(--zone); border-color: var(--zone); }
+.nom-confirme { font-weight: 700; }
+.liste-causes { padding-left: 1.25em; list-style: disc; }
+.liste-causes li + li { margin-top: var(--e-1); }
+
+/* États vides et pages d'information. */
+.vide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--e-2);
+  padding: var(--e-12) var(--e-6);
+  text-align: center;
+  background: var(--carte);
+  border: 1.5px dashed var(--bordure);
+  border-radius: var(--r-lg);
+  overflow-wrap: anywhere;
+}
+.vide-icone {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: var(--e-2);
+  border-radius: 50%;
+  background: var(--zone);
+  color: var(--texte-doux);
+}
+.vide-icone .ic { width: 26px; height: 26px; }
+.vide h1 { font-size: var(--t-xl); }
+.vide p { max-width: 60ch; }
+.vide .bouton { margin-top: var(--e-3); }
+
+/* --------------------------------------------------------------------------
+   6. Boutons et liens d'action
+   -------------------------------------------------------------------------- */
+.bouton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--e-2);
+  min-height: 40px;
+  padding: 0 var(--e-4);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--accent);
+  color: var(--sur-accent);
+  font-size: var(--t-base);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--d-rapide), border-color var(--d-rapide), color var(--d-rapide);
+}
+.bouton:hover { background: var(--accent-fort); color: var(--sur-accent); }
+.bouton:focus-visible { border-radius: var(--r-md); }
+.bouton .ic { width: 18px; height: 18px; }
+.bouton-secondaire { background: var(--carte); border-color: var(--bordure-champ); color: var(--texte); }
+.bouton-secondaire:hover { background: var(--zone); color: var(--texte); }
+.bouton-danger { background: var(--danger); color: var(--sur-danger); }
+.bouton-danger:hover { background: var(--danger-fort); color: var(--sur-danger); }
+.bouton-discret { background: transparent; color: var(--accent); }
+.bouton-discret:hover { background: var(--accent-doux); color: var(--accent); }
+.bouton-petit { min-height: 34px; padding: 0 var(--e-3); font-size: var(--t-sm); }
+.bouton-petit .ic { width: 16px; height: 16px; }
+.bouton-large { width: 100%; min-height: 44px; }
+
+/* Action irréversible présentée en lien (la confirmation suit sur la page suivante). */
+.lien-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e-2);
+  min-height: 40px;
+  padding: 0 var(--e-3);
+  border-radius: var(--r-md);
+  color: var(--danger);
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color var(--d-rapide);
+}
+.lien-danger .ic { width: 18px; height: 18px; }
+.lien-danger:hover { background: var(--danger-doux); color: var(--danger); }
+.lien-annuler { color: var(--texte-doux); font-weight: 500; }
+.lien-annuler:hover { color: var(--texte); }
+.lien-simple { color: var(--accent); }
+.lien-objet {
+  color: var(--texte);
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.lien-objet:hover { color: var(--texte); text-decoration: underline; }
+
+.groupe-boutons { display: flex; flex-wrap: wrap; gap: var(--e-2); }
+
+/* --------------------------------------------------------------------------
+   7. Messages (confirmation, erreur)
+   -------------------------------------------------------------------------- */
+.succes,
+.erreur {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--e-3);
+  margin-bottom: var(--e-5);
+  padding: var(--e-3) var(--e-4);
+  border-radius: var(--r-md);
+  color: var(--texte);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.succes::before,
+.erreur::before {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  font-size: var(--t-xs);
+  font-weight: 800;
+  line-height: 1;
+}
+.succes { background: var(--accent-doux); box-shadow: inset 3px 0 0 var(--accent); }
+.succes::before { content: "✓"; background: var(--accent); color: var(--sur-accent); }
+.erreur { background: var(--danger-doux); box-shadow: inset 3px 0 0 var(--danger); }
+.erreur::before { content: "!"; background: var(--danger); color: var(--sur-danger); }
+
+/* --------------------------------------------------------------------------
+   8. Pastilles d'état (icône dessinée en CSS + texte)
+   -------------------------------------------------------------------------- */
 .etat {
   display: inline-flex;
   align-items: center;
-  gap: var(--espace-2);
+  gap: 6px;
   max-width: 100%;
-  padding: 0.125rem 0.625rem;
-  font-size: var(--taille-petite);
+  overflow-wrap: anywhere;
   font-weight: 600;
-  line-height: 1.4;
-  text-align: left;
-  overflow-wrap: anywhere; /* nom de poste long sans espace : passe à la ligne dans la puce */
-  border: 1px solid;
-  border-radius: 0.875rem; /* pilule sur une ligne, reste lisible sur deux */
+  line-height: 1.3;
 }
-.etat::before {
-  content: "";
-  flex: none;
-  width: 0.5rem;
-  height: 0.5rem;
-  background: currentColor;
+.etat::before { content: ""; flex: none; }
+/* Poste : texte lisible (police de titre) précédé d'un repère. */
+.etat-poste { color: var(--texte); font-family: var(--police-titre); font-size: var(--t-md); }
+.etat-poste::before {
+  width: 10px;
+  height: 10px;
+  margin: 0 3px 3px 1px;
+  border: 2px solid var(--accent);
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+}
+/* Pastilles : fond doux + texte foncé + icône. */
+.etat-inconnue,
+.etat-jamais,
+.etat-actif,
+.etat-desactive {
+  padding: 3px 10px 3px 8px;
+  border-radius: var(--r-pilule);
+  font-size: var(--t-sm);
+}
+.etat-inconnue { background: var(--attention-doux); color: var(--attention-texte); }
+.etat-inconnue::before {
+  content: "!";
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid currentColor;
   border-radius: 50%;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
 }
-.etat-poste { color: var(--couleur-poste); background: var(--couleur-poste-fond); border-color: var(--couleur-poste-bordure); }
-.etat-inconnue { color: var(--couleur-inconnue); background: var(--couleur-inconnue-fond); border-color: var(--couleur-inconnue-bordure); }
-/* Jamais localisé : style atténué (cercle vide, italique). */
-.etat-jamais {
-  font-weight: 500;
-  font-style: italic;
-  color: var(--couleur-jamais);
-  background: var(--couleur-jamais-fond);
-  border-color: var(--couleur-bordure);
+.etat-jamais { background: var(--zone); color: var(--texte-doux); }
+.etat-jamais::before { width: 12px; height: 12px; border: 1.5px dashed currentColor; border-radius: 50%; }
+.etat-actif { background: var(--accent-doux); color: var(--accent); }
+.etat-actif::before {
+  width: 5px;
+  height: 9px;
+  margin: -2px 3px 0 2px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
-.etat-jamais::before { background: transparent; border: 1.5px solid currentColor; }
+.etat-desactive { background: var(--zone); color: var(--texte-doux); }
+.etat-desactive::before {
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  background: linear-gradient(45deg, transparent 43%, currentColor 43% 57%, transparent 57%);
+}
+/* Pastille cliquable (lecteur non affecté → fiche du lecteur). */
+.lien-etat { text-decoration: none; }
+.lien-etat:hover .etat { text-decoration: underline; }
+.lien-etat:focus-visible { border-radius: var(--r-pilule); }
 
-/* ---------- Fiche objet : cartes ---------- */
+/* Badges (frise, fiche). */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e-1);
+  height: 22px;
+  padding: 0 var(--e-2);
+  border-radius: var(--r-pilule);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+.badge--ok { background: var(--accent-doux); color: var(--accent); }
+
+/* --------------------------------------------------------------------------
+   9. Tableaux
+   -------------------------------------------------------------------------- */
+.panneau-tableau {
+  overflow-x: auto;
+  background: var(--carte);
+  border: 1px solid var(--bordure);
+  border-radius: var(--r-lg);
+}
+.tableau { width: 100%; border-collapse: collapse; }
+.tableau th {
+  padding: var(--e-3) var(--e-5);
+  border-bottom: 1px solid var(--bordure);
+  color: var(--texte-doux);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tableau td {
+  padding: var(--e-4) var(--e-5);
+  border-bottom: 1px solid var(--bordure);
+  vertical-align: middle;
+}
+.tableau tbody tr:last-child td { border-bottom: 0; }
+.tableau tbody tr { transition: background-color var(--d-rapide); }
+.tableau tbody tr:hover { background: var(--voile); }
+.cellule-objet { min-width: 12rem; }
+.description-courte {
+  display: block;
+  margin-top: 2px;
+  color: var(--texte-doux);
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+.cellule-actions { text-align: right; white-space: nowrap; }
+.tableau-inventaire th:nth-child(1) { width: 46%; }
+.tableau-inventaire th:nth-child(2) { width: 34%; }
+.tableau-postes th:nth-child(n+2),
+.tableau-postes td:nth-child(n+2) { width: 11rem; }
+/* Tableau à l'intérieur d'une carte : aligné sur le texte de la carte. */
+.carte .tableau th:first-child,
+.carte .tableau td:first-child { padding-left: 0; }
+.carte .tableau th:last-child,
+.carte .tableau td:last-child { padding-right: 0; }
+.panneau-tableau .tableau th:first-child,
+.panneau-tableau .tableau td:first-child { padding-left: var(--e-6); }
+.panneau-tableau .tableau th:last-child,
+.panneau-tableau .tableau td:last-child { padding-right: var(--e-6); }
+
+/* --------------------------------------------------------------------------
+   10. Recherche dans la page (inventaire, association)
+   -------------------------------------------------------------------------- */
+.recherche {
+  display: flex;
+  align-items: center;
+  gap: var(--e-3);
+  max-width: 680px;
+  height: 56px;
+  padding: 0 var(--e-2) 0 var(--e-5);
+  background: var(--carte);
+  border: 1px solid var(--bordure-champ);
+  border-radius: var(--r-pilule);
+  box-shadow: var(--ombre-pilule);
+  color: var(--texte-doux);
+  transition: border-color var(--d-rapide), box-shadow var(--d-normale);
+}
+.recherche:hover { border-color: var(--texte-doux); }
+.recherche:focus-within { border-color: var(--focus); box-shadow: 0 0 0 4px var(--focus-halo), var(--ombre-pilule); }
+.recherche > .ic { width: 22px; height: 22px; color: var(--texte); }
+.recherche input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--t-md);
+}
+.recherche input::placeholder { color: var(--texte-doux); opacity: 1; }
+.recherche input:focus-visible { outline: none; box-shadow: none; border-color: transparent; }
+.recherche .bouton { border-radius: var(--r-pilule); }
+
+/* --------------------------------------------------------------------------
+   11. Formulaires
+   -------------------------------------------------------------------------- */
+input,
+textarea,
+select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: var(--carte);
+  color: var(--texte);
+  border: 1px solid var(--bordure-champ);
+  border-radius: var(--r-md);
+  transition: border-color var(--d-rapide), box-shadow var(--d-normale);
+}
+textarea { min-height: 7rem; line-height: var(--interligne); resize: vertical; }
+input:hover,
+textarea:hover,
+select:hover { border-color: var(--texte-doux); }
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+  border-color: var(--focus);
+  border-radius: var(--r-md);
+  box-shadow: 0 0 0 5px var(--focus-halo);
+}
+/* Champ en erreur : contour épais + message avec icône sous le champ (pas la couleur seule). */
+[aria-invalid="true"],
+[aria-invalid="true"]:hover { border: 2px solid var(--danger); }
+
+.formulaire-page {
+  max-width: 760px;
+  padding: var(--e-8);
+  background: var(--carte);
+  border: 1px solid var(--bordure);
+  border-radius: var(--r-lg);
+}
+.champ + .champ,
+.champ + .champ-proprietes { margin-top: var(--e-6); }
+.champ label,
+.libelle,
+.champ-proprietes legend {
+  display: block;
+  margin-bottom: var(--e-2);
+  padding: 0;
+  font-weight: 600;
+}
+.obligatoire { color: var(--texte-doux); font-size: var(--t-sm); font-weight: 400; }
+.aide { margin-top: var(--e-2); color: var(--texte-doux); font-size: var(--t-sm); }
+.erreur-champ {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: var(--e-2);
+  color: var(--danger);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+.erreur-champ::before {
+  content: "!";
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+.champ-proprietes { min-width: 0; margin: 0; padding: 0; border: 0; }
+.proprietes-saisie { display: grid; gap: var(--e-2); margin-top: var(--e-4); }
+.propriete-ligne,
+.propriete-entete {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--e-2);
+}
+.propriete-ligne .erreur-champ { grid-column: 1 / -1; margin-top: 0; }
+.propriete-entete {
+  color: var(--texte-doux);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.actions-formulaire {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--e-3);
+  margin-top: var(--e-8);
+  padding-top: var(--e-6);
+  border-top: 1px solid var(--bordure);
+}
+.actions-formulaire .lien-annuler { margin-left: var(--e-2); }
+.panneau .actions-formulaire,
+.page > .actions-formulaire { margin-top: var(--e-5); padding-top: 0; border-top: 0; }
+.puce-lecture {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e-2);
+  padding: var(--e-2) var(--e-4);
+  background: var(--zone);
+  border-radius: var(--r-md);
+}
+.puce-lecture .uid { font-size: var(--t-md); }
+.puce-lecture .ic { color: var(--texte-doux); }
+.localisation-actuelle { display: flex; align-items: center; flex-wrap: wrap; gap: var(--e-2); margin-bottom: var(--e-5); }
+.alternative { margin-top: var(--e-6); color: var(--texte-doux); }
+
+/* --------------------------------------------------------------------------
+   12. Fiche d'un objet (et fiches poste, lecteur)
+   -------------------------------------------------------------------------- */
+.fiche-entete {
+  margin-bottom: var(--e-6);
+  padding: var(--e-8);
+  border-radius: var(--r-xl);
+}
+.fiche-entete-haut {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--e-4) var(--e-6);
+}
+.fiche-titre { display: flex; align-items: center; gap: var(--e-2); min-width: 0; padding-top: var(--e-2); }
+.fiche-titre > .ic { color: var(--texte-doux); }
+.fiche-titre h1 {
+  font-family: var(--police-texte);
+  font-size: var(--t-lg);
+  font-weight: 600;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+.fiche-entete .etiquette { margin-top: var(--e-8); }
+
+/* Emplacement en grand. La pastille d'état incluse y devient du texte simple. */
+.emplacement {
+  display: flex;
+  align-items: center;
+  gap: var(--e-3);
+  margin-top: var(--e-2);
+  font-family: var(--police-titre);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: var(--interligne-serre);
+}
+.emplacement > .ic { color: var(--accent); }
+.emplacement .etat {
+  display: inline-block;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+.emplacement .etat::before { display: none; }
+.emplacement .etat::first-letter { text-transform: uppercase; }
+.emplacement--xl { font-size: var(--t-4xl); }
+.emplacement--xl > .ic { width: 44px; height: 44px; }
+.emplacement--attention,
+.emplacement--vide { font-size: var(--t-2xl); }
+.emplacement--attention > .ic,
+.emplacement--vide > .ic { width: 32px; height: 32px; }
+.emplacement--attention,
+.emplacement--attention > .ic { color: var(--attention-texte); }
+.emplacement--vide,
+.emplacement--vide > .ic { color: var(--texte-doux); }
+.emplacement .lien-etat { color: inherit; }
+.emplacement .lien-etat:hover .etat { text-decoration: underline; text-decoration-thickness: 2px; }
+.fiche-entete .texte-doux,
+.localisation-detail { margin-top: var(--e-3); color: var(--texte-doux); }
+.localisation-detail time { color: var(--texte); font-weight: 600; }
+.note-emplacement { margin-top: var(--e-2); color: var(--texte-doux); font-size: var(--t-sm); }
 
 .fiche {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--espace-4);
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: var(--e-5);
+  align-items: start;
 }
-
-.fiche-carte {
-  min-width: 0;
-  padding: var(--espace-5);
-  background: var(--couleur-surface);
-  border: 1px solid var(--couleur-bordure);
-  border-radius: var(--rayon);
-}
-.fiche-carte > :last-child { margin-bottom: 0; }
+.fiche--poste { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.fiche-colonne { display: grid; gap: var(--e-5); min-width: 0; }
 .fiche-large { grid-column: 1 / -1; }
+.carte .localisation-detail { margin-top: var(--e-3); }
 
-.fiche-carte h2 {
-  margin: 0 0 var(--espace-3);
-  font-size: 0.8125rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--couleur-texte-doux);
-}
-
-.fiche-carte .etat { font-size: var(--taille-normale); padding: var(--espace-1) var(--espace-3); }
-.localisation-detail { font-size: var(--taille-petite); color: var(--couleur-texte-doux); overflow-wrap: anywhere; }
-
-.proprietes { margin: 0; }
 .proprietes > div {
   display: grid;
-  grid-template-columns: minmax(6rem, 35%) minmax(0, 1fr);
-  align-items: baseline;
-  gap: var(--espace-3);
-  padding: var(--espace-2) 0;
-  border-bottom: 1px solid var(--couleur-bordure);
+  grid-template-columns: minmax(6rem, 2fr) minmax(0, 3fr);
+  gap: var(--e-4);
+  padding: var(--e-3) 0;
+  border-top: 1px solid var(--bordure);
 }
-.proprietes > div:first-child { padding-top: 0; }
-.proprietes > div:last-child { padding-bottom: 0; border-bottom: 0; }
-.proprietes dt { font-size: var(--taille-petite); font-weight: 600; color: var(--couleur-texte-doux); overflow-wrap: anywhere; }
-/* Valeurs de propriété : retours à la ligne saisis conservés, comme les notes. */
-.proprietes dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.proprietes > div:first-child { padding-top: 0; border-top: 0; }
+.proprietes > div:last-child { padding-bottom: 0; }
+.proprietes dt { color: var(--texte-doux); overflow-wrap: anywhere; }
+.proprietes dd { font-weight: 500; overflow-wrap: anywhere; }
+.notes { line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.carte .notes + .proprietes { margin-top: var(--e-5); }
+.note-carte,
+.note-poste { margin-top: var(--e-4); color: var(--texte-doux); font-size: var(--t-sm); }
 
-/* Notes : les retours à la ligne saisis sont conservés. */
-.notes { white-space: pre-wrap; overflow-wrap: anywhere; }
-
-.fiche-carte .tableau th:first-child, .fiche-carte .tableau td:first-child { padding-left: 0; }
-.fiche-carte .tableau th:last-child, .fiche-carte .tableau td:last-child { padding-right: 0; }
-.fiche-carte .tableau th { background: none; }
-
-/* ---------- Pages d'édition : formulaire de fiche, localisation, suppression ---------- */
-
-.formulaire-page {
+/* Frise d'historique verticale (le plus récent en haut). */
+.frise { margin: 0; padding: 0; list-style: none; }
+.frise-etape {
+  position: relative;
   display: grid;
-  gap: var(--espace-5);
-  max-width: 44rem;
-  padding: var(--espace-5);
-  background: var(--couleur-surface);
-  border: 1px solid var(--couleur-bordure);
-  border-radius: var(--rayon);
+  grid-template-columns: 7.5rem 32px minmax(0, 1fr);
+  gap: var(--e-4);
+  padding-bottom: var(--e-5);
 }
-
-.formulaire-page .champ { gap: var(--espace-2); }
-
-/* Propriétés : groupe de champs sans cadre propre (il est déjà dans le panneau). */
-.champ-proprietes {
+.frise-etape:last-child { padding-bottom: 0; }
+/* Rail vertical reliant les nœuds. */
+.frise-etape::before {
+  content: "";
+  position: absolute;
+  left: calc(7.5rem + var(--e-4) + 15px);
+  top: 34px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--bordure);
+}
+.frise-etape:last-child::before { display: none; }
+.frise-quand {
+  padding-top: 6px;
+  color: var(--texte-doux);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: right;
+}
+.frise-quand time { white-space: normal; }
+.frise-noeud {
+  position: relative;
+  z-index: 1;
   display: grid;
-  gap: var(--espace-2);
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--carte);
+  border: 1.5px solid var(--bordure-champ);
+  color: var(--texte-doux);
 }
-.champ-proprietes legend {
-  padding: 0;
-  margin-bottom: var(--espace-1);
-  font-size: var(--taille-petite);
+.frise-noeud .ic { width: 16px; height: 16px; }
+.frise-etape--actuel .frise-noeud { background: var(--accent); border-color: var(--accent); color: var(--sur-accent); }
+.frise-etape--actuel .frise-quand { color: var(--texte); font-weight: 600; }
+.frise-contenu { min-width: 0; padding-top: 4px; }
+.frise-lieu {
+  font-family: var(--police-titre);
+  font-size: var(--t-md);
   font-weight: 600;
-}
-
-.proprietes-saisie { display: grid; gap: var(--espace-2); }
-
-/* Une ligne = nom et valeur côte à côte, message d'erreur éventuel dessous. */
-.propriete-ligne, .propriete-entete {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-  gap: var(--espace-2);
-}
-.propriete-ligne .erreur-champ { grid-column: 1 / -1; }
-.propriete-entete {
-  font-size: var(--taille-petite);
-  font-weight: 600;
-  color: var(--couleur-texte-doux);
-}
-
-.actions-formulaire {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--espace-3);
-  padding-top: var(--espace-4);
-  border-top: 1px solid var(--couleur-bordure);
-}
-.panneau-danger .actions-formulaire { margin-top: var(--espace-5); }
-.actions-formulaire .bouton-secondaire { min-height: 2.75rem; }
-
-/* Alerte au-dessus d'un formulaire d'édition : même largeur que le formulaire. */
-.contenu > .erreur { max-width: 44rem; }
-
-.localisation-actuelle {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--espace-2);
-}
-
-/* Confirmation de suppression : panneau bordé de rouge. */
-.panneau-danger {
-  max-width: 44rem;
-  border-color: var(--couleur-erreur-bordure);
-  border-left: 4px solid var(--couleur-erreur);
-}
-.panneau-danger form { margin: 0; }
-.nom-confirme { overflow-wrap: anywhere; }
-
-/* ---------- Postes et lecteurs (étape 6) ---------- */
-
-/* Onglets « Postes » / « Lecteurs » sous le titre de la rubrique. */
-.onglets {
-  display: flex;
-  gap: var(--espace-1);
-  margin-bottom: var(--espace-4);
-  border-bottom: 1px solid var(--couleur-bordure);
-}
-.onglets a {
-  margin-bottom: -1px; /* le soulignement de l'onglet actif recouvre la bordure */
-  padding: var(--espace-2) var(--espace-4);
-  font-weight: 600;
-  color: var(--couleur-texte-doux);
-  text-decoration: none;
-  border-bottom: 3px solid transparent;
-}
-.onglets a:hover { color: var(--couleur-texte); border-bottom-color: var(--couleur-bordure-forte); }
-.onglets a.actif { color: var(--couleur-primaire); border-bottom-color: var(--couleur-primaire); }
-
-/* Description d'un poste dans la liste : deux lignes au plus. */
-.description-courte {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-  margin-top: 0.125rem;
-  font-size: var(--taille-petite);
-  color: var(--couleur-texte-doux);
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
-
-.tableau-postes, .tableau-lecteurs, .tableau-lecteurs-poste, .tableau-objets-poste, .tableau-scans-lecteur { table-layout: fixed; }
-.tableau-postes th:nth-child(2), .tableau-postes th:nth-child(3) { width: 10rem; }
-.tableau-lecteurs th:nth-child(1) { width: 8.5rem; }
-.tableau-lecteurs th:nth-child(3) { width: 7.5rem; }
-.tableau-lecteurs th:nth-child(4) { width: 9rem; }
-.tableau-lecteurs th:nth-child(5) { width: 9.5rem; }
-.tableau-lecteurs th:nth-child(6) { width: 12.5rem; }
-.tableau-lecteurs th { white-space: nowrap; }
-
-/* Lien dans un tableau ou une fiche (poste, objet) : souligné au survol seulement. */
-.lien-simple { text-decoration: none; overflow-wrap: anywhere; }
-.lien-simple:hover { text-decoration: underline; }
-.tableau-lecteurs-poste th:nth-child(2) { width: 9rem; }
-.tableau-lecteurs-poste th:nth-child(3) { width: 13rem; }
-.tableau-objets-poste th:nth-child(2) { width: 13rem; }
-.tableau-scans-lecteur th:nth-child(1) { width: 12rem; }
-.tableau-scans-lecteur th:nth-child(4) { width: 10rem; }
-
-/* État d'un lecteur : actif (vert, comme un poste) ou désactivé (gris). */
-.etat-actif { color: var(--couleur-poste); background: var(--couleur-poste-fond); border-color: var(--couleur-poste-bordure); }
-.etat-desactive { color: var(--couleur-jamais); background: var(--couleur-jamais-fond); border-color: var(--couleur-bordure); }
-.etat-desactive::before { background: transparent; border: 1.5px solid currentColor; }
-
-/* Puce « inconnue (lecteur n° X non affecté) » : lien vers la fiche du lecteur. */
-.lien-etat { display: inline-flex; max-width: 100%; text-decoration: none; border-radius: 0.875rem; }
-.lien-etat:hover .etat { border-color: currentColor; }
-
-/* Poste avec historique, fiche sans puce : explication sous les informations de la carte. */
-.note-poste, .note-carte {
-  margin: var(--espace-4) 0 0;
-  font-size: var(--taille-petite);
-  color: var(--couleur-texte-doux);
+.frise-detail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--e-2);
+  margin-top: 2px;
+  color: var(--texte-doux);
+  font-size: var(--t-sm);
+}
+.frise--modifications .frise-lieu {
+  font-family: var(--police-texte);
+  font-size: var(--t-base);
+  font-weight: 500;
 }
 
-/* Suppression impossible : panneau neutre, causes en liste. */
-.panneau-info { max-width: 44rem; border-left: 4px solid var(--couleur-primaire); }
-.liste-causes { margin: 0 0 var(--espace-4); padding-left: var(--espace-5); }
-.liste-causes li { margin-bottom: var(--espace-1); }
-.panneau-info .actions-formulaire { margin-top: var(--espace-5); }
-
-/* Bouton dans un encadré « vide » (page d'information). */
-.vide .bouton { margin-top: var(--espace-2); }
-
-/* Page de la clé : avertissement bien visible, mais sobre (couleurs « inconnue »). */
-.panneau-alerte {
-  margin-bottom: var(--espace-4);
-  color: var(--couleur-inconnue);
-  background: var(--couleur-inconnue-fond);
-  border-color: var(--couleur-inconnue-bordure);
-  border-left: 4px solid var(--couleur-inconnue);
-}
-.panneau-alerte p { margin-bottom: var(--espace-2); }
-
+/* Page de la clé d'un lecteur. */
+.carte-cle { margin-bottom: var(--e-6); }
+.carte-cle .etiquette { margin-bottom: var(--e-2); }
 .numero-lecteur {
-  font-family: var(--police-mono);
-  font-size: 1.5rem;
-  font-weight: 700;
+  margin-bottom: var(--e-6);
+  font-family: var(--police-titre);
+  font-size: var(--t-3xl);
+  font-weight: 600;
+  line-height: 1;
 }
-
-/* Clé : chasse fixe ; 64 caractères sans espace qui se coupent n'importe où (aucun
-   débordement à 375 px). Un clic sélectionne toute la clé (user-select). */
 .cle {
-  margin: 0 0 var(--espace-2);
-  padding: var(--espace-3) var(--espace-4);
+  padding: var(--e-4) var(--e-5);
+  background: var(--zone);
+  border-radius: var(--r-md);
   font-family: var(--police-mono);
-  font-size: 1.0625rem;
+  font-size: var(--t-md);
   letter-spacing: 0.04em;
   line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-all;
-  background: var(--couleur-entete-tableau);
-  border: 1px solid var(--couleur-bordure-forte);
-  border-radius: var(--rayon-petit);
-  user-select: all;
   -webkit-user-select: all;
-}
-.fiche-carte h2 + .numero-lecteur { margin-bottom: var(--espace-4); }
-/* Bouton « Retour aux lecteurs » sous les cartes de la page de clé : sans trait de séparation. */
-.fiche + .actions-formulaire { margin-top: var(--espace-5); padding-top: 0; border-top: 0; }
-
-/* ---------- Puces inconnues et association (étape 7) ---------- */
-
-/* Texte d'introduction sous le titre d'une rubrique. */
-.intro {
-  max-width: 44rem;
-  margin: var(--espace-2) 0 0;
-  color: var(--couleur-texte-doux);
+  user-select: all;
 }
 
-.tableau-puces, .tableau-association { table-layout: fixed; }
-.tableau-puces th:nth-child(1) { width: 13.5rem; }
-.tableau-puces th:nth-child(3) { width: 9rem; }
-.tableau-puces th:nth-child(4) { width: 5rem; }
-.tableau-puces th:nth-child(5) { width: 14rem; }
-.tableau-association th:nth-child(2) { width: 13.5rem; }
-.tableau-association th:nth-child(4) { width: 9rem; }
-
-/* UID d'une puce inconnue : l'information principale de la ligne, donc lisible. */
-.uid-puce { font-size: var(--taille-petite); font-weight: 600; color: var(--couleur-texte); overflow-wrap: anywhere; }
-
-/* Actions d'une ligne : bouton secondaire, puis lien ; passent l'un sous l'autre si la place manque. */
-.cellule-actions .bouton-secondaire { min-height: 2.25rem; margin: 0 var(--espace-3) var(--espace-1) 0; white-space: nowrap; }
-.tableau-association .cellule-actions { text-align: right; }
-.tableau-association .cellule-actions .bouton-secondaire { margin: 0; }
-.cellule-actions .lien-simple { display: inline-block; font-size: var(--taille-petite); font-weight: 600; }
-
-/* Puce affichée en lecture seule dans le formulaire de création. */
-.libelle { margin: 0; font-size: var(--taille-petite); font-weight: 600; }
-.puce-lecture {
-  margin: 0;
-  padding: var(--espace-2) var(--espace-3);
-  overflow-wrap: anywhere;
-  background: var(--couleur-entete-tableau);
-  border: 1px dashed var(--couleur-bordure-forte);
-  border-radius: var(--rayon-petit);
-}
-.puce-lecture .uid { font-size: var(--taille-normale); font-weight: 600; color: var(--couleur-texte); }
-
-/* Lien vers l'autre action, sous la recherche d'association. */
-.alternative { margin: var(--espace-4) 0 0; font-size: var(--taille-petite); color: var(--couleur-texte-doux); }
-.alternative a { font-weight: 600; }
-
-/* Avertissement de réutilisation d'une puce : même largeur que le formulaire ou la confirmation. */
-.panneau-reutilisation { max-width: 44rem; }
-.panneau-reutilisation a { color: inherit; font-weight: 700; }
-
-/* Confirmation : UID dans le texte, à chasse fixe mais à la couleur du texte. */
-.panneau .uid { color: inherit; font-size: 0.9375rem; overflow-wrap: anywhere; }
-.panneau-danger .liste-causes { margin-top: var(--espace-3); }
-
-/* ---------- Aide intégrée « Comment ça marche ? » (server/aide.js) ---------- */
-
-/* Encadré repliable sous le titre, fermé par défaut, sans JavaScript. Classe distincte de
-   .aide (aide courte sous un champ). */
-details.aide-page {
-  max-width: 44rem;
-  margin: calc(-1 * var(--espace-2)) 0 var(--espace-4);
-  font-size: var(--taille-petite);
-  color: var(--couleur-texte);
-}
-
-/* Titre de l'encadré : un lien discret, précédé d'une icône « ? » en CSS (texte de
-   remplacement vide : les lecteurs d'écran ne lisent que « Comment ça marche ? »). */
-details.aide-page > summary {
-  display: inline-flex;
+/* --------------------------------------------------------------------------
+   13. Puces inconnues
+   -------------------------------------------------------------------------- */
+.liste-puces { margin: 0; padding: var(--e-1) var(--e-6); list-style: none; }
+.encart {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--espace-2);
-  min-height: 2.25rem;
-  padding: 0 var(--espace-1);
-  margin-left: calc(-1 * var(--espace-1));
-  font-weight: 600;
-  color: var(--couleur-primaire);
+  gap: var(--e-4);
+  padding: var(--e-5) 0;
+}
+.encart + .encart { border-top: 1px solid var(--bordure); }
+.encart-icone {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-md);
+  background: var(--zone);
+  color: var(--texte);
+}
+.encart-icone .ic { width: 20px; height: 20px; }
+.encart-texte { font-weight: 500; }
+.encart-texte .uid { font-size: var(--t-md); font-weight: 600; }
+.encart-meta {
+  margin-top: var(--e-1);
+  color: var(--texte-doux);
+  font-size: var(--t-sm);
+}
+.encart-meta time { color: var(--texte); font-weight: 500; }
+.encart-meta .etat { vertical-align: middle; }
+.encart-meta .etat-poste { font-family: var(--police-texte); font-size: var(--t-sm); }
+.encart .groupe-boutons { justify-content: flex-end; }
+
+/* --------------------------------------------------------------------------
+   14. Aide repliable « Comment ça marche ? » (<details>, sans JavaScript)
+   -------------------------------------------------------------------------- */
+details.aide-page {
+  margin-bottom: var(--e-6);
+  border: 1px solid var(--bordure);
+  border-radius: var(--r-lg);
+}
+details.aide-page > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--e-3);
+  padding: var(--e-3) var(--e-5);
+  border-radius: var(--r-lg);
   cursor: pointer;
+  font-weight: 600;
   list-style: none;
-  border-radius: var(--rayon-petit);
 }
 details.aide-page > summary::-webkit-details-marker { display: none; }
+/* Icône « ? » cerclée et chevron, dessinés en CSS (le texte d'aide reste du HTML simple). */
 details.aide-page > summary::before {
   content: "?";
-  content: "?" / "";
-  display: inline-flex;
+  display: grid;
+  place-items: center;
   flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  font-size: 0.75rem;
+  width: 20px;
+  height: 20px;
+  border: 1.75px solid var(--accent);
+  border-radius: 50%;
+  color: var(--accent);
+  font-size: var(--t-xs);
   font-weight: 700;
   line-height: 1;
-  border: 1.5px solid currentColor;
-  border-radius: 50%;
 }
-/* Chevron : vers le bas fermé, vers le haut ouvert. */
 details.aide-page > summary::after {
   content: "";
   flex: none;
-  width: 0.375rem;
-  height: 0.375rem;
-  margin-top: -0.1875rem;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  transform: rotate(45deg);
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  margin-right: var(--e-1);
+  border: solid var(--texte-doux);
+  border-width: 0 1.75px 1.75px 0;
+  transform: rotate(-45deg);
+  transition: transform var(--d-normale) var(--courbe);
 }
-details.aide-page[open] > summary::after { margin-top: 0.1875rem; transform: rotate(-135deg); }
-details.aide-page > summary:hover { color: var(--couleur-primaire-survol); text-decoration: underline; }
+details.aide-page[open] > summary::after { transform: rotate(45deg); }
+details.aide-page > summary:hover { background: var(--voile); }
 details.aide-page > summary:focus-visible {
-  outline: 3px solid var(--couleur-focus);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
+  box-shadow: 0 0 0 6px var(--focus-halo);
+  border-radius: var(--r-lg);
 }
-
-/* Contenu : fond très léger, un paragraphe court puis des listes à puces. */
 .aide-contenu {
-  margin-top: var(--espace-2);
-  padding: var(--espace-4) var(--espace-5);
-  line-height: 1.55;
+  max-width: 80ch;
+  padding: var(--e-1) var(--e-5) var(--e-5) calc(var(--e-5) + 20px + var(--e-3));
+  color: var(--texte-doux);
+  line-height: 1.6;
   overflow-wrap: break-word;
-  background: var(--couleur-survol-ligne);
-  border: 1px solid var(--couleur-bordure);
-  border-left: 4px solid var(--couleur-primaire);
-  border-radius: var(--rayon-petit);
 }
-.aide-contenu p { margin: 0 0 var(--espace-2); }
-.aide-contenu ul { margin: 0 0 var(--espace-4); padding-left: var(--espace-5); }
-.aide-contenu li { margin-bottom: var(--espace-1); }
-.aide-contenu li::marker { color: var(--couleur-texte-doux); }
-.aide-contenu > :last-child { margin-bottom: 0; }
+.aide-contenu > * + * { margin-top: var(--e-2); }
+.aide-contenu ul { padding-left: 1.2em; list-style: disc; }
+.aide-contenu li + li { margin-top: var(--e-1); }
+.aide-contenu .etat { vertical-align: middle; }
 
-/* ---------- Tableaux et fiche sur petit écran : lignes empilées ---------- */
+/* --------------------------------------------------------------------------
+   15. Pages hors session (connexion, refus, erreurs) : carte centrée
+   -------------------------------------------------------------------------- */
+.seule {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: var(--e-8) var(--e-4);
+}
+.carte-seule {
+  width: 100%;
+  max-width: 420px;
+  padding: var(--e-10) var(--e-8);
+  border-radius: var(--r-xl);
+  box-shadow: var(--ombre-pilule);
+}
+.carte-seule .logo { margin-bottom: var(--e-8); }
+.carte-seule h1 { font-size: var(--t-xl); letter-spacing: -0.02em; }
+.sous-titre { margin-top: var(--e-2); color: var(--texte-doux); }
+.carte-seule > .bouton { margin-top: var(--e-6); }
+.carte-seule .erreur { margin: var(--e-5) 0 0; }
+.formulaire { margin-top: var(--e-6); }
+.formulaire .champ + .champ { margin-top: var(--e-4); }
+.formulaire .bouton { margin-top: var(--e-6); }
 
+/* --------------------------------------------------------------------------
+   16. Largeurs intermédiaires (fenêtre réduite)
+   -------------------------------------------------------------------------- */
+@media (max-width: 1100px) {
+  .barre-interieur { gap: var(--e-4); }
+  .compte-nom { display: none; }
+}
+
+@media (max-width: 900px) {
+  .barre-interieur { flex-wrap: wrap; row-gap: var(--e-2); padding-top: var(--e-2); padding-bottom: var(--e-2); }
+  .barre-recherche { order: 5; flex-basis: 100%; justify-content: flex-start; }
+  .recherche-barre { max-width: none; }
+  .compte { margin-left: auto; }
+  .fiche,
+  .fiche--poste { grid-template-columns: minmax(0, 1fr); }
+  .emplacement--xl { font-size: var(--t-3xl); }
+}
+
+/* --------------------------------------------------------------------------
+   17. Petits écrans : les tableaux deviennent des listes
+   -------------------------------------------------------------------------- */
 @media (max-width: 40rem) {
-  .fiche { grid-template-columns: minmax(0, 1fr); }
-
+  .page { padding: var(--e-5) var(--e-4) var(--e-12); }
+  .nav ul { flex-wrap: wrap; }
   .tableau thead {
     position: absolute;
     width: 1px;
@@ -885,35 +1205,57 @@ details.aide-page > summary:focus-visible {
     white-space: nowrap;
   }
   .tableau, .tableau tbody, .tableau tr, .tableau td { display: block; width: 100%; }
-  .tableau tr { padding: var(--espace-3) var(--espace-4); border-bottom: 1px solid var(--couleur-bordure); }
+  .tableau tr { padding: var(--e-3) var(--e-4); border-bottom: 1px solid var(--bordure); }
   .tableau tbody tr:last-child { border-bottom: 0; }
-  .tableau td { padding: var(--espace-1) 0; border-bottom: 0; }
+  .tableau td,
+  .panneau-tableau .tableau td:first-child,
+  .panneau-tableau .tableau td:last-child { padding: var(--e-1) 0; border-bottom: 0; }
   .tableau td[data-label] {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--espace-3);
+    gap: var(--e-3);
   }
   /* Libellé de colonne affiché devant chaque valeur (attr() : aucun style en ligne). */
   .tableau td[data-label]::before {
     content: attr(data-label);
     flex: none;
-    font-size: var(--taille-petite);
+    color: var(--texte-doux);
+    font-size: var(--t-sm);
     font-weight: 600;
-    color: var(--couleur-texte-doux);
   }
   .tableau td[data-label] > * { min-width: 0; }
-  .fiche-carte .tableau tr { padding-left: 0; padding-right: 0; }
+  .carte .tableau tr { padding-left: 0; padding-right: 0; }
+  .cellule-actions { text-align: left; }
+  .encart { grid-template-columns: 40px minmax(0, 1fr); }
+  .encart .groupe-boutons { grid-column: 1 / -1; justify-content: flex-start; }
+  .frise-etape { grid-template-columns: 32px minmax(0, 1fr); }
+  .frise-quand { grid-column: 2; grid-row: 2; padding-top: 0; text-align: left; }
+  .frise-etape::before { left: 15px; }
+  .fiche-entete,
+  .formulaire-page,
+  .carte-corps,
+  .panneau { padding: var(--e-5); }
+  .emplacement--xl { font-size: var(--t-2xl); }
+  .emplacement--xl > .ic { width: 32px; height: 32px; }
+  .recherche { height: auto; flex-wrap: wrap; padding: var(--e-2) var(--e-2) var(--e-2) var(--e-4); border-radius: var(--r-lg); }
+  .recherche input { min-height: 40px; }
 }
 
-/* ---------- Petits écrans ---------- */
-
 @media (max-width: 30rem) {
-  .page-connexion { place-items: start center; padding: var(--espace-4) var(--espace-3); }
-  .carte { padding: var(--espace-5) var(--espace-4); box-shadow: none; }
-  .barre-interieur, .contenu { padding-left: var(--espace-4); padding-right: var(--espace-4); }
-  .contenu { padding-top: var(--espace-5); }
-  .formulaire-page { padding: var(--espace-4); }
-  .panneau-danger, .panneau-info, .panneau-alerte { padding: var(--espace-4); }
-  .aide-contenu { padding: var(--espace-3) var(--espace-4); }
+  .carte-seule { padding: var(--e-8) var(--e-5); box-shadow: none; }
+  .barre-interieur { padding-left: var(--e-4); padding-right: var(--e-4); }
+}
+
+/* --------------------------------------------------------------------------
+   18. Mouvement réduit : aucune animation ni transition
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }

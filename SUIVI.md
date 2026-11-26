@@ -626,3 +626,46 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
 - Vérification ciblée du testeur : aucun ❌, 494 tests (il a ajouté le 5e test de `u0-verif`). `GET /` reste à environ 105 ms avec une puce rescannée 50 000 ou 350 000 fois.
 - Vérification de l'orchestrateur : 494/494, `package.json` toujours sans dépendance.
 - **Étape U0 terminée** (2 allers-retours). Commit et push faits à la demande de l'humain (voir git log).
+
+### 2026-11-26 — Direction B choisie ; lanceur et étape U1 lancés
+- **Choix de l'humain : direction B « Clair et aéré »** → D-017 (Validée).
+- Demande de l'humain : un logiciel qui se lance « en .exe » sur le PC, rapidement, pour voir le rendu.
+- Constat : Smart App Control est **activé** sur ce PC, donc tout `.exe` non signé est bloqué. D-018 (Proposée) : un raccourci « MetroTrack » lance `node.exe` (signé) avec `tools/lanceur.mjs`, qui démarre le serveur de démo puis ouvre une fenêtre Edge en mode application. La confiance est limitée à l'empreinte du certificat du serveur (`--ignore-certificate-errors-spki-list`), sans toucher au magasin de certificats de Windows.
+- Deux agents `dev` lancés en parallèle, sur des fichiers distincts :
+  - le lanceur, dans `tools/` ;
+  - l'étape U1 (design system B appliqué à toutes les pages, polices servies localement, toujours sans JavaScript client).
+- Encore en attente de l'humain : le JavaScript local (pour `Ctrl K` et le direct) et l'agent `revue-ux`.
+- Lanceur livré (`tools/lanceur.mjs`, `tools/installer-raccourci.mjs`, `test/lanceur.test.js`). Raccourcis « MetroTrack » créés sur le Bureau et dans le menu Démarrer. Le profil Edge a été relié au compte Microsoft au premier essai : c'est corrigé (`--disable-sync`), et l'humain a supprimé le profil.
+- L'humain demande un vrai `MetroTrack.exe`. Je lui ai expliqué que c'est impossible sans signature tant que Smart App Control est activé, et je lui ai présenté les options : Artifact Signing ou certificat de signature ; désactiver Smart App Control est déconseillé car irréversible. **Décision de l'humain : laisser comme ça pour l'instant** (raccourci).
+- **Logo officiel fourni par l'humain** (image) :
+  - redessiné en vectoriel dans `docs/maquettes/assets/logo.svg` ;
+  - icône Windows `tools/metrotrack.ico` (16, 32, 48 et 256 px), générée par Edge en mode sans fenêtre, puis assemblée sans dépendance ;
+  - raccourcis recréés avec cette icône ;
+  - l'agent U1 doit intégrer le logo dans l'application : favicon, qui sert aussi d'icône à la fenêtre Edge, barre supérieure, page de connexion.
+- Rapport de `dev` (U1, aller-retour 1/3, interrompu une fois par la limite d'usage puis repris) :
+  - design system B appliqué à toutes les pages ;
+  - polices, logo et feuilles de style servis par une route statique en liste blanche ;
+  - sprite d'icônes (`server/icones.js`) ;
+  - mode sombre (conforme AA), rôle couleur « danger » ;
+  - vocabulaire client ; `test/design-system.test.js` ;
+  - 517 tests verts.
+- Orchestrateur : 517/517 ; captures relues (inventaire, fiche, logo) : rendu fidèle à la maquette B. Serveur de démo redémarré avec le nouveau style, fenêtre ouverte pour l'humain.
+- Testeur et revue sécurité lancés en parallèle sur U1 et le lanceur.
+- Revue sécurité (U1 et lanceur) : **OK pour commit**, sous réserve de compléter D-017 et D-018. C'est fait par l'orchestrateur : mode sombre, rôle « danger », route statique, provenance et SHA-256 des polices et de l'icône, options d'Edge, appels sortants d'Edge. Le choix `--test-type` (masquer ou non le bandeau d'Edge) est à confirmer par l'humain.
+- Testeur (U1 et lanceur) : tout fonctionne (50 pages analysées, 26 traversées refusées, aucune régression). 529 tests, dont 1 `todo`. Ajout : `test/u1-verif.test.js`.
+  - Restent affichés : « lecteur n° X », faute de nom de lecteur en base (**question à l'humain**), et les numéros de puce groupés en hexadécimal, seul identifiant d'une puce inconnue (**question UX**).
+  - Test de performance `arrivee-charge` instable sous charge.
+- Retour à `dev` (lanceur) : course entre deux lancements, vérification de la bonne configuration avant `--arreter`, et stabilisation de `arrivee-charge`.
+- Retouches du lanceur faites :
+  - écriture atomique de `lanceur.pid` après vérification, plus de suppression ;
+  - `--arreter` vérifie que le PID écoute sur le port de la configuration ;
+  - `arrivee-charge` stabilisé (médiane de 9 tours, seuil 12). La vraie protection est le test du plan de requête.
+- **Défaut connu, non corrigé** (`server/db.js`) : sur une base **neuve**, deux `serve` lancés en même temps peuvent tous deux échouer (« database is locked »). Il faudrait poser `busy_timeout` avant `journal_mode = WAL`, et relire `user_version` après `BEGIN IMMEDIATE`. Sans effet sur la démo, dont la base existe déjà. À faire dans une prochaine étape.
+- Orchestrateur : 530 tests (529 verts, 1 `todo` : « lecteur n° », en attente d'un nom de lecteur).
+- **U1 et lanceur commités et poussés** à la demande de l'humain (voir git log).
+- Questions ouvertes pour l'humain :
+  - nom libre pour les lecteurs (changement de modèle) ;
+  - `--test-type` ;
+  - JavaScript local (`Ctrl K`, direct) ;
+  - agent `revue-ux` ;
+  - affichage des numéros de puce.

@@ -88,9 +88,10 @@ const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<
 // Balises autorisées dans les pages : toute autre balise (script, img, i, b...) serait une injection.
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
-  'ul', 'li', 'details', 'summary']); // ul, li, details, summary : aide « Comment ça marche ? »
+  'ul', 'li', 'details', 'summary',
+  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g']); // ul, li, details, summary : aide « Comment ça marche ? »
 const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form', 'h1', 'h2', 'main',
-  'ul', 'li', 'details', 'summary'];
+  'ul', 'li', 'details', 'summary', 'ol', 'svg', 'symbol', 'use'];
 
 /** HTML bien formé au sens utile ici : seulement des balises attendues, ouvrantes et fermantes équilibrées, aucun gestionnaire d'événement. */
 function assertWellFormed(html, what) {
@@ -108,7 +109,7 @@ function assertWellFormed(html, what) {
 
 function assertNoExternalResource(html, what) {
   for (const [, url] of html.matchAll(/\b(?:src|href|action)\s*=\s*"([^"]*)"/gi)) {
-    assert.match(url, /^\/(?!\/)/, `${what} : URL non locale ${url}`);
+    assert.match(url, /^(?:\/(?!\/)|#[a-z][a-z-]*$)/, `${what} : URL non locale ${url}`);
   }
   assert.doesNotMatch(html, /https?:|\/\//i, what);
   assert.doesNotMatch(html, /<script|<style|\sstyle\s*=/i, what);
@@ -147,8 +148,8 @@ test('liste : en-têtes de sécurité, bandeau (Inventaire actif, compte, décon
   assert.equal(res.status, 200);
   assertWebHeaders(res, 'liste');
   assert.match(res.body, /<title>Inventaire · MetroTrack<\/title>/);
-  assert.ok(res.body.includes('<a class="actif" href="/" aria-current="page">Inventaire</a>'));
-  assert.match(res.body, /Connecté en tant que <strong>alice<\/strong>/);
+  assert.ok(res.body.includes('<li><a href="/" aria-current="page">Inventaire</a></li>'));
+  assert.match(res.body, /<span class="visuellement-cache">Connecté en tant que <\/span><strong>alice<\/strong>/);
   assert.ok(res.body.includes(`<input type="hidden" name="csrf" value="${csrfTokenFor(token)}">`));
   assert.ok(res.body.includes('<form method="post" action="/logout">'));
   assert.ok(res.body.includes('<form class="recherche" method="get" action="/" role="search">'));
@@ -160,7 +161,8 @@ test('liste : tri par nom insensible à la casse, une ligne par objet avec lien 
   // EVIL_NAME commence par « < » : avant les chiffres et les lettres.
   assert.deepEqual(ids(body), [2, 4, 3, 5, 1, 6]);
   assert.ok(rowOf(body, 1).includes('<a class="lien-objet" href="/items/1">Multimètre démo</a>'));
-  assert.ok(rowOf(body, 1).includes('<span class="uid">04A1B2C3D4E5F6</span>'));
+  // Étape U1 : le numéro de puce n'est plus affiché sous chaque nom (seulement sur la fiche).
+  assert.ok(!rowOf(body, 1).includes('class="uid"'), 'numéro de puce absent de la liste');
   assert.ok(!rowOf(body, 3).includes('class="uid"'), 'objet sans puce : pas d\'UID affiché');
 });
 
@@ -189,30 +191,30 @@ test('après un scan accepté (POST /api/frames), la nouvelle localisation appar
   assert.equal(sheet.status, 200);
   assertWebHeaders(sheet, 'fiche');
   assert.ok(sheet.body.includes('<span class="etat etat-poste">Poste 1</span>'));
-  assert.ok(sheet.body.includes('· scan, lecteur n° 1</p>'));
-  assert.ok(sheet.body.includes('<td data-label="Poste">Poste 1</td>'));
+  assert.ok(sheet.body.includes('· scanné</p>'));
+  assert.ok(sheet.body.includes('<p class="frise-lieu">Poste 1</p>'));
 
   // Second scan, ailleurs (via ingestFrame) : la localisation suit le dernier scan.
   assert.equal(scan(3, '04A1B2C3D4E5F6').ok, true);
   const moved = await page('/');
   assert.ok(rowOf(moved.body, 1).includes('<span class="etat etat-poste">Atelier &lt;b&gt;&quot;A&quot;&lt;/b&gt; &amp; Cie</span>'));
   const movedSheet = await page('/items/1');
-  assert.ok(movedSheet.body.includes('· scan, lecteur n° 3</p>'));
+  assert.ok(movedSheet.body.includes('· scanné</p>'));
   // Historique : le plus récent d'abord.
-  const history = /<table class="tableau tableau-scans">([\s\S]*?)<\/table>/.exec(movedSheet.body)[1];
-  assert.deepEqual([...history.matchAll(/<td data-label="Poste">([^<]*(?:<[^/][^>]*>[^<]*<\/span>)?)<\/td>/g)].map((m) => m[1]),
+  const history = /<ol class="frise">([\s\S]*?)<\/ol>/.exec(movedSheet.body)[1];
+  assert.deepEqual([...history.matchAll(/<p class="frise-lieu">([\s\S]*?)<\/p>/g)].map((m) => m[1]),
     ['Atelier &lt;b&gt;&quot;A&quot;&lt;/b&gt; &amp; Cie', 'Poste 1']);
   assertWellFormed(moved.body, 'liste après déplacement');
   assertWellFormed(movedSheet.body, 'fiche après déplacement');
 });
 
-test('scan sur un lecteur non affecté : « inconnue (lecteur n° 7 non affecté) » dans la liste, la fiche et l\'historique', async () => {
+test('scan sur un lecteur non affecté : « lecteur non affecté » dans la liste, la fiche et l\'historique, avec lien vers le lecteur', async () => {
   assert.equal(scan(7, '0A0B0C0D').ok, true);
   const list = await page('/');
-  assert.ok(rowOf(list.body, 6).includes('<span class="etat etat-inconnue">inconnue (lecteur n° 7 non affecté)</span>'));
+  assert.ok(rowOf(list.body, 6).includes('<a class="lien-etat" href="/readers/7"><span class="etat etat-inconnue">lecteur non affecté</span></a>'));
   const sheet = await page('/items/6');
-  assert.ok(sheet.body.includes('<span class="etat etat-inconnue">inconnue (lecteur n° 7 non affecté)</span>'));
-  assert.ok(sheet.body.includes('<td data-label="Poste"><span class="texte-doux">lecteur n° 7 non affecté</span></td>'));
+  assert.ok(sheet.body.includes('<a class="lien-etat" href="/readers/7"><span class="etat etat-inconnue">lecteur non affecté</span></a>'));
+  assert.ok(sheet.body.includes('<p class="frise-lieu"><a class="lien-simple" href="/readers/7">Lecteur non affecté</a></p>'));
 });
 
 // ---------------------------------------------------------------- échappement
@@ -324,14 +326,14 @@ test('recherche : aucun résultat → message clair ; q vide ou blanc → tout l
 
 // ---------------------------------------------------------------- fiche
 
-test('fiche : UID en chasse fixe, propriétés en <dl>, dates, lien retour ; objet sans puce', async () => {
+test('fiche : UID groupé en chasse fixe, propriétés en <dl>, dates, fil d\'Ariane ; objet sans puce', async () => {
   const sheet = await page('/items/1');
-  assert.ok(sheet.body.includes('<span class="uid">04A1B2C3D4E5F6</span>'));
+  assert.ok(sheet.body.includes('<span class="uid">04 A1 B2 C3 D4 E5 F6</span>'));
   assert.ok(sheet.body.includes('<dl class="proprietes">\n<div><dt>Marque</dt><dd>Fluke</dd></div>'));
-  assert.ok(sheet.body.includes('<p class="retour"><a href="/">← Inventaire</a></p>'));
+  assert.ok(sheet.body.includes('<nav class="fil" aria-label="Fil d\'Ariane">\n<a href="/">Inventaire</a>'));
   assert.match(sheet.body, /<dt>Créée<\/dt><dd>17 nov\. 2026 à \d\d:\d\d<\/dd>/);
   assert.match(sheet.body, /<dt>Modifiée<\/dt><dd>17 nov\. 2026 à \d\d:\d\d<\/dd>/);
-  assert.ok(sheet.body.includes('<a class="actif" href="/">Inventaire</a>'), 'Inventaire actif, sans aria-current hors de la liste');
+  assert.ok(sheet.body.includes('<li><a href="/" aria-current="true">Inventaire</a></li>'), 'Inventaire courant (sous-page : aria-current="true")');
 
   const noChip = await page('/items/3');
   assert.equal(noChip.status, 200);
@@ -344,8 +346,8 @@ test('fiche : UID en chasse fixe, propriétés en <dl>, dates, lien retour ; obj
 test('fiche : 20 derniers scans au plus', async () => {
   for (let i = 0; i < 25; i++) assert.equal(scan(1, '04112233445566').ok, true);
   const sheet = await page('/items/5');
-  const history = /<table class="tableau tableau-scans">([\s\S]*?)<\/table>/.exec(sheet.body)[1];
-  assert.equal(history.match(/<tr>/g).length - 1, 20); // moins la ligne d'en-tête
+  const history = /<ol class="frise">([\s\S]*?)<\/ol>/.exec(sheet.body)[1];
+  assert.equal(history.match(/<li class="frise-etape/g).length, 20);
 });
 
 test('fiches invalides ou inexistantes : 404 propre dans le gabarit, sans plantage', async () => {
@@ -356,7 +358,7 @@ test('fiches invalides ou inexistantes : 404 propre dans le gabarit, sans planta
     assertWebHeaders(res, id);
     assert.ok(res.body.includes('<h1>Fiche introuvable</h1>'), id);
     assert.ok(res.body.includes('<title>Fiche introuvable · MetroTrack</title>'), id);
-    assert.match(res.body, /Connecté en tant que <strong>alice<\/strong>/, id);
+    assert.match(res.body, /<span class="visuellement-cache">Connecté en tant que <\/span><strong>alice<\/strong>/, id);
     assertWellFormed(res.body, id);
   }
   // Chemin plus profond : pas une route (404, page « Page introuvable » depuis l'étape U0).

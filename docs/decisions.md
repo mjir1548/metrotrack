@@ -228,3 +228,42 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
   - Pire cas global : environ 0,2 ms par objet dont la série atteint la borne, soit environ 1 s si les 5 000 objets l'atteignent. Il faudrait pour cela plus de 10 millions de trames injectées, ce qui se verrait dans le journal. Même ordre de grandeur que la limite des puces inconnues (étape 7).
   - La recherche de la dernière correction vers un autre poste n'est pas bornée : seuls des utilisateurs connectés peuvent créer des corrections. **Question pour Yanis** : le boîtier émet-il une trame à chaque lecture, ou seulement quand la puce arrive ?
 - **Page de connexion**. Un navigateur qui refuse les cookies affiche en boucle « page restée ouverte trop longtemps ».
+
+## D-017 — Direction visuelle B « Clair et aéré »
+
+- **Date** : 2026-11-26 · **Statut** : Validée (2026-11-26, choix de l'humain)
+- **Décision** : l'interface reprend la direction B de `docs/maquettes/direction-b/` :
+  - une barre supérieure claire et fine, sans bloc sombre ;
+  - une colonne de contenu aérée ;
+  - des bordures fines plutôt que des ombres ;
+  - le bleu nuit pour le texte, le vert canard pour les actions, l'orange pour l'attention ;
+  - les polices Space Grotesk, Inter et JetBrains Mono, embarquées ;
+  - le jeu d'icônes du projet.
+
+- **Mise en œuvre (étape U1, 2026-11-26)** :
+  - **mode sombre activé**, selon le réglage du système (`prefers-color-scheme`), avec des contrastes AA vérifiés par `test/design-system.test.js` ;
+  - rôle de couleur **« danger »** (#B3261E, #F2958C en sombre) ajouté pour les actions irréversibles et les erreurs ;
+  - **route statique** (`server/web.js`) : une liste blanche de 6 chemins exacts, chargés en mémoire au démarrage. Types MIME fixes, `nosniff`, CSP inchangée. `no-cache` pour les CSS et le SVG, une semaine pour les polices. Aucun chemin de fichier n'est dérivé de l'URL ;
+  - polices OFL 1.1 embarquées dans `web/static/fonts/`, avec leurs licences. Provenance : dépôt officiel `google/fonts`, branche main, téléchargées le 2026-11-25. Empreintes SHA-256 :
+    - Inter-Variable.ttf : `29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031` ;
+    - JetBrainsMono-Variable.ttf : `48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda` ;
+    - SpaceGrotesk-Variable.ttf : `acad6de1fc93436f5c0f1f4137751ef04f1aea3063e7036535970ffcfbd79f72`.
+  - Logo officiel fourni par l'humain, redessiné en vectoriel (`web/static/logo.svg` : formes seules, sans script ni ressource externe). Icône du raccourci : `tools/metrotrack.ico` (SHA-256 `5d0f161e6bf0695127b0c05e825560555a7ea8ad6fe337ac16239bf328e87269`).
+- **Alternatives écartées** : A « Atelier chaleureux » et C « Plan des postes ».
+- **Raison** : choix de l'humain après consultation des maquettes.
+
+## D-018 — Lanceur de démonstration sur Windows (avant le vrai .exe)
+
+- **Date** : 2026-11-26 · **Statut** : Proposée
+- **Constat** : Smart App Control est **activé** sur le PC de développement. Il bloque tout `.exe` non signé, ce qui a été vérifié avec un exécutable Node empaqueté.
+- **Décision** :
+  - pour voir le logiciel tout de suite, un raccourci « MetroTrack » (bureau et menu Démarrer) lance `node.exe`, signé par la fondation OpenJS, avec `tools/lanceur.mjs` ;
+  - le lanceur démarre le serveur s'il ne tourne pas, puis ouvre une fenêtre Edge en mode application, avec un profil dédié ;
+  - la fenêtre ne fait confiance qu'au certificat de CE serveur (empreinte de sa clé publique), sans ajouter d'autorité de certification au magasin de Windows.
+- **Options d'Edge utilisées** (`tools/lanceur.mjs`) :
+  - `--app`, `--user-data-dir=%LOCALAPPDATA%\MetroTrack\fenetre` (profil dédié), `--no-first-run`, `--window-size=1440,900` ;
+  - `--ignore-certificate-errors-spki-list=<empreinte>` : seule la clé publique du serveur de la configuration est acceptée, et jamais l'option globale `--ignore-certificate-errors` ;
+  - `--disable-sync` et `--disable-features=msImplicitSignin` : le profil ne se relie pas au compte Microsoft. `msImplicitSignin` n'est pas documenté par Microsoft ; son effet a été vérifié sur des profils neufs. Le profil créé avant ces options (relié au compte) a été supprimé par l'humain ;
+  - **`--test-type`** : une option de test de Chromium qui masque le bandeau « indicateur de ligne de commande non pris en charge ». Elle peut aussi masquer d'autres avertissements. Acceptée **pour le lanceur de démonstration seulement**, à retirer ou remplacer dans le vrai `.exe`. **Choix à confirmer par l'humain** : la garder, ou l'enlever et accepter le bandeau.
+- **Appels sortants d'Edge** : Edge reste un navigateur Microsoft (télémétrie, SmartScreen, mises à jour). Ce ne sont pas des appels de MetroTrack, mais un audit SSI les relèvera. Pour un déploiement réel, il faudra brider Edge par des stratégies de groupe, ou passer à WebView2 avec une configuration contrôlée.
+- **À venir** : le vrai `.exe` signé (étapes U8 et U9 de `docs/ux/plan.md`). Pour l'instant, l'humain a choisi de garder le raccourci.

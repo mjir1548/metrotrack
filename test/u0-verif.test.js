@@ -112,7 +112,7 @@ async function shown() {
   const sheet = (await send({ path: '/items/1', headers: withSession() })).body;
   const stationA = (await send({ path: '/stations/1', headers: withSession() })).body;
   const stationB = (await send({ path: '/stations/2', headers: withSession() })).body;
-  const detail = /<p class="localisation-detail">(.*?)<\/p>/s.exec(sheet)?.[1].replace(/ title="[^"]*"/g, '') ?? null;
+  const detail = /<p class="localisation-detail">(.*?)<\/p>/s.exec(sheet)?.[1].replace(/ title="[^"]*"/g, '').replace(/^Depuis : /, '') ?? null; // « Depuis : » : étape U1
   return { list: depuisIn(list, 'Oscilloscope'), A: depuisIn(stationA, 'Oscilloscope'), B: depuisIn(stationB, 'Oscilloscope'), detail };
 }
 const t = (iso) => `<time datetime="${iso}">`;
@@ -130,7 +130,7 @@ test('« Depuis » de bout en bout : A → B → B, A → B → A, correction pu
   assert.equal(s.B, firstB, 'fiche du poste B');
   assert.equal(s.A, null, 'absent du poste A');
   assert.ok(s.detail.startsWith(t(firstB)), s.detail);
-  assert.ok(s.detail.includes(` · dernier scan ${t(lastScanAt())}`) && s.detail.endsWith(', lecteur n° 2'), s.detail);
+  assert.ok(s.detail.includes(` · dernier scan ${t(lastScanAt())}`), s.detail); // étape U1 : sans numéro de lecteur
 
   // A → B → A : arrivée = retour en A (pas le premier passage).
   await scan(1);
@@ -138,7 +138,7 @@ test('« Depuis » de bout en bout : A → B → B, A → B → A, correction pu
   assert.equal(s.list, lastScanAt());
   assert.equal(s.A, lastScanAt());
   assert.equal(s.B, null);
-  assert.match(s.detail, /^<time datetime="[^"]+">[^<]*<\/time> · scan, lecteur n° 1$/);
+  assert.match(s.detail, /^<time datetime="[^"]+">[^<]*<\/time> · scanné$/);
 
   // Correction vers B par le formulaire, puis scans au poste B : arrivée = correction.
   assert.equal((await postForm('/items/1/location', { station: '2' })).status, 303);
@@ -183,7 +183,7 @@ test('« Depuis » de bout en bout : A → B → B, A → B → A, correction pu
   // Événements restants : corrections vers B (anciennes), scan A puis scan B de la nouvelle puce.
   assert.equal(s.list, lastScanAt(NEW_UID));
   assert.equal(s.B, lastScanAt(NEW_UID));
-  assert.match(s.detail, /^<time datetime="[^"]+">[^<]*<\/time> · scan, lecteur n° 2$/);
+  assert.match(s.detail, /^<time datetime="[^"]+">[^<]*<\/time> · scanné$/);
   // L'ancienne puce, scannée ailleurs, ne déplace plus l'objet (elle devient une puce inconnue).
   await scan(1, UID);
   s = await shown();
@@ -299,7 +299,7 @@ test('puce rescannée plus de MAX_RUN_SCANS fois au même poste : « au moins »
   assert.match(p.list, bounded('au moins'), p.list);
   assert.match(p.post, bounded('au moins'), p.post);
   assert.ok(!p.post.includes('(correction)'), p.post);
-  assert.match(p.sheet, bounded('depuis au moins'), p.sheet);
+  assert.match(p.sheet, bounded('Depuis : au moins'), p.sheet);
   assert.ok(p.sheet.includes(' · dernier scan <time'), p.sheet);
   // Correction vers le poste où l'objet est déjà : toujours « au moins », sans « (correction) ».
   assert.equal((await postForm('/items/100/location', { station: '1' })).status, 303);
@@ -319,5 +319,5 @@ test('puce rescannée plus de MAX_RUN_SCANS fois au même poste : « au moins »
   await scan(1, uid);
   p = await pages();
   assert.match(p.list, new RegExp(`^<time datetime="${back}"`), p.list);
-  assert.match(p.sheet, new RegExp(`^<time datetime="${back}"[^>]*>[^<]*</time> · dernier scan `), p.sheet);
+  assert.match(p.sheet, new RegExp(`^Depuis : <time datetime="${back}"[^>]*>[^<]*</time> · dernier scan `), p.sheet);
 });

@@ -1,7 +1,9 @@
-// Pages HTML de l'interface. Toutes passent par le gabarit html`...` (server/html.js) :
-// chaque valeur interpolée est échappée automatiquement.
+// Pages HTML de l'interface (direction visuelle B « Clair et aéré », D-017). Toutes passent par
+// le gabarit html`...` (server/html.js) : chaque valeur interpolée est échappée automatiquement.
 // Aucun attribut style, aucune balise <style> ni <script> : la CSP les bloquerait, et toute
-// la mise en forme est dans web/static/style.css.
+// la mise en forme est dans web/static/style.css (polices : web/static/fonts.css).
+// Icônes : sprite SVG intégré en tête de page, limité aux symboles utilisés (server/icones.js),
+// toujours décoratives.
 // Aide « Comment ça marche ? » sous le titre des pages : texte constant, dans server/aide.js.
 
 import { html } from './html.js';
@@ -13,6 +15,7 @@ import {
 import { MAX_STATION_NAME_CHARS, MAX_STATION_DESCRIPTION_CHARS, hasHistory } from './stations.js';
 import { MAX_READER_ID } from './readers.js';
 import { AIDE } from './aide.js';
+import { icon, spriteFor } from './icones.js';
 
 export const BUSY_MESSAGE = 'Trop de connexions en cours. Réessayez dans un instant.';
 // Page de connexion réaffichée parce que son jeton anti-falsification a expiré (web.js, login).
@@ -28,10 +31,10 @@ const ITEM_NOTICES = {
   cree: 'Fiche créée.',
   modifie: 'Modifications enregistrées.',
   inchange: 'Aucune modification : la fiche était déjà à jour.',
-  corrige: 'Localisation corrigée.',
-  cree_puce: 'Fiche créée avec la puce scannée : la localisation suit désormais les scans de cette puce.',
-  puce_associee: 'Puce associée : la localisation de la fiche suit désormais cette puce.',
-  puce_remplacee: 'Puce remplacée : l\'ancienne puce est détachée, la localisation suit désormais la nouvelle.',
+  corrige: 'Emplacement corrigé.',
+  cree_puce: 'Fiche créée avec la puce scannée : l\'emplacement suit désormais les scans de cette puce.',
+  puce_associee: 'Puce associée : l\'emplacement de la fiche suit désormais cette puce.',
+  puce_remplacee: 'Puce remplacée : l\'ancienne puce est détachée, l\'emplacement suit désormais la nouvelle.',
 };
 const STATION_LIST_NOTICES = { supprime: 'Poste supprimé.' };
 const STATION_NOTICES = {
@@ -42,21 +45,30 @@ const STATION_NOTICES = {
 const READER_NOTICES = {
   affecte: 'Poste du lecteur modifié. Les scans déjà enregistrés gardent leur poste.',
   inchange: 'Aucune modification : le lecteur était déjà à ce poste.',
-  desactive: 'Lecteur désactivé. Ses trames sont désormais refusées.',
+  desactive: 'Lecteur désactivé. Ses scans sont désormais refusés.',
 };
 
-const BRAND = html`<span class="marque"><span class="marque-logo" aria-hidden="true">MT</span>MetroTrack</span>`;
+// Marque : pastille + nom. Dans l'application, c'est un lien vers l'inventaire.
+// Logo officiel (web/static/logo.svg, couleurs de marque), intégré au HTML : sans xmlns ni
+// style, décoratif (aria-hidden) puisque le mot « MetroTrack » est écrit à côté.
+const LOGO = html`<svg class="logo-image" viewBox="0 0 900 900" aria-hidden="true"><defs><clipPath id="mt-losange"><rect x="167" y="172" width="566" height="566" rx="96" transform="rotate(45 450 455)"></rect></clipPath></defs><g clip-path="url(#mt-losange)"><rect x="0" y="0" width="900" height="900" fill="#0E95A4"></rect><rect x="238" y="455" width="426" height="460" fill="#03245A"></rect></g><circle cx="451" cy="455" r="213" fill="#FFFFFF"></circle><circle cx="451" cy="455" r="114" fill="#03245A"></circle></svg>`;
+const BRAND_CONTENT = html`${LOGO}<span>MetroTrack</span>`;
 
-function documentPage(title, bodyClass, body) {
+function documentPage(title, bodyClass, content) {
+  const body = html`<a class="lien-evitement" href="#contenu">Aller au contenu</a>
+${content}`;
   return html`<!doctype html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title} · MetroTrack</title>
+<link rel="stylesheet" href="/static/fonts.css">
 <link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
 </head>
 <body class="${bodyClass}">
+${spriteFor(body)}
 ${body}
 </body>
 </html>
@@ -65,11 +77,13 @@ ${body}
 
 // ---------------------------------------------------------------- hors session
 
-// Page hors session (connexion, refus) : une carte centrée.
+// Page hors session (connexion, refus, erreurs) : une carte centrée.
 function cardLayout(title, content) {
-  return documentPage(title, 'page-connexion', html`<main class="carte">
-${BRAND}
+  return documentPage(title, 'page-seule', html`<main id="contenu" class="seule">
+<div class="carte carte-seule">
+<p class="logo logo--grand">${BRAND_CONTENT}</p>
 ${content}
+</div>
 </main>`);
 }
 
@@ -94,7 +108,7 @@ ${error}<form class="formulaire" method="post" action="/login">
 <label for="password">Mot de passe</label>
 <input id="password" name="password" type="password" autocomplete="current-password" required${prefilled ? html` autofocus` : null}>
 </div>
-<button class="bouton" type="submit">Se connecter</button>
+<button class="bouton bouton-large" type="submit">Se connecter</button>
 </form>`);
 }
 
@@ -143,48 +157,86 @@ ${connected
 
 // ---------------------------------------------------------------- application
 
-// Rubriques du bandeau : l'inventaire (fiches), les postes et lecteurs, les puces inconnues.
-// Pas de badge « nombre de puces inconnues » sur l'onglet : il serait calculé sur chaque page,
-// et son calcul coûte environ 20 ms à 300 000 scans (server/chips.js), au-delà du budget fixé.
+// Rubriques du bandeau. Pas de badge « nombre de puces inconnues » sur l'onglet : il serait
+// calculé sur chaque page, et son calcul coûte environ 20 ms à 300 000 scans
+// (server/chips.js), au-delà du budget fixé.
 const SECTION_ITEMS = 'items';
 const SECTION_STATIONS = 'stations';
+const SECTION_READERS = 'readers';
 const SECTION_CHIPS = 'chips';
+const NAV = [
+  ['/', 'Inventaire', SECTION_ITEMS],
+  ['/stations', 'Postes', SECTION_STATIONS],
+  ['/readers', 'Lecteurs', SECTION_READERS],
+  ['/chips', 'Puces inconnues', SECTION_CHIPS],
+];
 
-/** Lien du bandeau : class="actif" dans sa rubrique, aria-current="page" sur la liste elle-même. */
-function navLink(href, label, active, current) {
-  return html`<a${active ? html` class="actif"` : null} href="${href}"${current ? html` aria-current="page"` : null}>${label}</a>`;
+/**
+ * Lien du bandeau. Rubrique courante : aria-current="page" sur la liste elle-même,
+ * aria-current="true" sur ses sous-pages (fiche, formulaires). La feuille de style signale la
+ * rubrique par un fond et une graisse, pas par la couleur seule.
+ */
+function navLink(href, label, active, exact) {
+  let current = null;
+  if (active) current = exact ? html` aria-current="page"` : html` aria-current="true"`;
+  return html`<li><a href="${href}"${current}>${label}</a></li>`;
+}
+
+// Initiales du compte pour la pastille (identifiant au format [A-Za-z0-9._-], D-011).
+function initials(username) {
+  const letters = username.replace(/[^A-Za-z0-9]/g, '');
+  return (letters === '' ? username : letters).slice(0, 2).toUpperCase();
 }
 
 /**
- * Page de l'application : bandeau (marque, navigation, compte, déconnexion) puis contenu.
+ * Page de l'application : bandeau (marque, navigation, recherche, compte, déconnexion) puis
+ * contenu.
  * @param {{username: string, csrf: string}} user
- * @param {{section?: string, current?: string|null}} [options]
- *   section : rubrique active du bandeau ; current : href du lien du bandeau qui désigne
- *   exactement cette page (aria-current="page"), ou null.
+ * @param {{section?: string, exact?: boolean, search?: boolean}} [options]
+ *   section : rubrique active du bandeau ; exact : la page est la liste de cette rubrique ;
+ *   search : recherche compacte dans le bandeau (absente de l'inventaire, qui a la sienne).
  */
-function appLayout(user, title, content, { section = SECTION_ITEMS, current = null } = {}) {
+function appLayout(user, title, content, { section = SECTION_ITEMS, exact = false, search = true } = {}) {
+  const searchForm = search
+    ? html`<form class="recherche-barre" method="get" action="/" role="search">
+${icon('recherche')}
+<input name="q" type="search" maxlength="${MAX_QUERY_CHARS}" aria-label="Rechercher un objet dans l'inventaire" placeholder="Où est… ?" autocomplete="off" spellcheck="false">
+</form>`
+    : null;
   return documentPage(title, 'page-app', html`<header class="barre">
 <div class="barre-interieur">
-<div class="barre-gauche">
-${BRAND}
-<nav class="navigation" aria-label="Navigation principale">
-${navLink('/', 'Inventaire', section === SECTION_ITEMS, current === '/')}
-${navLink('/stations', 'Postes et lecteurs', section === SECTION_STATIONS, current === '/stations')}
-${navLink('/chips', 'Puces inconnues', section === SECTION_CHIPS, current === '/chips')}
+<a class="logo" href="/">${BRAND_CONTENT}</a>
+<nav class="nav" aria-label="Navigation principale">
+<ul>
+${NAV.map(([href, label, key]) => navLink(href, label, key === section, exact))}
+</ul>
 </nav>
+<div class="barre-recherche">
+${searchForm}
 </div>
-<div class="session">
-<span>Connecté en tant que <strong>${user.username}</strong></span>
+<div class="compte">
+<span class="avatar" aria-hidden="true">${initials(user.username)}</span>
+<span class="compte-nom"><span class="visuellement-cache">Connecté en tant que </span><strong>${user.username}</strong></span>
 <form method="post" action="/logout">
 <input type="hidden" name="csrf" value="${user.csrf}">
-<button class="bouton bouton-secondaire" type="submit">Se déconnecter</button>
+<button class="bouton bouton-discret bouton-petit" type="submit">Se déconnecter</button>
 </form>
 </div>
 </div>
 </header>
-<main class="contenu">
+<main id="contenu" class="page">
 ${content}
 </main>`);
+}
+
+/**
+ * Fil d'Ariane : liens [href, libellé] vers les pages parentes, puis la page courante (texte).
+ * Toutes les adresses sont des chemins fixes du site, avec des identifiants lus en base.
+ */
+function trail(links, current) {
+  return html`<nav class="fil" aria-label="Fil d'Ariane">
+${links.map(([href, label]) => html`<a href="${href}">${label}</a>${icon('chevron')}`)}<span>${current}</span>
+</nav>`;
 }
 
 /** Message de confirmation pour un code ?ok= connu, sinon rien. */
@@ -193,14 +245,25 @@ function noticeFor(notices, code) {
   return html`<p class="succes" role="status">${notices[code]}</p>\n`;
 }
 
-// Localisation d'une ligne (liste ou fiche) : libellé et état pour la puce de couleur.
+/**
+ * Numéro de puce (UID hexadécimal validé ou lu en base au format strict) : groupé par octets
+ * (« 04 A1 B2 C3 »), en chasse fixe. Affiché seulement là où il sert (fiche, puces inconnues).
+ */
+function chipNumber(uid) {
+  return uid.match(/../g).join(' ');
+}
+function chipCode(uid) {
+  return html`<span class="uid">${chipNumber(uid)}</span>`;
+}
+
+// Emplacement d'une ligne (liste ou fiche) : libellé et état pour la pastille.
 function locationOf(row) {
   if (row.at === null) return { label: 'jamais localisé', state: 'jamais' };
-  if (row.station_id === null) return { label: `inconnue (lecteur n° ${row.reader_id} non affecté)`, state: 'inconnue' };
+  if (row.station_id === null) return { label: 'lecteur non affecté', state: 'inconnue' };
   return { label: row.station_name, state: 'poste' };
 }
 
-// Puce de localisation. Scan sur un lecteur non affecté : la puce mène à la fiche du
+// Pastille d'emplacement. Scan sur un lecteur non affecté : la pastille mène à la fiche du
 // lecteur, où on peut l'affecter à un poste (reader_id : entier lu en base).
 function locationBadge(row) {
   const { label, state } = locationOf(row);
@@ -227,6 +290,14 @@ function arrivalTag(row, now, bounded = 'au moins') {
 const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
 const thousands = (n) => n.toLocaleString('fr-FR');
 
+/** État vide ou page d'information : encadré centré, icône, texte, action éventuelle. */
+function emptyState(iconName, content) {
+  return html`<div class="vide">
+<span class="vide-icone">${icon(iconName)}</span>
+${content}
+</div>`;
+}
+
 /**
  * Liste de l'inventaire.
  * @param {{query: string, items: object[], now: number, notice?: string|null}} data
@@ -240,19 +311,19 @@ export function inventoryPage(user, { query, items, now, notice = null }) {
 
   let body;
   if (items.length === 0 && !searching) {
-    body = html`<div class="vide"><p>Aucun objet dans l'inventaire pour le moment.</p>
-<p class="texte-doux">Créez la première fiche avec le bouton «&nbsp;Nouvelle fiche&nbsp;».</p></div>`;
+    body = emptyState('objet', html`<p>Aucun objet dans l'inventaire pour le moment.</p>
+<p class="texte-doux">Créez la première fiche avec le bouton «&nbsp;Nouvelle fiche&nbsp;».</p>`);
   } else if (items.length === 0) {
-    body = html`<div class="vide"><p>Aucun objet ne correspond à «&nbsp;${query}&nbsp;».</p>
-<p class="texte-doux">Essayez une partie du nom, ou quelques caractères du numéro de sa puce.</p></div>`;
+    body = emptyState('recherche', html`<p>Aucun objet ne correspond à «&nbsp;${query}&nbsp;».</p>
+<p class="texte-doux">Essayez une partie du nom, ou quelques caractères du numéro de sa puce.</p>`);
   } else {
     body = html`<div class="panneau-tableau">
 <table class="tableau tableau-inventaire">
-<thead><tr><th scope="col">Objet</th><th scope="col">Localisation</th><th scope="col">Depuis</th></tr></thead>
+<thead><tr><th scope="col">Objet</th><th scope="col">Emplacement</th><th scope="col">Depuis</th></tr></thead>
 <tbody>
 ${items.map((item) => html`<tr>
-<td class="cellule-objet"><a class="lien-objet" href="/items/${item.id}">${item.name}</a>${item.uid_nfc === null ? null : html`<span class="uid">${item.uid_nfc}</span>`}</td>
-<td data-label="Localisation">${locationBadge(item)}</td>
+<td class="cellule-objet"><a class="lien-objet" href="/items/${item.id}">${item.name}</a></td>
+<td data-label="Emplacement">${locationBadge(item)}</td>
 <td data-label="Depuis">${item.at === null ? html`<span class="texte-doux">—</span>` : arrivalTag(item, now)}</td>
 </tr>
 `)}</tbody>
@@ -263,16 +334,42 @@ ${items.map((item) => html`<tr>
   return appLayout(user, 'Inventaire', html`${noticeFor(LIST_NOTICES, notice)}<div class="entete-page entete-actions">
 <h1>Inventaire</h1>
 <div class="actions-page">
-<a class="bouton" href="/items/new">Nouvelle fiche</a>
+<a class="bouton" href="/items/new">${icon('ajouter')}Nouvelle fiche</a>
 </div>
 </div>
 ${AIDE.inventaire}<form class="recherche" method="get" action="/" role="search">
+${icon('recherche')}
 <label class="visuellement-cache" for="q">Rechercher un objet par nom ou numéro de puce</label>
 <input id="q" name="q" type="search" value="${query}" maxlength="${MAX_QUERY_CHARS}" placeholder="Nom ou numéro de puce" autocomplete="off" spellcheck="false">
 <button class="bouton bouton-secondaire" type="submit">Rechercher</button>
 </form>
 ${summary}
-${body}`, { current: '/' });
+${body}`, { exact: true, search: false });
+}
+
+/**
+ * Emplacement actuel en grand, en tête de la fiche d'un objet : le poste (ou l'état), puis la
+ * ligne « depuis » (localisation-detail).
+ */
+function currentPlace(item, now) {
+  if (item.at === null) {
+    return html`<p class="emplacement emplacement--vide">${icon('poste')}${locationBadge(item)}</p>
+<p class="texte-doux">${item.uid_nfc === null ? 'Aucune puce associée : l\'objet ne peut pas être localisé par un scan.' : 'Cette puce n\'a encore été scannée sur aucun poste.'}</p>`;
+  }
+  // D'abord l'heure d'arrivée à cet emplacement (« depuis »), puis le dernier événement. Si
+  // l'objet y a été signalé à nouveau depuis son arrivée, l'heure de ce dernier signalement
+  // est ajoutée. Remontée bornée : « Depuis : au moins » devant l'heure d'arrivée.
+  const again = (item.arrived_at ?? item.at) !== item.at;
+  const last = item.source === 'manual'
+    ? html`${again ? html`dernière correction manuelle ${timeTag(item.at, now)}` : 'correction manuelle'} par ${item.corrected_by ?? 'un compte inconnu'}`
+    : html`${again ? html`dernier scan ${timeTag(item.at, now)}` : 'scanné'}`;
+  const unassigned = item.station_id === null;
+  const place = unassigned
+    ? html`<p class="emplacement emplacement--attention">${icon('attention')}${locationBadge(item)}</p>`
+    : html`<p class="emplacement emplacement--xl">${icon('poste')}${locationBadge(item)}</p>`;
+  return html`${place}
+<p class="localisation-detail">Depuis : ${arrivalTag(item, now)} · ${last}</p>
+${unassigned ? html`<p class="note-emplacement">Le lecteur qui a scanné l'objet n'est rattaché à aucun poste. <a href="/readers/${item.reader_id}">Rattacher ce lecteur à un poste</a></p>\n` : null}`;
 }
 
 /**
@@ -281,20 +378,6 @@ ${body}`, { current: '/' });
  *   history : dernières modifications (items.js, itemHistory) ; notice : code ?ok= reçu
  */
 export function itemPage(user, { item, scans, history = [], now, notice = null }) {
-  let source;
-  if (item.at === null) {
-    source = html`<p class="texte-doux">${item.uid_nfc === null ? 'Aucune puce associée : l\'objet ne peut pas être localisé par un scan.' : 'Cette puce n\'a encore été scannée sur aucun poste.'}</p>`;
-  } else {
-    // D'abord l'heure d'arrivée à cet emplacement (« depuis »), puis le dernier événement. Si
-    // l'objet y a été signalé à nouveau depuis son arrivée, l'heure de ce dernier signalement
-    // est ajoutée. Remontée bornée : « depuis au moins » devant l'heure d'arrivée.
-    const again = (item.arrived_at ?? item.at) !== item.at;
-    const last = item.source === 'manual'
-      ? html`${again ? html`dernière correction manuelle ${timeTag(item.at, now)}` : 'correction manuelle'} par ${item.corrected_by ?? 'un compte inconnu'}`
-      : html`${again ? html`dernier scan ${timeTag(item.at, now)}` : 'scan'}, lecteur n° ${item.reader_id}`;
-    source = html`<p class="localisation-detail">${arrivalTag(item, now, 'depuis au moins')} · ${last}</p>`;
-  }
-
   const properties = item.properties.length === 0
     ? html`<p class="texte-doux">Aucune propriété</p>`
     : html`<dl class="proprietes">
@@ -305,91 +388,99 @@ ${item.properties.map(([key, value]) => html`<div><dt>${key}</dt><dd>${value}</d
     ? html`<p class="texte-doux">Aucune note</p>`
     : html`<p class="notes">${item.notes}</p>`;
 
+  // Derniers scans de la puce, en frise verticale (le plus récent en haut). Le premier est
+  // marqué « Emplacement actuel » quand c'est lui qui donne l'emplacement (pas de correction
+  // manuelle plus récente).
   let scanHistory;
   if (item.uid_nfc === null) scanHistory = html`<p class="texte-doux">Aucune puce associée.</p>`;
   else if (scans.length === 0) scanHistory = html`<p class="texte-doux">Aucun scan pour cette puce.</p>`;
   else {
-    scanHistory = html`<table class="tableau tableau-scans">
-<thead><tr><th scope="col">Poste</th><th scope="col">Heure</th></tr></thead>
-<tbody>
-${scans.map((scan) => html`<tr>
-<td data-label="Poste">${scan.station_id === null ? html`<span class="texte-doux">lecteur n° ${scan.reader_id} non affecté</span>` : scan.station_name}</td>
-<td data-label="Heure">${timeTag(scan.received_at, now)}</td>
-</tr>
-`)}</tbody>
-</table>`;
+    scanHistory = html`<ol class="frise">
+${scans.map((scan, i) => {
+    const current = i === 0 && item.source === 'scan';
+    return html`<li class="${current ? 'frise-etape frise-etape--actuel' : 'frise-etape'}">
+<p class="frise-quand">${timeTag(scan.received_at, now)}</p>
+<span class="frise-noeud">${icon('lecteur')}</span>
+<div class="frise-contenu">
+<p class="frise-lieu">${scan.station_id === null ? html`<a class="lien-simple" href="/readers/${scan.reader_id}">Lecteur non affecté</a>` : scan.station_name}</p>
+<p class="frise-detail">Scanné${current ? html` <span class="badge badge--ok">Emplacement actuel</span>` : null}</p>
+</div>
+</li>
+`;
+  })}</ol>`;
   }
 
   const changes = history.length === 0
     ? html`<p class="texte-doux">Aucune modification enregistrée.</p>`
-    : html`<table class="tableau tableau-modifications">
-<thead><tr><th scope="col">Date</th><th scope="col">Auteur</th><th scope="col">Modification</th></tr></thead>
-<tbody>
-${history.map((entry) => html`<tr>
-<td data-label="Date">${timeTag(entry.at, now)}</td>
-<td data-label="Auteur">${entry.username ?? html`<span class="texte-doux">ligne de commande</span>`}</td>
-<td data-label="Modification">${historyLabel(entry.label)}</td>
-</tr>
-`)}</tbody>
-</table>`;
-
-  return appLayout(user, item.name, html`<p class="retour"><a href="/">← Inventaire</a></p>
-${noticeFor(ITEM_NOTICES, notice)}<div class="entete-page entete-actions">
-<h1>${item.name}</h1>
-<div class="actions-page">
-<a class="bouton" href="/items/${item.id}/edit">Modifier</a>
-<a class="bouton bouton-secondaire" href="/items/${item.id}/location">Corriger la localisation</a>
-<a class="lien-danger" href="/items/${item.id}/delete">Supprimer</a>
+    : html`<ol class="frise frise--modifications">
+${history.map((entry) => html`<li class="frise-etape">
+<p class="frise-quand">${timeTag(entry.at, now)}</p>
+<span class="frise-noeud">${icon('modifier')}</span>
+<div class="frise-contenu">
+<p class="frise-lieu">${historyLabel(entry.label)}</p>
+<p class="frise-detail">par ${entry.username ?? 'l\'outil d\'administration'}</p>
 </div>
+</li>
+`)}</ol>`;
+
+  return appLayout(user, item.name, html`${trail([['/', 'Inventaire']], item.name)}
+${noticeFor(ITEM_NOTICES, notice)}<div class="carte fiche-entete">
+<div class="fiche-entete-haut">
+<div class="fiche-titre">${icon('objet')}<h1>${item.name}</h1></div>
+<div class="actions-page">
+<a class="bouton" href="/items/${item.id}/location">${icon('deplace')}Corriger l'emplacement</a>
+<a class="bouton bouton-secondaire" href="/items/${item.id}/edit">${icon('modifier')}Modifier la fiche</a>
+<a class="lien-danger" href="/items/${item.id}/delete">${icon('supprimer')}Supprimer</a>
+</div>
+</div>
+<p class="etiquette">Emplacement actuel</p>
+${currentPlace(item, now)}
 </div>
 ${AIDE.fiche}<div class="fiche">
-<section class="fiche-carte" aria-labelledby="titre-localisation">
-<h2 id="titre-localisation">Localisation actuelle</h2>
-<p>${locationBadge(item)}</p>
-${source}
+<div class="fiche-colonne">
+<section class="carte carte-corps" aria-labelledby="titre-proprietes">
+<h2 id="titre-proprietes" class="carte-titre">${icon('reglages')}Propriétés</h2>
+${properties}
 </section>
-<section class="fiche-carte" aria-labelledby="titre-identification">
-<h2 id="titre-identification">Identification</h2>
+<section class="carte carte-corps" aria-labelledby="titre-notes">
+<h2 id="titre-notes" class="carte-titre">${icon('note')}Notes</h2>
+${notes}
+</section>
+<section class="carte carte-corps" aria-labelledby="titre-identification">
+<h2 id="titre-identification" class="carte-titre">${icon('puce')}Identification</h2>
 <dl class="proprietes">
-<div><dt>Puce NFC</dt><dd>${item.uid_nfc === null ? html`<span class="texte-doux">aucune puce associée</span>` : html`<span class="uid">${item.uid_nfc}</span>`}</dd></div>
+<div><dt>Numéro de puce</dt><dd>${item.uid_nfc === null ? html`<span class="texte-doux">aucune puce associée</span>` : chipCode(item.uid_nfc)}</dd></div>
 <div><dt>Créée</dt><dd>${formatDateTime(item.created_at)}</dd></div>
 <div><dt>Modifiée</dt><dd>${formatDateTime(item.updated_at)}</dd></div>
 </dl>
 ${item.uid_nfc === null ? html`<p class="note-carte">Pour localiser l'objet, scannez sa puce sur un poste, puis associez-la depuis <a href="/chips">Puces inconnues</a>.</p>\n` : null}</section>
-<section class="fiche-carte" aria-labelledby="titre-proprietes">
-<h2 id="titre-proprietes">Propriétés</h2>
-${properties}
-</section>
-<section class="fiche-carte" aria-labelledby="titre-notes">
-<h2 id="titre-notes">Notes</h2>
-${notes}
-</section>
-<section class="fiche-carte fiche-large" aria-labelledby="titre-scans">
-<h2 id="titre-scans">Derniers scans</h2>
+</div>
+<div class="fiche-colonne">
+<section class="carte carte-corps" aria-labelledby="titre-scans">
+<h2 id="titre-scans" class="carte-titre">${icon('historique')}Derniers scans</h2>
 ${scanHistory}
 </section>
-<section class="fiche-carte fiche-large" aria-labelledby="titre-modifications">
-<h2 id="titre-modifications">Historique des modifications</h2>
+<section class="carte carte-corps" aria-labelledby="titre-modifications">
+<h2 id="titre-modifications" class="carte-titre">${icon('modifier')}Historique des modifications</h2>
 ${changes}
 </section>
+</div>
 </div>`);
 }
 
 /**
  * Libellé d'une ligne d'historique (items.js, auditLabel) : texte, ou segments dont les UID
- * {uid} sont affichés en chasse fixe. Chaque segment passe par le gabarit (échappé).
+ * {uid} sont affichés groupés, en chasse fixe. Chaque segment passe par le gabarit (échappé).
  */
 function historyLabel(label) {
   if (!Array.isArray(label)) return label;
-  return label.map((part) => (typeof part === 'string' ? part : html`<span class="uid">${part.uid}</span>`));
+  return label.map((part) => (typeof part === 'string' ? part : chipCode(part.uid)));
 }
 
 export function itemNotFoundPage(user) {
-  return appLayout(user, 'Fiche introuvable', html`<p class="retour"><a href="/">← Inventaire</a></p>
-<div class="vide">
-<h1>Fiche introuvable</h1>
-<p class="texte-doux">Aucun objet ne correspond à cette adresse.</p>
-</div>`);
+  return appLayout(user, 'Fiche introuvable', html`${trail([['/', 'Inventaire']], 'Fiche introuvable')}
+${emptyState('objet', html`<h1>Fiche introuvable</h1>
+<p class="texte-doux">Aucun objet ne correspond à cette adresse.</p>`)}`);
 }
 
 // ---------------------------------------------------------------- édition
@@ -421,15 +512,15 @@ export function itemFormPage(user, { item, form, errors, chip = null, now = Date
   const editing = item !== null;
   let action = '/items/new';
   let cancel = '/';
-  let back = '← Inventaire';
+  let parents = [['/', 'Inventaire']];
   if (editing) {
     action = `/items/${item.id}/edit`;
     cancel = `/items/${item.id}`;
-    back = '← Retour à la fiche';
+    parents = [['/', 'Inventaire'], [cancel, item.name]];
   } else if (chip !== null) {
     action = `/chips/${chip.uid}/new`;
     cancel = '/chips';
-    back = '← Puces inconnues';
+    parents = [['/chips', 'Puces inconnues']];
   }
   const title = editing ? 'Modifier la fiche' : 'Nouvelle fiche';
   let help = AIDE.nouvelleFiche;
@@ -438,17 +529,17 @@ export function itemFormPage(user, { item, form, errors, chip = null, now = Date
   const failed = Object.keys(errors).length > 0 || form.rows.some((row) => row.error !== null);
   const rows = [...form.rows, ...Array(form.blankRows).fill(EMPTY_ROW)];
   const chipField = chip === null ? null : html`<div class="champ">
-<p class="libelle">Puce NFC</p>
-<p class="puce-lecture"><span class="uid">${chip.uid}</span></p>
+<p class="libelle">Puce</p>
+<p class="puce-lecture">${icon('puce')}${chipCode(chip.uid)}</p>
 <p class="aide">Dernier scan : ${chipPlace(chip)}, ${timeTag(chip.received_at, now)}. Dès la création, l'objet est localisé à ce scan.</p>
 </div>
 `;
 
-  return appLayout(user, title, html`<p class="retour"><a href="${cancel}">${back}</a></p>
+  return appLayout(user, title, html`${trail(parents, title)}
 <div class="entete-page">
 <h1>${title}</h1>
 ${editing ? html`<p class="sous-titre-page">${item.name}</p>\n` : null}</div>
-${help}${failed ? html`<p class="erreur" role="alert">La fiche n'a pas été enregistrée. Corrigez les champs signalés en rouge : votre saisie est conservée.</p>\n` : null}${chip === null ? null : reuseWarning(chip)}<form class="formulaire-page" method="post" action="${action}">
+${help}${failed ? html`<p class="erreur" role="alert">La fiche n'a pas été enregistrée. Corrigez les champs signalés ci-dessous : votre saisie est conservée.</p>\n` : null}${chip === null ? null : reuseWarning(chip)}<form class="formulaire-page" method="post" action="${action}">
 <input type="hidden" name="csrf" value="${user.csrf}">
 ${chipField}<div class="champ">
 <label for="name">Nom <span class="obligatoire">(obligatoire)</span></label>
@@ -492,14 +583,14 @@ ${row.error ? html`<p class="erreur-champ" id="${errorId}">${row.error}</p>\n` :
 
 /** Confirmation de suppression d'une fiche. */
 export function deleteItemPage(user, { item }) {
-  return appLayout(user, 'Supprimer la fiche', html`<p class="retour"><a href="/items/${item.id}">← Retour à la fiche</a></p>
+  return appLayout(user, 'Supprimer la fiche', html`${trail([['/', 'Inventaire'], [`/items/${item.id}`, item.name]], 'Supprimer')}
 <div class="entete-page">
 <h1>Supprimer la fiche</h1>
 </div>
 ${AIDE.supprimerFiche}<div class="panneau panneau-danger">
 <p>Vous allez supprimer la fiche «&nbsp;<strong class="nom-confirme">${item.name}</strong>&nbsp;».</p>
-<p>Ses propriétés, ses notes et l'historique de ses corrections manuelles de localisation seront supprimés avec elle.</p>
-${item.uid_nfc === null ? null : html`<p>Sa puce <span class="uid">${item.uid_nfc}</span> sera détachée : si elle a déjà été scannée, elle réapparaîtra dans «&nbsp;Puces inconnues&nbsp;» avec ses scans.</p>\n`}<p class="texte-doux">Le journal des scans de sa puce et le journal des modifications sont conservés.</p>
+<p>Ses propriétés, ses notes et l'historique de ses corrections manuelles d'emplacement seront supprimés avec elle.</p>
+${item.uid_nfc === null ? null : html`<p>Sa puce sera détachée : si elle a déjà été scannée, elle réapparaîtra dans «&nbsp;Puces inconnues&nbsp;» avec ses scans.</p>\n`}<p class="texte-doux">Les scans de sa puce et l'historique des modifications sont conservés.</p>
 <form method="post" action="/items/${item.id}/delete">
 <input type="hidden" name="csrf" value="${user.csrf}">
 <div class="actions-formulaire">
@@ -511,17 +602,17 @@ ${item.uid_nfc === null ? null : html`<p>Sa puce <span class="uid">${item.uid_nf
 }
 
 /**
- * Correction manuelle de localisation.
+ * Correction manuelle de l'emplacement.
  * @param {{item: object, stations: {id: number, name: string}[], selected?: string|null, error?: string|null}} data
- *   item : fiche avec sa localisation (getItem) ; selected : valeur choisie à réafficher.
+ *   item : fiche avec son emplacement (getItem) ; selected : valeur choisie à réafficher.
  */
 export function locationPage(user, { item, stations, selected = null, error = null }) {
-  const current = html`<p class="localisation-actuelle"><span class="texte-doux">Localisation actuelle :</span> ${locationBadge(item)}</p>`;
+  const current = html`<p class="localisation-actuelle"><span class="texte-doux">Emplacement actuel :</span> ${locationBadge(item)}</p>`;
   let body;
   if (stations.length === 0) {
-    body = html`<div class="vide"><p>Aucun poste n'existe encore.</p>
+    body = emptyState('poste', html`<p>Aucun poste n'existe encore.</p>
 <p class="texte-doux">Il faut d'abord créer un poste pour pouvoir y localiser un objet.</p>
-<a class="bouton" href="/stations/new">Créer un poste</a></div>`;
+<a class="bouton" href="/stations/new">Créer un poste</a>`);
   } else {
     body = html`<form class="formulaire-page" method="post" action="/items/${item.id}/location">
 <input type="hidden" name="csrf" value="${user.csrf}">
@@ -539,9 +630,9 @@ ${fieldError('station-erreur', error)}</div>
 </div>
 </form>`;
   }
-  return appLayout(user, 'Corriger la localisation', html`<p class="retour"><a href="/items/${item.id}">← Retour à la fiche</a></p>
+  return appLayout(user, 'Corriger l\'emplacement', html`${trail([['/', 'Inventaire'], [`/items/${item.id}`, item.name]], 'Corriger l\'emplacement')}
 <div class="entete-page">
-<h1>Corriger la localisation</h1>
+<h1>Corriger l'emplacement</h1>
 <p class="sous-titre-page">${item.name}</p>
 </div>
 ${AIDE.localisation}${current}
@@ -551,47 +642,32 @@ ${body}`);
 // ---------------------------------------------------------------- postes et lecteurs (étape 6)
 
 const stationsSection = { section: SECTION_STATIONS };
-const BACK_TO_STATIONS = html`<p class="retour"><a href="/stations">← Postes et lecteurs</a></p>`;
-const BACK_TO_READERS = html`<p class="retour"><a href="/readers">← Lecteurs</a></p>`;
-
-/** Onglets « Postes » et « Lecteurs » en tête des deux listes ; current : '/stations' ou '/readers'. */
-function sectionTabs(current) {
-  const tab = (href, label) => html`<a${href === current ? html` class="actif" aria-current="page"` : null} href="${href}">${label}</a>`;
-  return html`<nav class="onglets" aria-label="Postes et lecteurs">
-${tab('/stations', 'Postes')}
-${tab('/readers', 'Lecteurs')}
-</nav>`;
-}
-
-/** En-tête commun des deux listes : titre de la rubrique, bouton principal, onglets. */
-function sectionHeader(current, button) {
-  return html`<div class="entete-page entete-actions">
-<h1>Postes et lecteurs</h1>
-<div class="actions-page">
-${button}
-</div>
-</div>
-${sectionTabs(current)}`;
-}
+const readersSection = { section: SECTION_READERS };
+const STATIONS_TRAIL = ['/stations', 'Postes'];
+const READERS_TRAIL = ['/readers', 'Lecteurs'];
+const readerTrail = (reader) => [READERS_TRAIL, [`/readers/${reader.id}`, `Lecteur n° ${reader.id}`]];
 
 /**
  * Page d'information (introuvable, action impossible) : encadré centré.
- * layout : rubrique du bandeau (postes et lecteurs par défaut, ou puces inconnues).
+ * layout : rubrique du bandeau ; parent : lien [href, libellé] du fil d'Ariane.
  */
-function messagePage(user, { title, text, hint = null, back, action = null, layout = stationsSection }) {
-  return appLayout(user, title, html`${back}
-<div class="vide">
-<h1>${title}</h1>
+function messagePage(user, { title, text, hint = null, parents, action = null, layout, iconName = 'attention' }) {
+  return appLayout(user, title, html`${trail(parents, title)}
+${emptyState(iconName, html`<h1>${title}</h1>
 <p>${text}</p>
-${hint === null ? null : html`<p class="texte-doux">${hint}</p>\n`}${action === null ? null : html`<a class="bouton" href="${action.href}">${action.label}</a>\n`}</div>`, layout);
+${hint === null ? null : html`<p class="texte-doux">${hint}</p>\n`}${action === null ? null : html`<a class="bouton" href="${action.href}">${action.label}</a>\n`}`)}`, layout);
 }
 
 export function stationNotFoundPage(user) {
-  return messagePage(user, { title: 'Poste introuvable', text: 'Aucun poste ne correspond à cette adresse.', back: BACK_TO_STATIONS });
+  return messagePage(user, {
+    title: 'Poste introuvable', text: 'Aucun poste ne correspond à cette adresse.', parents: [STATIONS_TRAIL], layout: stationsSection, iconName: 'poste',
+  });
 }
 
 export function readerNotFoundPage(user) {
-  return messagePage(user, { title: 'Lecteur introuvable', text: 'Aucun lecteur ne correspond à cette adresse.', back: BACK_TO_READERS });
+  return messagePage(user, {
+    title: 'Lecteur introuvable', text: 'Aucun lecteur ne correspond à cette adresse.', parents: [READERS_TRAIL], layout: readersSection, iconName: 'lecteur',
+  });
 }
 
 /** Action impossible sur un lecteur désactivé (affectation, remplacement, désactivation). */
@@ -600,8 +676,10 @@ export function readerInactivePage(user, { reader }) {
     title: 'Lecteur désactivé',
     text: `Le lecteur n° ${reader.id} est désactivé définitivement : il ne peut plus changer de poste, ni être désactivé ou remplacé une seconde fois.`,
     hint: 'Pour remettre un boîtier en service, créez un nouveau lecteur.',
-    back: html`<p class="retour"><a href="/readers/${reader.id}">← Retour au lecteur</a></p>`,
+    parents: readerTrail(reader),
     action: { href: '/readers/new', label: 'Nouveau lecteur' },
+    layout: readersSection,
+    iconName: 'lecteur',
   });
 }
 
@@ -611,11 +689,12 @@ export function readerIdsExhaustedPage(user) {
     title: 'Aucun numéro de lecteur disponible',
     text: `Le plus grand numéro de lecteur possible (${thousands(MAX_READER_ID)}) est déjà attribué : aucun nouveau lecteur ne peut être créé.`,
     hint: 'Rien n\'a été modifié.',
-    back: BACK_TO_READERS,
+    parents: [READERS_TRAIL],
+    layout: readersSection,
   });
 }
 
-// État d'un lecteur : puce verte (actif) ou grise (désactivé).
+// État d'un lecteur : pastille verte (actif) ou grise (désactivé).
 function readerBadge(reader) {
   return reader.active === 1
     ? html`<span class="etat etat-actif">actif</span>`
@@ -633,27 +712,33 @@ function stationLink(id, name, none = 'non affecté') {
  */
 export function stationsPage(user, { stations, notice = null }) {
   const body = stations.length === 0
-    ? html`<div class="vide"><p>Aucun poste pour le moment.</p>
-<p class="texte-doux">Créez le premier poste avec le bouton «&nbsp;Nouveau poste&nbsp;», puis affectez-lui un lecteur.</p></div>`
+    ? emptyState('poste', html`<p>Aucun poste pour le moment.</p>
+<p class="texte-doux">Créez le premier poste avec le bouton «&nbsp;Nouveau poste&nbsp;», puis affectez-lui un lecteur.</p>`)
     : html`<div class="panneau-tableau">
 <table class="tableau tableau-postes">
-<thead><tr><th scope="col">Poste</th><th scope="col">Lecteurs actifs</th><th scope="col">Objets présents</th></tr></thead>
+<thead><tr><th scope="col">Poste</th><th scope="col">Objets présents</th><th scope="col">Lecteurs actifs</th></tr></thead>
 <tbody>
 ${stations.map((station) => html`<tr>
 <td class="cellule-objet"><a class="lien-objet" href="/stations/${station.id}">${station.name}</a>${station.description === '' ? null : html`<span class="description-courte">${station.description}</span>`}</td>
-<td data-label="Lecteurs actifs">${station.active_readers}</td>
 <td data-label="Objets présents">${station.items_here}</td>
+<td data-label="Lecteurs actifs">${station.active_readers}</td>
 </tr>
 `)}</tbody>
 </table>
 </div>`;
-  return appLayout(user, 'Postes', html`${noticeFor(STATION_LIST_NOTICES, notice)}${sectionHeader('/stations', html`<a class="bouton" href="/stations/new">Nouveau poste</a>`)}
+  return appLayout(user, 'Postes', html`${noticeFor(STATION_LIST_NOTICES, notice)}<div class="entete-page entete-actions">
+<h1>Postes</h1>
+<div class="actions-page">
+<a class="bouton" href="/stations/new">${icon('ajouter')}Nouveau poste</a>
+</div>
+</div>
 ${AIDE.postes}<p class="resultats">${plural(stations.length, 'poste', 'postes')}</p>
-${body}`, { ...stationsSection, current: '/stations' });
+${body}`, { ...stationsSection, exact: true });
 }
 
 /**
- * Fiche d'un poste.
+ * Fiche d'un poste : les objets présents d'abord (l'usage quotidien), puis les lecteurs et
+ * les informations.
  * @param {{station: object, readers: object[], items: object[], deletable: boolean, now: number, notice?: string|null}} data
  */
 export function stationPage(user, { station, readers, items, deletable, now, notice = null }) {
@@ -681,41 +766,38 @@ ${readers.map((reader) => html`<tr>
 <thead><tr><th scope="col">Objet</th><th scope="col">Depuis</th></tr></thead>
 <tbody>
 ${items.map((item) => html`<tr>
-<td class="cellule-objet"><a class="lien-objet" href="/items/${item.id}">${item.name}</a>${item.uid_nfc === null ? null : html`<span class="uid">${item.uid_nfc}</span>`}</td>
+<td class="cellule-objet"><a class="lien-objet" href="/items/${item.id}">${item.name}</a></td>
 <td data-label="Depuis">${arrivalTag(item, now)}${item.arrival_source === 'manual' ? html` <span class="texte-doux">(correction)</span>` : null}</td>
 </tr>
 `)}</tbody>
 </table>`;
 
-  return appLayout(user, station.name, html`${BACK_TO_STATIONS}
+  return appLayout(user, station.name, html`${trail([STATIONS_TRAIL], station.name)}
 ${noticeFor(STATION_NOTICES, notice)}<div class="entete-page entete-actions">
-<h1>${station.name}</h1>
+<div class="titre-icone">${icon('poste')}<h1>${station.name}</h1></div>
 <div class="actions-page">
-<a class="bouton" href="/stations/${station.id}/edit">Modifier</a>
-${deletable ? html`<a class="lien-danger" href="/stations/${station.id}/delete">Supprimer</a>` : null}
+<a class="bouton" href="/stations/${station.id}/edit">${icon('modifier')}Modifier</a>
+${deletable ? html`<a class="lien-danger" href="/stations/${station.id}/delete">${icon('supprimer')}Supprimer</a>` : null}
 </div>
 </div>
-${AIDE.poste}<div class="fiche">
-<section class="fiche-carte" aria-labelledby="titre-description">
-<h2 id="titre-description">Description</h2>
-${description}
+${AIDE.poste}<div class="fiche fiche--poste">
+<section class="carte carte-corps fiche-large" aria-labelledby="titre-objets">
+<h2 id="titre-objets" class="carte-titre">${icon('objet')}Objets présents <span class="compte-titre">${items.length}</span></h2>
+${itemList}
 </section>
-<section class="fiche-carte" aria-labelledby="titre-informations">
-<h2 id="titre-informations">Informations</h2>
+<section class="carte carte-corps" aria-labelledby="titre-lecteurs">
+<h2 id="titre-lecteurs" class="carte-titre">${icon('lecteur')}Lecteurs</h2>
+${readerList}
+</section>
+<section class="carte carte-corps" aria-labelledby="titre-informations">
+<h2 id="titre-informations" class="carte-titre">${icon('note')}Informations</h2>
+${description}
 <dl class="proprietes">
 <div><dt>Créé</dt><dd>${formatDateTime(station.created_at)}</dd></div>
 <div><dt>Lecteurs actifs</dt><dd>${activeCount}</dd></div>
 <div><dt>Objets présents</dt><dd>${items.length}</dd></div>
 </dl>
 ${deletable ? null : html`<p class="note-poste">Ce poste a un historique (scans, corrections ou lecteurs) : il ne peut pas être supprimé, mais vous pouvez le renommer.</p>\n`}</section>
-<section class="fiche-carte fiche-large" aria-labelledby="titre-lecteurs">
-<h2 id="titre-lecteurs">Lecteurs</h2>
-${readerList}
-</section>
-<section class="fiche-carte fiche-large" aria-labelledby="titre-objets">
-<h2 id="titre-objets">Objets présents</h2>
-${itemList}
-</section>
 </div>`, stationsSection);
 }
 
@@ -729,12 +811,13 @@ export function stationFormPage(user, { station, form, errors }) {
   const action = editing ? `/stations/${station.id}/edit` : '/stations/new';
   const cancel = editing ? `/stations/${station.id}` : '/stations';
   const title = editing ? 'Modifier le poste' : 'Nouveau poste';
+  const parents = editing ? [STATIONS_TRAIL, [cancel, station.name]] : [STATIONS_TRAIL];
   const failed = Object.keys(errors).length > 0;
-  return appLayout(user, title, html`<p class="retour"><a href="${cancel}">${editing ? '← Retour au poste' : '← Postes et lecteurs'}</a></p>
+  return appLayout(user, title, html`${trail(parents, title)}
 <div class="entete-page">
 <h1>${title}</h1>
 ${editing ? html`<p class="sous-titre-page">${station.name}</p>\n` : null}</div>
-${editing ? AIDE.modifierPoste : AIDE.nouveauPoste}${failed ? html`<p class="erreur" role="alert">Le poste n'a pas été enregistré. Corrigez les champs signalés en rouge : votre saisie est conservée.</p>\n` : null}<form class="formulaire-page" method="post" action="${action}">
+${editing ? AIDE.modifierPoste : AIDE.nouveauPoste}${failed ? html`<p class="erreur" role="alert">Le poste n'a pas été enregistré. Corrigez les champs signalés ci-dessous : votre saisie est conservée.</p>\n` : null}<form class="formulaire-page" method="post" action="${action}">
 <input type="hidden" name="csrf" value="${user.csrf}">
 <div class="champ">
 <label for="name">Nom <span class="obligatoire">(obligatoire)</span></label>
@@ -758,15 +841,15 @@ ${fieldError('description-erreur', errors.description)}</div>
  * @param {{station: object, history: {scans: number, corrections: number, readers: number}}} data
  */
 export function deleteStationPage(user, { station, history }) {
-  const back = html`<p class="retour"><a href="/stations/${station.id}">← Retour au poste</a></p>`;
+  const parents = [STATIONS_TRAIL, [`/stations/${station.id}`, station.name]];
   if (hasHistory(history)) {
     const counted = (n, one, many) => `${thousands(n)} ${n > 1 ? many : one}`;
     const causes = [
       history.scans > 0 ? `${counted(history.scans, 'scan enregistré', 'scans enregistrés')} à ce poste` : null,
-      history.corrections > 0 ? `${counted(history.corrections, 'correction manuelle', 'corrections manuelles')} de localisation vers ce poste` : null,
+      history.corrections > 0 ? `${counted(history.corrections, 'correction manuelle', 'corrections manuelles')} d'emplacement vers ce poste` : null,
       history.readers > 0 ? `${counted(history.readers, 'lecteur affecté', 'lecteurs affectés')} à ce poste (actifs ou désactivés)` : null,
     ].filter((cause) => cause !== null);
-    return appLayout(user, 'Suppression impossible', html`${back}
+    return appLayout(user, 'Suppression impossible', html`${trail(parents, 'Supprimer')}
 <div class="entete-page">
 <h1>Suppression impossible</h1>
 <p class="sous-titre-page">${station.name}</p>
@@ -776,20 +859,20 @@ export function deleteStationPage(user, { station, history }) {
 <ul class="liste-causes">
 ${causes.map((cause) => html`<li>${cause}</li>
 `)}</ul>
-<p class="texte-doux">Le journal des scans et des corrections désigne ce poste : il doit être conservé. Si le poste a changé de nom ou d'usage, renommez-le.</p>
+<p class="texte-doux">Les scans et les corrections désignent ce poste : ils doivent être conservés. Si le poste a changé de nom ou d'usage, renommez-le.</p>
 <div class="actions-formulaire">
 <a class="bouton" href="/stations/${station.id}/edit">Renommer le poste</a>
 <a class="lien-annuler" href="/stations/${station.id}">Retour au poste</a>
 </div>
 </div>`, stationsSection);
   }
-  return appLayout(user, 'Supprimer le poste', html`${back}
+  return appLayout(user, 'Supprimer le poste', html`${trail(parents, 'Supprimer')}
 <div class="entete-page">
 <h1>Supprimer le poste</h1>
 </div>
 ${AIDE.supprimerPoste}<div class="panneau panneau-danger">
 <p>Vous allez supprimer le poste «&nbsp;<strong class="nom-confirme">${station.name}</strong>&nbsp;».</p>
-<p class="texte-doux">Il n'a aucun historique : aucun scan, aucune correction de localisation, aucun lecteur. Le journal des modifications garde la trace de la suppression.</p>
+<p class="texte-doux">Il n'a aucun historique : aucun scan, aucune correction d'emplacement, aucun lecteur. L'historique des modifications garde la trace de la suppression.</p>
 <form method="post" action="/stations/${station.id}/delete">
 <input type="hidden" name="csrf" value="${user.csrf}">
 <div class="actions-formulaire">
@@ -807,26 +890,30 @@ ${AIDE.supprimerPoste}<div class="panneau panneau-danger">
 export function readersPage(user, { readers, now }) {
   const activeCount = readers.filter((reader) => reader.active === 1).length;
   const body = readers.length === 0
-    ? html`<div class="vide"><p>Aucun lecteur pour le moment.</p>
-<p class="texte-doux">Créez un lecteur avec le bouton «&nbsp;Nouveau lecteur&nbsp;» : le serveur lui attribue un numéro et une clé, à injecter dans le boîtier.</p></div>`
+    ? emptyState('lecteur', html`<p>Aucun lecteur pour le moment.</p>
+<p class="texte-doux">Créez un lecteur avec le bouton «&nbsp;Nouveau lecteur&nbsp;» : l'application lui attribue un numéro et une clé, à installer dans le boîtier.</p>`)
     : html`<div class="panneau-tableau">
 <table class="tableau tableau-lecteurs">
-<thead><tr><th scope="col">Lecteur</th><th scope="col">Poste</th><th scope="col">État</th><th scope="col">Dernier scan</th><th scope="col">Dernier compteur</th><th scope="col">Créé</th></tr></thead>
+<thead><tr><th scope="col">Lecteur</th><th scope="col">Poste</th><th scope="col">État</th><th scope="col">Dernier scan</th><th scope="col">Créé</th></tr></thead>
 <tbody>
 ${readers.map((reader) => html`<tr>
 <td><a class="lien-objet" href="/readers/${reader.id}">Lecteur n° ${reader.id}</a></td>
 <td data-label="Poste">${stationLink(reader.station_id, reader.station_name)}</td>
 <td data-label="État">${readerBadge(reader)}</td>
 <td data-label="Dernier scan">${reader.last_scan_at === null ? html`<span class="texte-doux">aucun</span>` : timeTag(reader.last_scan_at, now)}</td>
-<td data-label="Dernier compteur">${reader.last_counter === null ? html`<span class="texte-doux">—</span>` : reader.last_counter}</td>
 <td data-label="Créé">${formatDateTime(reader.created_at)}</td>
 </tr>
 `)}</tbody>
 </table>
 </div>`;
-  return appLayout(user, 'Lecteurs', html`${sectionHeader('/readers', html`<a class="bouton" href="/readers/new">Nouveau lecteur</a>`)}
+  return appLayout(user, 'Lecteurs', html`<div class="entete-page entete-actions">
+<h1>Lecteurs</h1>
+<div class="actions-page">
+<a class="bouton" href="/readers/new">${icon('ajouter')}Nouveau lecteur</a>
+</div>
+</div>
 ${AIDE.lecteurs}<p class="resultats">${plural(readers.length, 'lecteur', 'lecteurs')}${readers.length === 0 ? null : html` · ${plural(activeCount, 'actif', 'actifs')}`}</p>
-${body}`, stationsSection);
+${body}`, { ...readersSection, exact: true });
 }
 
 /**
@@ -846,44 +933,42 @@ export function readerPage(user, { reader, scans, now, notice = null }) {
   const scanList = scans.length === 0
     ? html`<p class="texte-doux">Aucun scan reçu de ce lecteur.</p>`
     : html`<table class="tableau tableau-scans-lecteur">
-<thead><tr><th scope="col">Puce</th><th scope="col">Objet</th><th scope="col">Poste</th><th scope="col">Heure</th></tr></thead>
+<thead><tr><th scope="col">Objet</th><th scope="col">Poste</th><th scope="col">Heure</th></tr></thead>
 <tbody>
 ${scans.map((scan) => html`<tr>
-<td><span class="uid">${scan.uid_nfc}</span></td>
-<td data-label="Objet">${scan.item_id === null ? html`<span class="texte-doux">puce inconnue</span>` : html`<a class="lien-simple" href="/items/${scan.item_id}">${scan.item_name}</a>`}</td>
+<td>${scan.item_id === null ? html`<span class="texte-doux">puce inconnue</span> ${chipCode(scan.uid_nfc)}` : html`<a class="lien-simple" href="/items/${scan.item_id}">${scan.item_name}</a>`}</td>
 <td data-label="Poste">${stationLink(scan.station_id, scan.station_name)}</td>
 <td data-label="Heure">${timeTag(scan.received_at, now)}</td>
 </tr>
 `)}</tbody>
 </table>`;
 
-  return appLayout(user, `Lecteur n° ${reader.id}`, html`${BACK_TO_READERS}
+  return appLayout(user, `Lecteur n° ${reader.id}`, html`${trail([READERS_TRAIL], `Lecteur n° ${reader.id}`)}
 ${noticeFor(READER_NOTICES, notice)}<div class="entete-page entete-actions">
-<h1>Lecteur n° ${reader.id}</h1>
+<div class="titre-icone">${icon('lecteur')}<h1>Lecteur n° ${reader.id}</h1></div>
 ${actions}
 </div>
 ${AIDE.lecteur}<div class="fiche">
-<section class="fiche-carte" aria-labelledby="titre-etat">
-<h2 id="titre-etat">État</h2>
+<section class="carte carte-corps" aria-labelledby="titre-etat">
+<h2 id="titre-etat" class="carte-titre">${icon('valide')}État</h2>
 <p>${readerBadge(reader)}</p>
 <p class="localisation-detail">${active
-    ? 'Ses trames sont acceptées. Sa clé n\'est jamais réaffichée : si elle est perdue, remplacez la clé.'
-    : 'Désactivé définitivement : ses trames sont refusées. Ses scans passés sont conservés.'}</p>
+    ? 'Ses scans sont acceptés. Sa clé n\'est jamais réaffichée : si elle est perdue, remplacez la clé.'
+    : 'Désactivé définitivement : ses scans sont refusés. Ses scans passés sont conservés.'}</p>
 </section>
-<section class="fiche-carte" aria-labelledby="titre-identification">
-<h2 id="titre-identification">Identification</h2>
+<section class="carte carte-corps" aria-labelledby="titre-identification">
+<h2 id="titre-identification" class="carte-titre">${icon('note')}Identification</h2>
 <dl class="proprietes">
 <div><dt>Poste</dt><dd>${stationLink(reader.station_id, reader.station_name)}</dd></div>
 <div><dt>Créé</dt><dd>${formatDateTime(reader.created_at)}</dd></div>
 <div><dt>Dernier scan</dt><dd>${reader.last_scan_at === null ? html`<span class="texte-doux">aucun</span>` : timeTag(reader.last_scan_at, now)}</dd></div>
-<div><dt>Dernier compteur</dt><dd>${reader.last_counter === null ? html`<span class="texte-doux">—</span>` : reader.last_counter}</dd></div>
 </dl>
 </section>
-<section class="fiche-carte fiche-large" aria-labelledby="titre-scans">
-<h2 id="titre-scans">Derniers scans</h2>
+<section class="carte carte-corps fiche-large" aria-labelledby="titre-scans">
+<h2 id="titre-scans" class="carte-titre">${icon('historique')}Derniers scans</h2>
 ${scanList}
 </section>
-</div>`, stationsSection);
+</div>`, readersSection);
 }
 
 // Liste déroulante des postes, avec « Non affecté » en tête (valeur vide).
@@ -903,19 +988,19 @@ ${fieldError('station-erreur', error)}</div>`;
  * @param {{stations: {id, name}[], selected?: string, error?: string|null}} data
  */
 export function readerFormPage(user, { stations, selected = '', error = null }) {
-  return appLayout(user, 'Nouveau lecteur', html`${BACK_TO_READERS}
+  return appLayout(user, 'Nouveau lecteur', html`${trail([READERS_TRAIL], 'Nouveau lecteur')}
 <div class="entete-page">
 <h1>Nouveau lecteur</h1>
 </div>
 ${AIDE.nouveauLecteur}<form class="formulaire-page" method="post" action="/readers/new">
 <input type="hidden" name="csrf" value="${user.csrf}">
 ${stationSelect({ stations, selected, error, help: 'Facultatif : le lecteur peut être affecté à un poste plus tard.' })}
-<p class="aide">Le serveur attribue le numéro du lecteur et génère sa clé. La clé sera affichée une seule fois, sur la page suivante, pour être injectée dans le boîtier.</p>
+<p class="aide">L'application attribue le numéro du lecteur et crée sa clé. La clé sera affichée une seule fois, sur la page suivante, pour être installée dans le boîtier.</p>
 <div class="actions-formulaire">
 <button class="bouton" type="submit">Créer le lecteur</button>
 <a class="lien-annuler" href="/readers">Annuler</a>
 </div>
-</form>`, stationsSection);
+</form>`, readersSection);
 }
 
 /**
@@ -925,7 +1010,7 @@ ${stationSelect({ stations, selected, error, help: 'Facultatif : le lecteur peut
  */
 export function readerStationPage(user, { reader, stations, selected = null, error = null }) {
   const current = selected ?? (reader.station_id === null ? '' : String(reader.station_id));
-  return appLayout(user, 'Changer de poste', html`<p class="retour"><a href="/readers/${reader.id}">← Retour au lecteur</a></p>
+  return appLayout(user, 'Changer de poste', html`${trail(readerTrail(reader), 'Changer de poste')}
 <div class="entete-page">
 <h1>Changer de poste</h1>
 <p class="sous-titre-page">Lecteur n° ${reader.id}</p>
@@ -937,20 +1022,20 @@ ${stationSelect({ stations, selected: current, error, help: 'Les scans déjà en
 <button class="bouton" type="submit">Enregistrer</button>
 <a class="lien-annuler" href="/readers/${reader.id}">Annuler</a>
 </div>
-</form>`, stationsSection);
+</form>`, readersSection);
 }
 
 /** Confirmation de désactivation (définitive) d'un lecteur actif. */
 export function deactivateReaderPage(user, { reader }) {
-  return appLayout(user, 'Désactiver le lecteur', html`<p class="retour"><a href="/readers/${reader.id}">← Retour au lecteur</a></p>
+  return appLayout(user, 'Désactiver le lecteur', html`${trail(readerTrail(reader), 'Désactiver')}
 <div class="entete-page">
 <h1>Désactiver le lecteur</h1>
 <p class="sous-titre-page">Lecteur n° ${reader.id} · ${reader.station_id === null ? 'non affecté' : reader.station_name}</p>
 </div>
 ${AIDE.desactiverLecteur}<div class="panneau panneau-danger">
-<p>Ses trames seront refusées dès maintenant.</p>
+<p>Ses scans seront refusés dès maintenant.</p>
 <p><strong>La désactivation est définitive</strong> : un lecteur désactivé ne peut pas être réactivé. Pour remettre le boîtier en service, il faudra créer un nouveau lecteur.</p>
-<p class="texte-doux">Ses scans passés et les localisations qui en découlent sont conservés.</p>
+<p class="texte-doux">Ses scans passés et les emplacements qui en découlent sont conservés.</p>
 <form method="post" action="/readers/${reader.id}/deactivate">
 <input type="hidden" name="csrf" value="${user.csrf}">
 <div class="actions-formulaire">
@@ -958,21 +1043,21 @@ ${AIDE.desactiverLecteur}<div class="panneau panneau-danger">
 <a class="lien-annuler" href="/readers/${reader.id}">Annuler</a>
 </div>
 </form>
-</div>`, stationsSection);
+</div>`, readersSection);
 }
 
 /** Confirmation du remplacement de clé d'un lecteur actif. */
 export function replaceReaderPage(user, { reader }) {
   const station = reader.station_id === null ? 'non affecté' : reader.station_name;
-  return appLayout(user, 'Remplacer la clé', html`<p class="retour"><a href="/readers/${reader.id}">← Retour au lecteur</a></p>
+  return appLayout(user, 'Remplacer la clé', html`${trail(readerTrail(reader), 'Remplacer la clé')}
 <div class="entete-page">
 <h1>Remplacer la clé</h1>
 <p class="sous-titre-page">Lecteur n° ${reader.id} · ${station}</p>
 </div>
 ${AIDE.remplacerCle}<div class="panneau panneau-danger">
 <p>Un <strong>nouveau lecteur</strong> sera créé, avec un nouveau numéro et une nouvelle clé, au même poste (${station}).</p>
-<p>Le lecteur n° ${reader.id} sera <strong>désactivé définitivement</strong> : ses trames seront refusées dès maintenant, jusqu'à ce que le boîtier reçoive le nouveau numéro et la nouvelle clé.</p>
-<p class="texte-doux">La nouvelle clé sera affichée une seule fois, sur la page suivante : préparez-vous à l'injecter dans le boîtier. Les scans passés sont conservés.</p>
+<p>Le lecteur n° ${reader.id} sera <strong>désactivé définitivement</strong> : ses scans seront refusés dès maintenant, jusqu'à ce que le boîtier reçoive le nouveau numéro et la nouvelle clé.</p>
+<p class="texte-doux">La nouvelle clé sera affichée une seule fois, sur la page suivante : préparez-vous à l'installer dans le boîtier. Les scans passés sont conservés.</p>
 <form method="post" action="/readers/${reader.id}/replace">
 <input type="hidden" name="csrf" value="${user.csrf}">
 <div class="actions-formulaire">
@@ -980,7 +1065,7 @@ ${AIDE.remplacerCle}<div class="panneau panneau-danger">
 <a class="lien-annuler" href="/readers/${reader.id}">Annuler</a>
 </div>
 </form>
-</div>`, stationsSection);
+</div>`, readersSection);
 }
 
 /**
@@ -995,28 +1080,27 @@ export function readerKeyPage(user, { id, station, keyHex, oldId = null }) {
   const done = oldId === null
     ? `Lecteur n° ${id} créé.`
     : `Clé remplacée : lecteur n° ${id} créé, lecteur n° ${oldId} désactivé.`;
-  return appLayout(user, `Clé du lecteur n° ${id}`, html`<p class="succes" role="status">${done}</p>
+  return appLayout(user, `Clé du lecteur n° ${id}`, html`${trail([READERS_TRAIL], `Clé du lecteur n° ${id}`)}
+<p class="succes" role="status">${done}</p>
 <div class="entete-page">
 <h1>Clé du lecteur n° ${id}</h1>
 <p class="sous-titre-page">Poste : ${station === null ? 'non affecté' : station.name}</p>
 </div>
 <div class="panneau panneau-alerte" role="alert">
-<p><strong>Cette clé ne sera plus jamais affichée.</strong> Injectez-la maintenant dans le boîtier, avec son numéro de lecteur. Si elle est perdue, remplacez la clé depuis la fiche du lecteur.</p>
+<p><strong>Cette clé ne sera plus jamais affichée.</strong> Installez-la maintenant dans le boîtier, avec son numéro de lecteur. Si elle est perdue, remplacez la clé depuis la fiche du lecteur.</p>
 <p>Ne rechargez pas cette page : le navigateur proposerait de renvoyer le formulaire, ce qui créerait un autre lecteur.</p>
-<p>Fermez cet onglet une fois la clé injectée dans le boîtier.</p>
+<p>Fermez cet onglet une fois la clé installée dans le boîtier.</p>
 </div>
-<div class="fiche">
-<section class="fiche-carte fiche-large" aria-labelledby="titre-numero">
-<h2 id="titre-numero">Numéro du lecteur</h2>
+<section class="carte carte-corps carte-cle" aria-labelledby="titre-numero">
+<h2 id="titre-numero" class="etiquette">Numéro du lecteur</h2>
 <p class="numero-lecteur">${id}</p>
-<h2 id="titre-cle">Clé AES-256 (64 caractères hexadécimaux)</h2>
+<h2 id="titre-cle" class="etiquette">Clé secrète</h2>
 <pre class="cle">${keyHex}</pre>
 <p class="aide">Un clic sur la clé la sélectionne en entier.</p>
 </section>
-</div>
 <div class="actions-formulaire">
 <a class="bouton" href="/readers">Retour aux lecteurs</a>
-</div>`, stationsSection);
+</div>`, readersSection);
 }
 
 // ---------------------------------------------------------------- puces inconnues (étape 7)
@@ -1025,12 +1109,12 @@ export function readerKeyPage(user, { id, station, keyHex, oldId = null }) {
 // identifiants entiers lus en base.
 
 const chipsSection = { section: SECTION_CHIPS };
-const BACK_TO_CHIPS = html`<p class="retour"><a href="/chips">← Puces inconnues</a></p>`;
+const CHIPS_TRAIL = ['/chips', 'Puces inconnues'];
 
 /** Lieu du dernier scan d'une puce, en texte : nom du poste, ou lecteur non affecté (lien vers le lecteur). */
 function chipPlace(chip) {
   return chip.station_id === null
-    ? html`<a class="lien-simple" href="/readers/${chip.reader_id}">lecteur n° ${chip.reader_id} non affecté</a>`
+    ? html`<a class="lien-simple" href="/readers/${chip.reader_id}">lecteur non affecté</a>`
     : chip.station_name;
 }
 
@@ -1056,10 +1140,10 @@ function reuseWarning(chip) {
 `;
 }
 
-/** Même information en puce d'état (liste) : verte pour un poste, orange pour un lecteur non affecté. */
+/** Même information en pastille (liste) : le poste, ou un lecteur non affecté (lien vers le lecteur). */
 function chipBadge(chip) {
   return chip.station_id === null
-    ? html`<a class="lien-etat" href="/readers/${chip.reader_id}"><span class="etat etat-inconnue">lecteur n° ${chip.reader_id} non affecté</span></a>`
+    ? html`<a class="lien-etat" href="/readers/${chip.reader_id}"><span class="etat etat-inconnue">lecteur non affecté</span></a>`
     : html`<span class="etat etat-poste">${chip.station_name}</span>`;
 }
 
@@ -1073,29 +1157,27 @@ export function chipsPage(user, { chips, more = false, now }) {
     ? html`<p class="resultats" role="status">Plus de ${plural(chips.length, 'puce inconnue', 'puces inconnues')} · les ${chips.length} plus récentes sont affichées. Associez-les ou créez leurs fiches pour voir les suivantes.</p>`
     : html`<p class="resultats">${plural(chips.length, 'puce inconnue', 'puces inconnues')}</p>`;
   const body = chips.length === 0
-    ? html`<div class="vide"><p>Aucune puce inconnue : toutes les puces scannées sont associées à une fiche.</p>
-<p class="texte-doux">Une puce scannée sur un poste sans fiche apparaîtra ici, avec le poste et l'heure de son dernier scan.</p></div>`
-    : html`<div class="panneau-tableau">
-<table class="tableau tableau-puces">
-<thead><tr><th scope="col">Puce</th><th scope="col">Dernier poste</th><th scope="col">Dernier scan</th><th scope="col">Scans</th><th scope="col"><span class="visuellement-cache">Actions</span></th></tr></thead>
-<tbody>
-${chips.map((chip) => html`<tr>
-<td><span class="uid uid-puce">${chip.uid}</span></td>
-<td data-label="Dernier poste">${chipBadge(chip)}</td>
-<td data-label="Dernier scan">${timeTag(chip.received_at, now)}</td>
-<td data-label="Scans">${thousands(chip.scan_count)}</td>
-<td class="cellule-actions"><a class="bouton bouton-secondaire" href="/chips/${chip.uid}/new">Créer une fiche</a>
-<a class="lien-simple" href="/chips/${chip.uid}/associate">Associer à une fiche existante</a></td>
-</tr>
-`)}</tbody>
-</table>
-</div>`;
+    ? emptyState('valide', html`<p>Aucune puce inconnue : toutes les puces scannées sont associées à une fiche.</p>
+<p class="texte-doux">Une puce scannée sur un poste sans fiche apparaîtra ici, avec le poste et l'heure de son dernier scan.</p>`)
+    : html`<ul class="carte liste-puces">
+${chips.map((chip) => html`<li class="encart">
+<span class="encart-icone">${icon('puce')}</span>
+<div class="encart-corps">
+<p class="encart-texte">Puce ${chipCode(chip.uid)}</p>
+<p class="encart-meta">Dernier scan ${timeTag(chip.received_at, now)} · ${chipBadge(chip)} · ${thousands(chip.scan_count)} ${chip.scan_count > 1 ? 'scans' : 'scan'}</p>
+</div>
+<div class="groupe-boutons">
+<a class="bouton bouton-secondaire bouton-petit" href="/chips/${chip.uid}/new">${icon('ajouter')}Créer une fiche</a>
+<a class="bouton bouton-discret bouton-petit" href="/chips/${chip.uid}/associate">${icon('associer')}Associer à une fiche existante</a>
+</div>
+</li>
+`)}</ul>`;
   return appLayout(user, 'Puces inconnues', html`<div class="entete-page">
 <h1>Puces inconnues</h1>
 <p class="intro">Puces scannées sur un poste qu'aucune fiche ne porte encore. Créez une fiche, ou associez la puce à une fiche existante : l'objet sera localisé au poste de son dernier scan.</p>
 </div>
 ${AIDE.puces}${summary}
-${body}`, { ...chipsSection, current: '/chips' });
+${body}`, { ...chipsSection, exact: true });
 }
 
 /**
@@ -1115,34 +1197,35 @@ export function associateSearchPage(user, { chip, query, items, total, now }) {
 
   let body;
   if (total === 0 && !searching) {
-    body = html`<div class="vide"><p>Aucune fiche dans l'inventaire.</p>
+    body = emptyState('objet', html`<p>Aucune fiche dans l'inventaire.</p>
 <p class="texte-doux">Créez plutôt une fiche pour cette puce.</p>
-<a class="bouton" href="/chips/${chip.uid}/new">Créer une fiche</a></div>`;
+<a class="bouton" href="/chips/${chip.uid}/new">Créer une fiche</a>`);
   } else if (total === 0) {
-    body = html`<div class="vide"><p>Aucune fiche ne correspond à «&nbsp;${query}&nbsp;».</p>
-<p class="texte-doux">Essayez une partie du nom, ou quelques caractères du numéro de sa puce actuelle.</p></div>`;
+    body = emptyState('recherche', html`<p>Aucune fiche ne correspond à «&nbsp;${query}&nbsp;».</p>
+<p class="texte-doux">Essayez une partie du nom, ou quelques caractères du numéro de sa puce actuelle.</p>`);
   } else {
     body = html`<div class="panneau-tableau">
 <table class="tableau tableau-association">
-<thead><tr><th scope="col">Objet</th><th scope="col">Puce actuelle</th><th scope="col">Localisation</th><th scope="col"><span class="visuellement-cache">Action</span></th></tr></thead>
+<thead><tr><th scope="col">Objet</th><th scope="col">Puce actuelle</th><th scope="col">Emplacement</th><th scope="col"><span class="visuellement-cache">Action</span></th></tr></thead>
 <tbody>
 ${items.map((item) => html`<tr>
 <td class="cellule-objet"><a class="lien-objet" href="/items/${item.id}">${item.name}</a></td>
-<td data-label="Puce actuelle">${item.uid_nfc === null ? html`<span class="texte-doux">aucune puce</span>` : html`<span class="uid">${item.uid_nfc}</span>`}</td>
-<td data-label="Localisation">${locationBadge(item)}</td>
-<td class="cellule-actions"><a class="bouton bouton-secondaire" href="${base}/${item.id}">Associer</a></td>
+<td data-label="Puce actuelle">${item.uid_nfc === null ? html`<span class="texte-doux">aucune puce</span>` : chipCode(item.uid_nfc)}</td>
+<td data-label="Emplacement">${locationBadge(item)}</td>
+<td class="cellule-actions"><a class="bouton bouton-secondaire bouton-petit" href="${base}/${item.id}">${icon('associer')}Associer</a></td>
 </tr>
 `)}</tbody>
 </table>
 </div>`;
   }
 
-  return appLayout(user, 'Associer la puce', html`${BACK_TO_CHIPS}
+  return appLayout(user, 'Associer la puce', html`${trail([CHIPS_TRAIL], 'Associer la puce')}
 <div class="entete-page">
 <h1>Associer la puce à une fiche</h1>
-<p class="sous-titre-page"><span class="uid">${chip.uid}</span> · dernier scan : ${chipPlace(chip)}, ${timeTag(chip.received_at, now)}</p>
+<p class="sous-titre-page">Puce ${chipCode(chip.uid)} · dernier scan : ${chipPlace(chip)}, ${timeTag(chip.received_at, now)}</p>
 </div>
 ${AIDE.associerRecherche}<form class="recherche" method="get" action="${base}" role="search">
+${icon('recherche')}
 <label class="visuellement-cache" for="q">Rechercher une fiche par nom ou numéro de puce</label>
 <input id="q" name="q" type="search" value="${query}" maxlength="${MAX_QUERY_CHARS}" placeholder="Nom ou numéro de puce" autocomplete="off" spellcheck="false">
 <button class="bouton bouton-secondaire" type="submit">Rechercher</button>
@@ -1156,7 +1239,7 @@ ${total === 0 && !searching ? null : html`<p class="alternative">L'objet n'a pas
  * Confirmation de l'association d'une puce inconnue à une fiche. Si la fiche porte déjà une
  * puce : avertissement (l'ancienne puce sera détachée) et bouton rouge.
  * @param {{chip: object, item: object, now: number, changed?: boolean}} data
- *   item : fiche avec sa localisation (inventory.js, getItem) ; changed : l'envoi précédent a
+ *   item : fiche avec son emplacement (inventory.js, getItem) ; changed : l'envoi précédent a
  *   été refusé parce que la fiche avait changé de puce entre-temps (page réaffichée en 409).
  */
 export function associateConfirmPage(user, { chip, item, now, changed = false }) {
@@ -1165,25 +1248,25 @@ export function associateConfirmPage(user, { chip, item, now, changed = false })
   const search = `/chips/${chip.uid}/associate`;
   const lastScan = html`${chipPlace(chip)}, ${timeTag(chip.received_at, now)}`;
   // Sémantique de la vue item_locations : la plus récente des deux l'emporte. Une correction
-  // manuelle postérieure au dernier scan de la puce reste donc la localisation après association.
+  // manuelle postérieure au dernier scan de la puce reste donc l'emplacement après association.
   const correctionWins = item.source === 'manual' && item.at > chip.received_at;
   const explanation = replacing
-    ? html`<p><strong>La fiche «&nbsp;<span class="nom-confirme">${item.name}</span>&nbsp;» porte déjà la puce <span class="uid">${item.uid_nfc}</span>.</strong></p>
+    ? html`<p><strong>La fiche «&nbsp;<span class="nom-confirme">${item.name}</span>&nbsp;» porte déjà une puce</strong> (${chipCode(item.uid_nfc)}).</p>
 <ul class="liste-causes">
-<li>L'ancienne puce <span class="uid">${item.uid_nfc}</span> sera détachée de la fiche. Ses scans restent dans le journal et redeviennent ceux d'une puce inconnue.</li>
-<li>La localisation de la fiche suivra désormais la nouvelle puce <span class="uid">${chip.uid}</span>, scannée en dernier : ${lastScan}.</li>
+<li>L'ancienne puce sera détachée de la fiche. Ses scans sont conservés, et elle redevient une puce inconnue.</li>
+<li>L'emplacement de la fiche suivra désormais la nouvelle puce (${chipCode(chip.uid)}), scannée en dernier : ${lastScan}.</li>
 </ul>`
-    : html`<p>La puce <span class="uid">${chip.uid}</span> sera associée à la fiche «&nbsp;<strong class="nom-confirme">${item.name}</strong>&nbsp;».</p>
+    : html`<p>La puce ${chipCode(chip.uid)} sera associée à la fiche «&nbsp;<strong class="nom-confirme">${item.name}</strong>&nbsp;».</p>
 <p>La fiche sera localisée au dernier scan de la puce : ${lastScan}.</p>`;
 
-  return appLayout(user, title, html`<p class="retour"><a href="${search}">← Retour à la recherche</a></p>
+  return appLayout(user, title, html`${trail([CHIPS_TRAIL, [search, 'Associer la puce']], title)}
 <div class="entete-page">
 <h1>${title}</h1>
 <p class="sous-titre-page">${item.name}</p>
 </div>
 ${AIDE.associerConfirmation}${changed ? html`<p class="erreur" role="alert">La fiche a changé de puce depuis l'affichage de la page précédente : rien n'a été modifié. Vérifiez ci-dessous, puis confirmez à nouveau.</p>\n` : null}${reuseWarning(chip)}<div class="panneau ${replacing ? 'panneau-danger' : 'panneau-info'}">
 ${explanation}
-${correctionWins ? html`<p class="texte-doux">Une correction manuelle de localisation plus récente que ce scan existe : elle reste la localisation de la fiche jusqu'au prochain scan de la puce.</p>\n` : null}<form method="post" action="${search}/${item.id}">
+${correctionWins ? html`<p class="texte-doux">Une correction manuelle d'emplacement plus récente que ce scan existe : elle reste l'emplacement de la fiche jusqu'au prochain scan de la puce.</p>\n` : null}<form method="post" action="${search}/${item.id}">
 <input type="hidden" name="csrf" value="${user.csrf}">
 <input type="hidden" name="previous" value="${item.uid_nfc ?? ''}">
 <div class="actions-formulaire">
@@ -1201,8 +1284,9 @@ export function chipNotFoundPage(user) {
     title: 'Puce introuvable',
     text: 'Aucune puce scannée ne correspond à cette adresse.',
     hint: 'Une puce apparaît dans la liste des puces inconnues dès son premier scan sur un poste.',
-    back: BACK_TO_CHIPS,
+    parents: [CHIPS_TRAIL],
     layout: chipsSection,
+    iconName: 'puce',
   });
 }
 
@@ -1210,10 +1294,11 @@ export function chipNotFoundPage(user) {
 export function chipKnownPage(user, { uid, itemId }) {
   return messagePage(user, {
     title: 'Puce déjà associée',
-    text: `La puce ${uid} est déjà associée à une fiche : elle n'est plus inconnue.`,
+    text: `La puce ${chipNumber(uid)} est déjà associée à une fiche : elle n'est plus inconnue.`,
     hint: 'Rien n\'a été modifié.',
-    back: BACK_TO_CHIPS,
+    parents: [CHIPS_TRAIL],
     action: { href: `/items/${itemId}`, label: 'Voir la fiche' },
     layout: chipsSection,
+    iconName: 'valide',
   });
 }

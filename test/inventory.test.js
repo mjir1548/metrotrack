@@ -214,7 +214,7 @@ test('itemPage : objet sans puce, sans propriété ni note', () => {
   assert.ok(page.includes('Aucune propriété'));
   assert.ok(page.includes('Aucune note'));
   assert.ok(page.includes('jamais localisé'));
-  assert.ok(page.includes('<a href="/">← Inventaire</a>'));
+  assert.ok(page.includes('<nav class="fil" aria-label="Fil d\'Ariane">\n<a href="/">Inventaire</a>')); // étape U1
 });
 
 test('loginPage : message de surcharge affiché, jeton CSRF repris', () => {

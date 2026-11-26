@@ -115,15 +115,18 @@ const lastAudit = () => {
 // Page sans son aide « Comment ça marche ? » : texte constant qui cite des cas absents de la
 // page elle-même (puce détachée, « précisez la recherche », « Sa puce »).
 const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<\/details>/, '');
-const chipRows = (html) => /<table class="tableau tableau-puces">([\s\S]*?)<\/table>/.exec(html)?.[1].split('<tr>').slice(2) ?? [];
-const listedUids = (html) => chipRows(html).map((row) => /<span class="uid uid-puce">([0-9A-F]+)<\/span>/.exec(row)[1]);
+// Liste des puces inconnues : une carte par puce depuis l'étape U1 ; numéro affiché groupé par octets.
+const chipRows = (html) => /<ul class="carte liste-puces">([\s\S]*?)<\/ul>/.exec(html)?.[1].split('<li class="encart">').slice(1) ?? [];
+const listedUids = (html) => chipRows(html).map((row) => /<p class="encart-texte">Puce <span class="uid">([0-9A-F ]+)<\/span><\/p>/.exec(row)[1].replaceAll(' ', ''));
+const grouped = (uid) => uid.match(/../g).join(' ');
 
 // Balises autorisées : celles des gabarits. Toute autre serait une injection.
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
-  'textarea', 'select', 'option', 'ul', 'li', 'fieldset', 'legend', 'details', 'summary']);
+  'textarea', 'select', 'option', 'ul', 'li', 'fieldset', 'legend', 'details', 'summary',
+  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g']);
 const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form',
-  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'button', 'label', 'ul', 'li', 'nav', 'fieldset', 'legend', 'details', 'summary'];
+  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'button', 'label', 'ul', 'li', 'nav', 'fieldset', 'legend', 'details', 'summary', 'ol', 'svg', 'symbol', 'use'];
 
 function assertSafePage(html, what) {
   for (const [, tag] of html.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)) assert.ok(ALLOWED_TAGS.has(tag.toLowerCase()), `${what} : balise <${tag}>`);
@@ -134,7 +137,7 @@ function assertSafePage(html, what) {
   }
   assert.doesNotMatch(html, /<[^>]*\son[a-z]+\s*=/i, what);
   assert.equal((html.match(/"/g)?.length ?? 0) % 2, 0, `${what} : guillemets déséquilibrés`);
-  for (const [, url] of html.matchAll(/\b(?:src|href|action)\s*=\s*"([^"]*)"/gi)) assert.match(url, /^\/(?!\/)/, `${what} : URL ${url}`);
+  for (const [, url] of html.matchAll(/\b(?:src|href|action)\s*=\s*"([^"]*)"/gi)) assert.match(url, /^(?:\/(?!\/)|#[a-z][a-z-]*$)/, `${what} : URL ${url}`);
   assert.doesNotMatch(html, /https?:|\/\//i, `${what} : URL externe`);
   assert.doesNotMatch(html, /<script|<style|\sstyle\s*=/i, `${what} : script ou style`);
   assert.ok((html.match(/class="bouton( bouton-danger)?"/g)?.length ?? 0) <= 1, `${what} : un bouton principal au plus`);
@@ -151,10 +154,10 @@ const VALID_POST = { name: 'Écrasé', notes: '', previous: '' };
 test('liste vide : message clair ; onglet « Puces inconnues » actif dans le bandeau, sans badge', async () => {
   const res = await page('/chips');
   assert.equal(res.status, 200);
-  assert.ok(res.body.includes('<a class="actif" href="/chips" aria-current="page">Puces inconnues</a>'));
+  assert.ok(res.body.includes('<li><a href="/chips" aria-current="page">Puces inconnues</a></li>'));
   assert.ok(res.body.includes('Aucune puce inconnue : toutes les puces scannées sont associées à une fiche.'));
   assert.ok(res.body.includes('0 puce inconnue'));
-  assert.ok(!res.body.includes('<table'));
+  assert.ok(!res.body.includes('<table') && !res.body.includes('liste-puces'));
   // Onglet présent (inactif) sur les autres rubriques.
   assert.ok((await page('/')).body.includes('<a href="/chips">Puces inconnues</a>'));
   assert.ok((await page('/stations')).body.includes('<a href="/chips">Puces inconnues</a>'));
@@ -171,13 +174,11 @@ test('une puce inconnue scannée apparaît avec son poste, l\'heure et le nombre
   assert.ok(res.body.includes('2 puces inconnues'));
   const [loose, fresh] = chipRows(res.body);
   const last = (uid) => db.prepare('SELECT received_at FROM scans WHERE uid_nfc = ? ORDER BY id DESC LIMIT 1').get(uid).received_at;
-  assert.ok(fresh.includes('<td data-label="Dernier poste"><span class="etat etat-poste">Atelier</span></td>'));
+  assert.ok(fresh.includes(' · <span class="etat etat-poste">Atelier</span> · 2 scans</p>'));
   assert.ok(fresh.includes(`<time datetime="${last(NEW)}"`));
-  assert.ok(fresh.includes('<td data-label="Scans">2</td>'));
-  assert.ok(fresh.includes(`<a class="bouton bouton-secondaire" href="/chips/${NEW}/new">Créer une fiche</a>`));
-  assert.ok(fresh.includes(`<a class="lien-simple" href="/chips/${NEW}/associate">Associer à une fiche existante</a>`));
-  assert.ok(loose.includes('<a class="lien-etat" href="/readers/2"><span class="etat etat-inconnue">lecteur n° 2 non affecté</span></a>'));
-  assert.ok(loose.includes('<td data-label="Scans">1</td>'));
+  assert.ok(fresh.includes(`<a class="bouton bouton-secondaire bouton-petit" href="/chips/${NEW}/new"><svg class="ic" aria-hidden="true"><use href="#i-ajouter"></use></svg>Créer une fiche</a>`));
+  assert.ok(fresh.includes(`<a class="bouton bouton-discret bouton-petit" href="/chips/${NEW}/associate"><svg class="ic" aria-hidden="true"><use href="#i-associer"></use></svg>Associer à une fiche existante</a>`));
+  assert.ok(loose.includes(' · <a class="lien-etat" href="/readers/2"><span class="etat etat-inconnue">lecteur non affecté</span></a> · 1 scan</p>'));
   assert.ok(!res.body.includes(OLD));
 });
 
@@ -290,15 +291,15 @@ test('« Créer une fiche » : formulaire de l\'étape 5 avec l\'UID en lecture 
   const res = await page(`/chips/${NEW}/new`);
   assert.equal(res.status, 200);
   assert.ok(res.body.includes(`<form class="formulaire-page" method="post" action="/chips/${NEW}/new">`));
-  assert.ok(res.body.includes(`<p class="puce-lecture"><span class="uid">${NEW}</span></p>`));
+  assert.ok(res.body.includes(`<p class="puce-lecture"><svg class="ic" aria-hidden="true"><use href="#i-puce"></use></svg><span class="uid">${grouped(NEW)}</span></p>`));
   assert.ok(res.body.includes('Dernier scan : Atelier, <time'));
   assert.ok(res.body.includes('name="name"') && res.body.includes('name="notes"') && res.body.includes('name="prop_key"'));
   assert.ok(res.body.includes('value="lignes"'));
   assert.ok(!/name="uid/.test(res.body));
-  assert.ok(res.body.includes('<p class="retour"><a href="/chips">← Puces inconnues</a></p>'));
-  assert.ok(res.body.includes('<a class="actif" href="/chips">Puces inconnues</a>'));
+  assert.ok(res.body.includes('<nav class="fil" aria-label="Fil d\'Ariane">\n<a href="/chips">Puces inconnues</a>'));
+  assert.ok(res.body.includes('<li><a href="/chips" aria-current="true">Puces inconnues</a></li>'));
   // Lecteur non affecté : lien vers le lecteur.
-  assert.ok((await page(`/chips/${LOOSE}/new`)).body.includes('Dernier scan : <a class="lien-simple" href="/readers/2">lecteur n° 2 non affecté</a>'));
+  assert.ok((await page(`/chips/${LOOSE}/new`)).body.includes('Dernier scan : <a class="lien-simple" href="/readers/2">lecteur non affecté</a>'));
 });
 
 test('« Créer une fiche » : saisie invalide (400) et « Ajouter des lignes » (200) réaffichent le formulaire de la puce, sans écriture', async () => {
@@ -307,7 +308,7 @@ test('« Créer une fiche » : saisie invalide (400) et « Ajouter des lignes »
   assert.equal(invalid.status, 400);
   assert.ok(invalid.body.includes('Le nom est obligatoire.'));
   assert.ok(invalid.body.includes(`action="/chips/${NEW}/new"`));
-  assert.ok(invalid.body.includes(`<span class="uid">${NEW}</span>`));
+  assert.ok(invalid.body.includes(`<span class="uid">${grouped(NEW)}</span>`));
   const more = await post(`/chips/${NEW}/new`, [['name', 'Étuve'], ['action', 'lignes']]);
   assert.equal(more.status, 200);
   assert.ok(more.body.includes('value="Étuve"'));
@@ -330,9 +331,9 @@ test('« Créer une fiche » : 303 vers la fiche, localisée tout de suite au po
   const sheet = await page(res.headers.location);
   assert.equal(sheet.status, 200);
   assert.ok(sheet.body.includes('Fiche créée avec la puce scannée'));
-  assert.ok(sheet.body.includes('<p><span class="etat etat-poste">Atelier</span></p>'));
-  assert.ok(sheet.body.includes(`<span class="uid">${NEW}</span>`));
-  assert.ok(sheet.body.includes(`<td data-label="Modification">Fiche créée avec la puce <span class="uid">${NEW}</span></td>`));
+  assert.ok(sheet.body.includes('<use href="#i-poste"></use></svg><span class="etat etat-poste">Atelier</span></p>'));
+  assert.ok(sheet.body.includes(`<span class="uid">${grouped(NEW)}</span>`));
+  assert.ok(sheet.body.includes(`<p class="frise-lieu">Fiche créée avec la puce <span class="uid">${grouped(NEW)}</span></p>`));
   assert.deepEqual(listedUids((await page('/chips')).body), [LOOSE]);
   assert.equal(scansDump(), scans);
   assert.ok(logs.includes(`fiche ${id} créée par alice avec la puce ${NEW}`));
@@ -350,9 +351,9 @@ test('recherche d\'association : toutes les fiches (puce actuelle, localisation)
   assert.ok(res.body.includes('<h1>Associer la puce à une fiche</h1>'));
   assert.ok(res.body.includes(`<form class="recherche" method="get" action="/chips/${LOOSE}/associate" role="search">`));
   assert.ok(res.body.includes('4 fiches'));
-  assert.ok(res.body.includes(`<a class="bouton bouton-secondaire" href="/chips/${LOOSE}/associate/2">Associer</a>`));
+  assert.ok(res.body.includes(`<a class="bouton bouton-secondaire bouton-petit" href="/chips/${LOOSE}/associate/2"><svg class="ic" aria-hidden="true"><use href="#i-associer"></use></svg>Associer</a>`));
   assert.ok(res.body.includes('<td data-label="Puce actuelle"><span class="texte-doux">aucune puce</span></td>'));
-  assert.ok(res.body.includes(`<td data-label="Puce actuelle"><span class="uid">${OLD}</span></td>`));
+  assert.ok(res.body.includes(`<td data-label="Puce actuelle"><span class="uid">${grouped(OLD)}</span></td>`));
   assert.ok(res.body.includes(`<a href="/chips/${LOOSE}/new">Créer une fiche pour cette puce</a>`));
   const byName = await page(`/chips/${LOOSE}/associate?q=oscillo`);
   assert.ok(byName.body.includes('1 résultat pour «&nbsp;oscillo&nbsp;»'));
@@ -368,7 +369,7 @@ test('confirmation sans puce existante : confirmation simple, bouton principal �
   assert.equal(res.status, 200);
   assert.ok(res.body.includes('<h1>Associer la puce</h1>'));
   assert.ok(res.body.includes('<div class="panneau panneau-info">'));
-  assert.ok(res.body.includes(`La puce <span class="uid">${LOOSE}</span> sera associée à la fiche`));
+  assert.ok(res.body.includes(`La puce <span class="uid">${grouped(LOOSE)}</span> sera associée à la fiche`));
   assert.ok(res.body.includes('<input type="hidden" name="previous" value="">'));
   assert.ok(res.body.includes(`<form method="post" action="/chips/${LOOSE}/associate/2">`));
   assert.ok(res.body.includes('<button class="bouton" type="submit">Associer la puce</button>'));
@@ -385,9 +386,9 @@ test('association à une fiche sans puce : 303, localisée au dernier scan, hist
     details: { uid: LOOSE, previous_uid: null, name: 'Oscilloscope' },
   });
   const sheet = await page(res.headers.location);
-  assert.ok(sheet.body.includes('Puce associée : la localisation de la fiche suit désormais cette puce.'));
-  assert.ok(sheet.body.includes('inconnue (lecteur n° 2 non affecté)'));
-  assert.ok(sheet.body.includes(`<td data-label="Modification">Puce associée : <span class="uid">${LOOSE}</span></td>`));
+  assert.ok(sheet.body.includes('Puce associée : l&#39;emplacement de la fiche suit désormais cette puce.'));
+  assert.ok(sheet.body.includes('<span class="etat etat-inconnue">lecteur non affecté</span>'));
+  assert.ok(sheet.body.includes(`<p class="frise-lieu">Puce associée : <span class="uid">${grouped(LOOSE)}</span></p>`));
   assert.ok(!sheet.body.includes('note-carte'));
   assert.deepEqual(listedUids((await page('/chips')).body), []);
   assert.equal(scansDump(), scans);
@@ -399,9 +400,9 @@ test('confirmation avec une puce existante : avertissement (ancien UID, détache
   assert.equal(res.status, 200);
   assert.ok(res.body.includes('<h1>Remplacer la puce de la fiche</h1>'));
   assert.ok(res.body.includes('<div class="panneau panneau-danger">'));
-  assert.ok(res.body.includes(`porte déjà la puce <span class="uid">${OLD}</span>`));
-  assert.ok(res.body.includes(`L'ancienne puce <span class="uid">${OLD}</span> sera détachée de la fiche. Ses scans restent dans le journal et redeviennent ceux d'une puce inconnue.`));
-  assert.ok(res.body.includes(`suivra désormais la nouvelle puce <span class="uid">${NEVER}</span>`));
+  assert.ok(res.body.includes(`porte déjà une puce</strong> (<span class="uid">${grouped(OLD)}</span>).`));
+  assert.ok(res.body.includes('L\'ancienne puce sera détachée de la fiche. Ses scans sont conservés, et elle redevient une puce inconnue.'));
+  assert.ok(res.body.includes(`suivra désormais la nouvelle puce (<span class="uid">${grouped(NEVER)}</span>)`));
   assert.ok(res.body.includes(`<input type="hidden" name="previous" value="${OLD}">`));
   assert.ok(res.body.includes('<button class="bouton bouton-danger" type="submit">Remplacer la puce</button>'));
 });
@@ -425,16 +426,16 @@ test('remplacement : ancienne puce détachée et tracée, de retour dans la list
   assert.equal(scansDump(), scans);
   const sheet = await page(res.headers.location);
   assert.ok(sheet.body.includes('Puce remplacée'));
-  assert.ok(sheet.body.includes('<p><span class="etat etat-poste">Labo</span></p>'));
-  assert.ok(sheet.body.includes(`<td data-label="Modification">Puce associée : <span class="uid">${NEVER}</span> (remplace <span class="uid">${OLD}</span>)</td>`));
+  assert.ok(sheet.body.includes('<use href="#i-poste"></use></svg><span class="etat etat-poste">Labo</span></p>'));
+  assert.ok(sheet.body.includes(`<p class="frise-lieu">Puce associée : <span class="uid">${grouped(NEVER)}</span> (remplace <span class="uid">${grouped(OLD)}</span>)</p>`));
   assert.ok(logs.includes(`puce ${NEVER} associée à la fiche 1 par alice (remplace ${OLD})`));
   // L'ancienne puce a des scans : elle redevient une puce inconnue.
   const list = await page('/chips');
   assert.deepEqual(listedUids(list.body), [OLD]);
   // Un scan ultérieur de l'ancienne puce ne déplace plus la fiche (Atelier) ; il compte pour la puce inconnue.
   await scan(1, OLD);
-  assert.ok((await page('/items/1')).body.includes('<p><span class="etat etat-poste">Labo</span></p>'));
-  assert.ok(chipRows((await page('/chips')).body)[0].includes('<td data-label="Scans">2</td>'));
+  assert.ok((await page('/items/1')).body.includes('<use href="#i-poste"></use></svg><span class="etat etat-poste">Labo</span></p>'));
+  assert.ok(chipRows((await page('/chips')).body)[0].includes(' · 2 scans</p>'));
 });
 
 test('course : deux associations simultanées du même UID à deux fiches → une réussite, un 409, sans 500 ni double écriture', async () => {
@@ -520,7 +521,7 @@ test('suppression d\'une fiche avec puce : la confirmation annonce le retour de 
   const created = await post('/chips/B0B0B0B0/new', { name: 'Fiche éphémère' });
   const id = Number(/^\/items\/(\d+)/.exec(created.headers.location)[1]);
   const confirm = await page(`/items/${id}/delete`);
-  assert.ok(confirm.body.includes('<p>Sa puce <span class="uid">B0B0B0B0</span> sera détachée : si elle a déjà été scannée, elle réapparaîtra dans «&nbsp;Puces inconnues&nbsp;» avec ses scans.</p>'));
+  assert.ok(confirm.body.includes('<p>Sa puce sera détachée : si elle a déjà été scannée, elle réapparaîtra dans «&nbsp;Puces inconnues&nbsp;» avec ses scans.</p>'));
   const withoutChip = db.prepare('SELECT id FROM items WHERE uid_nfc IS NULL LIMIT 1').get().id;
   assert.ok(!withoutHelp((await page(`/items/${withoutChip}/delete`)).body).includes('Sa puce'));
   assert.equal((await post(`/items/${id}/delete`)).status, 303);

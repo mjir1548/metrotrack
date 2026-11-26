@@ -319,7 +319,7 @@ export function auditLabel(action, detailsJson) {
     }
     case ACTIONS.correctLocation: {
       const station = details?.station?.name;
-      return typeof station === 'string' ? `Localisation corrigée : ${station}` : 'Localisation corrigée';
+      return typeof station === 'string' ? `Emplacement corrigé : ${station}` : 'Emplacement corrigé';
     }
     default: return action;
   }

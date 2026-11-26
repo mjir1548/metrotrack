@@ -122,7 +122,7 @@ test('user-add par tube pendant que le serveur tourne, puis parcours complet con
 
   const homePage = await send({ path: '/', headers: { Cookie: `__Host-mt_session=${token}` } });
   assert.equal(homePage.status, 200);
-  assert.match(homePage.body, /Connecté en tant que <strong>testeur<\/strong>/);
+  assert.match(homePage.body, /<span class="visuellement-cache">Connecté en tant que <\/span><strong>testeur<\/strong>/);
 
   const out = await send({
     method: 'POST', path: '/logout',

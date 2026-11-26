@@ -7,7 +7,7 @@
 // hasVisibleChar, keyFold), sans copie. Toutes les requêtes sont paramétrées.
 
 import { cleanLine, cleanNotes, hasVisibleChar, keyFold, inTransaction, audit } from './items.js';
-import { collator } from './inventory.js';
+import { collator, withLocations } from './inventory.js';
 
 // Bornes en unités UTF-16 (text.length), comme l'attribut HTML maxlength ; comptées après
 // nettoyage et normalisation NFC.
@@ -192,12 +192,17 @@ export function stationReaders(db, id) {
   return db.prepare('SELECT id, active, created_at FROM readers WHERE station_id = ? ORDER BY active DESC, id').all(id);
 }
 
-/** Objets actuellement localisés au poste, triés par nom : [{id, name, uid_nfc, at, source}]. */
+/**
+ * Objets actuellement localisés au poste, triés par nom : [{id, name, uid_nfc, at, arrived_at,
+ * arrived_at_bounded, arrival_source, source}]. arrived_at : heure d'arrivée au poste
+ * (inventory.js, withLocations), affichée « Depuis » ; arrival_source : 'manual' si l'objet
+ * est arrivé par une correction manuelle (mention « (correction) »).
+ */
 export function stationItems(db, id) {
   return db.prepare(
-    `SELECT i.id, i.name, i.uid_nfc, l.at, l.source
-       FROM item_locations l
-       JOIN items i ON i.id = l.item_id
-      WHERE l.station_id = ?`
+    `${withLocations('l.station_id = ?')}
+     SELECT i.id, i.name, i.uid_nfc, l.at, l.arrived_at, l.arrived_at_bounded, l.arrival_source, l.source
+       FROM locations l
+       JOIN items i ON i.id = l.item_id`
   ).all(id).sort((a, b) => collator.compare(a.name, b.name) || a.id - b.id);
 }

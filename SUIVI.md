@@ -14,6 +14,8 @@ Dernière mise à jour : 2026-11-25
 
 ## Où on en est (au 2026-11-25)
 
+**Nouvelle phase (2026-11-25) : logiciel de bureau, priorité à l'UX. Phase 0 livrée dans `docs/ux/` (synthèse et questions : `docs/ux/README.md`), en attente des choix de l'humain.**
+
 **Le plan MVP est terminé** : étapes 1 à 7 commitées. Une petite étape « aide intégrée » est terminée, validée et commitée avec l'accord de l'humain (voir git log).
 
 | Étape | Contenu | Commit | Tests |
@@ -543,3 +545,84 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
 - L'humain change de Claude. `SUIVI.md` (sections du haut réécrites : état, décisions, questions) et `PROMPT-REPRISE.md` sont remis à jour pour la reprise.
 - État : MVP (étapes 1 à 7) commité ; aide intégrée validée mais non commitée ; 452 tests verts ; démo arrêtée.
 - Accord de l'humain (2026-11-25) → commit de l'aide intégrée.
+
+### 2026-11-25 — Reprise par un nouveau Claude, nouvelle phase annoncée
+- Relu : `PROMPT-REPRISE.md`, `SUIVI.md`. Vérifié : `git log` (8 commits, le dernier « Aide intégrée »), `node --test` → 452/452 verts.
+- Reçu de l'humain le cadrage d'une **nouvelle phase « logiciel de bureau, priorité à l'UX »** :
+  - un `.exe` Windows ;
+  - Yanis garde tout le matériel et le protocole ;
+  - parcours utilisateur à soigner, avec une direction visuelle proposée ;
+  - un 4e agent `revue-ux` à proposer.
+- Phase 0 demandée, sans coder d'écran :
+  - audit UX de l'existant ;
+  - carte du logiciel et des parcours ;
+  - 2 ou 3 maquettes visuelles ;
+  - options pour le `.exe` ;
+  - plan par étapes et questions.
+- En attente du feu vert de l'humain pour lancer cette phase 0.
+
+### 2026-11-25 — Phase « logiciel de bureau, priorité à l'UX » : phase 0 (sans code produit)
+- Consigne de l'humain : travailler sans le solliciter jusqu'à la limite d'usage. Le téléchargement des polices est accepté dans ce cadre.
+- Polices OFL (Space Grotesk, Inter, JetBrains Mono) téléchargées depuis le dépôt officiel Google Fonts dans `docs/maquettes/assets/fonts/`, avec leurs licences.
+- Jeu d'icônes dessiné pour le projet : `docs/maquettes/assets/icones.svg`. Contenu commun des maquettes : `docs/maquettes/assets/contenu-commun.md`.
+- Livrables dans `docs/ux/` (`README.md` = synthèse et questions) :
+  - `audit-existant.md` ;
+  - `carte-et-parcours.md` ;
+  - `exe.md` ;
+  - `plan.md` (étapes U1 à U9) ;
+  - `revue-ux.proposition.md` (pas encore copié dans `.claude/agents/`).
+- Essai d'exécutable unique avec Node 26 (`--build-sea`, ESM + `useVfs`) : construit (100 Mo), mais **bloqué par Windows** (stratégie de contrôle d'application, exe non signé). La signature devient quasi obligatoire.
+- Audit : « depuis » = heure du dernier scan (et non de l'arrivée) ; la page de connexion expire au bout de 10 min ; les erreurs donnent des pages blanches. Ces points sont intégrés au plan (U1, U2).
+- Trois agents ont construit les maquettes A, B et C, dans `docs/maquettes/direction-*` (comparatif : `docs/maquettes/index.html`).
+- Rien n'est commité. Aucune décision n'est prise : tout est « proposé ».
+- Maquettes A, B et C livrées par les agents, contrôlées en captures par l'orchestrateur à 1440×900 :
+  - rendu propre, 3 polices chargées, aucune ressource externe ;
+  - contrastes AA calculés par chaque agent (listés en tête des `style.css`) ;
+  - B propose aussi un mode sombre.
+- Jours de la semaine du contenu fictif corrigés (le 25 novembre 2026 est un mercredi).
+- Aperçu local : `node docs/maquettes/apercu.mjs`, puis http://127.0.0.1:8790/. Le serveur n'écoute que sur 127.0.0.1. Configuration « maquettes » ajoutée dans `.claude/launch.json`.
+- Avis de l'orchestrateur, écrit dans `docs/ux/README.md` : structure de A + accueil en tuiles de C + fiche de B.
+- **Phase 0 livrée. En attente des choix de l'humain** : questions 1 à 12 de `docs/ux/README.md`. Les trois bloquantes pour U1 sont la direction visuelle, le JavaScript local et l'agent `revue-ux`. Rien n'est commité.
+
+### 2026-11-25 — Étape U0 lancée : correctifs de fond relevés par l'audit
+- Lancée sans attendre les choix de l'humain, sur sa consigne de ne pas le solliciter. Elle ne dépend d'aucune décision en attente : style inchangé, pas de JavaScript, vocabulaire global inchangé.
+- Contenu :
+  1. « Depuis » = heure d'arrivée à l'emplacement actuel, et non plus heure du dernier scan (calcul dérivé, sans nouvelle donnée stockée) ;
+  2. la page de connexion restée ouverte plus de 10 min réaffiche le formulaire avec un message, au lieu d'un 403 ;
+  3. pages d'erreur lisibles (404, 405, 400, 413, 500, 403, session expirée). `/api/frames` est inchangé (contrat avec les boîtiers).
+- Agent `dev` lancé (aller-retour 1/3). Pas de commit sans l'accord de l'humain.
+- Rapport de `dev` (U0, aller-retour 1/3) : les 3 correctifs sont faits, 479 tests verts.
+  - Migration 006 : index couvrant `scans_by_uid`.
+  - Coût mesuré : `GET /` de +21 à +37 % (5 000 objets, 300 000 scans).
+- Revue sécurité (U0) : **OK pour commit**, aucun bloquant.
+  - I1 : le coût de « depuis » n'a pas de plafond (puce posée en permanence, lecteur compromis).
+  - I2 : docs à aligner. Faits par l'orchestrateur : D-016, amendements de D-008 et D-011, limites U0, note dans `cadrage.md`.
+  - S2 (`apercu.mjs` : préfixe, `%` mal formé) : corrigé par l'orchestrateur.
+- Testeur (U0) : rien de bloquant, 485 tests (ajouts : `migration-006`, `u0-verif`). Il a corrigé une assertion instable dans `u0-web.test.js`. Points mineurs : mention « (correction) » sur la fiche poste, message de session pour un utilisateur jamais connecté, texte du 405.
+- Retour à `dev` (aller-retour 2/3) :
+  - plafond du calcul de « depuis » (affichage « depuis au moins » au-delà) ;
+  - mention « (correction) » ;
+  - message de session ;
+  - texte du 405 ;
+  - suggestions S1, S3 et S4 de la revue.
+- **Question pour Yanis** (ajoutée aux limites U0) : le boîtier émet-il une trame à chaque lecture, ou seulement quand la puce arrive ?
+- **Limite d'usage atteinte (2026-11-25)** : l'agent `dev` (U0, aller-retour 2/3) a été coupé. Le disque est cohérent : 485 tests verts, l'état est celui de l'aller-retour 1 plus les tests ajoutés par le testeur. Les retouches de l'aller-retour 2 ne sont **pas faites**.
+- **À la reprise** : relancer `dev` avec la liste de l'aller-retour 2 ci-dessus, puis repasser par le testeur et la revue, puis demander l'accord pour le commit. Rien n'est commité.
+
+### 2026-11-26 — Reprise après la limite d'usage ; trace GitHub demandée
+- Consigne de l'humain : reprendre, livrer un résultat, et pousser sur GitHub (compte `mjir1548`) pour garder une trace de tous les documents. Il demande ainsi explicitement les commits et le push du travail fait.
+- Commit `7b42da1` « Phase 0 logiciel de bureau… » : `docs/ux/`, `docs/maquettes/`, `.claude/launch.json`. Fichiers ajoutés nommément ; `PROMPT-REPRISE.md`, le classeur xlsx, `config.json`, `data/` et `dev/` sont exclus.
+- Dépôt distant ajouté : `origin` = https://github.com/mjir1548/metrotrack.git. Il n'existe pas encore (404), `gh` n'est pas installé, et le navigateur intégré n'est pas connecté à GitHub. L'humain doit soit se connecter dans le panneau, soit créer le dépôt privé lui-même ; il valide la connexion au premier push.
+- Agent `dev` relancé sur l'aller-retour 2/3 de U0.
+- L'humain a créé le dépôt GitHub. Push de `main` réussi : `origin/main` = `7b42da1`, soit les 9 commits.
+- ⚠️ Le dépôt GitHub est **public** (l'API répond 200 sans authentification). Recommandation faite à l'humain : le passer en privé (Settings › Danger Zone › Change visibility). Aucun secret n'est versionné (clés, config, base et démo sont exclus), mais les adresses email des commits et toute la conception de sécurité deviennent visibles de tous.
+- Rapport de `dev` (U0, aller-retour 2/3) : 7 retouches, 493 tests verts trois fois de suite.
+  - `MAX_RUN_SCANS = 2000` et affichage « au moins » ;
+  - mention « (correction) » selon l'arrivée ;
+  - redirection de session selon la présence du cookie ;
+  - texte du 405 sur un GET ;
+  - suggestions S1, S3 et S4.
+- Relecture ciblée de la revue : **OK pour commit**. I1 est fermé : coût indépendant de la longueur de la série, environ 0,6 ms par fiche à 300 000 scans d'affilée. Ses 3 suggestions de documentation sont reportées par l'orchestrateur dans `decisions.md`.
+- Vérification ciblée du testeur : aucun ❌, 494 tests (il a ajouté le 5e test de `u0-verif`). `GET /` reste à environ 105 ms avec une puce rescannée 50 000 ou 350 000 fois.
+- Vérification de l'orchestrateur : 494/494, `package.json` toujours sans dépendance.
+- **Étape U0 terminée** (2 allers-retours). Commit et push faits à la demande de l'humain (voir git log).

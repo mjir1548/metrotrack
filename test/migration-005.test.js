@@ -59,7 +59,8 @@ test('migration 005 : base en version 4 avec des données → version 5, donnée
 
     const db = openDb(path);
     try {
-      assert.equal(db.prepare('PRAGMA user_version').get().user_version, 5);
+      // openDb applique aussi la migration 006 (index scans_by_uid élargi, étape U0).
+      assert.equal(db.prepare('PRAGMA user_version').get().user_version, 6);
       assert.equal(JSON.stringify(['stations', 'readers', 'items', 'scans', 'location_corrections', 'audit_log']
         .map((t) => db.prepare(`SELECT * FROM ${t} ORDER BY rowid`).all())), before);
       assert.equal(dumpView(db), locations);
@@ -95,7 +96,7 @@ test('migration 005 : base en version 4 avec des données → version 5, donnée
       db.close();
     }
     const again = openDb(path); // aucune migration rejouée
-    assert.equal(again.prepare('PRAGMA user_version').get().user_version, 5);
+    assert.equal(again.prepare('PRAGMA user_version').get().user_version, 6);
     again.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });

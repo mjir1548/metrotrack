@@ -5,7 +5,7 @@
 import { createServer } from 'node:https';
 import { constants } from 'node:crypto';
 import { ingestFrame } from './ingest.js';
-import { handleWeb, LOGIN_FAILURE_DELAY_MS } from './web.js';
+import { handleWeb, sendInternalError, LOGIN_FAILURE_DELAY_MS } from './web.js';
 
 const FRAMES_PATH = '/api/frames';
 // Plafond de lecture du corps : une trame fait 36 octets. Au-delà, on cesse de lire
@@ -63,10 +63,21 @@ export function createFrameServer(db, {
     res.setHeader('Strict-Transport-Security', HSTS);
     // Toute exception (y compris dans les callbacks 'data' / 'end') est capturée :
     // une requête malformée ne doit jamais pouvoir arrêter le processus.
+    // Réponse 500 : sans corps pour POST /api/frames (contrat avec les boîtiers, D-008) ; page
+    // lisible au texte constant pour l'interface web (web.js). Si cette page ne peut pas être
+    // produite elle-même, 500 sans corps : la réponse part toujours.
+    const isFrames = req.url.split('?')[0] === FRAMES_PATH;
     const fail = (err) => {
       log(`erreur interne lors du traitement d'une requête : ${err.message}`);
-      if (!res.headersSent) sendEmpty(res, 500, true);
-      else res.destroy();
+      if (res.headersSent) return res.destroy();
+      if (isFrames) return sendEmpty(res, 500, true);
+      try {
+        sendInternalError(web, req, res);
+      } catch (pageErr) {
+        log(`page d'erreur interne impossible : ${pageErr.message}`);
+        if (!res.headersSent) sendEmpty(res, 500, true);
+        else res.destroy();
+      }
     };
     const guard = (fn) => (...args) => {
       try {

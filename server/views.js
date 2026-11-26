@@ -15,6 +15,10 @@ import { MAX_READER_ID } from './readers.js';
 import { AIDE } from './aide.js';
 
 export const BUSY_MESSAGE = 'Trop de connexions en cours. Réessayez dans un instant.';
+// Page de connexion réaffichée parce que son jeton anti-falsification a expiré (web.js, login).
+export const LOGIN_EXPIRED_MESSAGE = 'La page était restée ouverte trop longtemps. Saisissez à nouveau votre mot de passe.';
+// Envoi d'un formulaire après expiration de la session (web.js, postForm → /login?info=session).
+export const SESSION_EXPIRED_MESSAGE = 'Votre session a expiré. Reconnectez-vous pour continuer.';
 
 // Messages de confirmation après une action. La page reçoit seulement un code constant
 // (?ok=cree...) : le texte affiché est toujours l'un de ceux-ci, jamais un texte reçu.
@@ -69,29 +73,72 @@ ${content}
 </main>`);
 }
 
-/** Page de connexion. message : texte d'erreur affiché au-dessus du formulaire, ou null. */
-export function loginPage(csrf, message) {
+/**
+ * Page de connexion. message : texte affiché au-dessus du formulaire, ou null.
+ * username : identifiant à pré-remplir ('' : aucun). Seul usage : la page réaffichée après
+ * l'expiration du jeton de connexion (web.js), avec un identifiant au format autorisé.
+ * Le mot de passe n'est jamais réaffiché. Identifiant pré-rempli : le curseur va au mot de passe.
+ */
+export function loginPage(csrf, message, username = '') {
   const error = message === null ? null : html`<p class="erreur" role="alert">${message}</p>\n`;
+  const prefilled = username !== '';
   return cardLayout('Connexion', html`<h1>Connexion</h1>
 <p class="sous-titre">Inventaire du matériel</p>
 ${error}<form class="formulaire" method="post" action="/login">
 <input type="hidden" name="csrf" value="${csrf}">
 <div class="champ">
 <label for="username">Identifiant</label>
-<input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required autofocus>
+<input id="username" name="username"${prefilled ? html` value="${username}"` : null} autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required${prefilled ? null : html` autofocus`}>
 </div>
 <div class="champ">
 <label for="password">Mot de passe</label>
-<input id="password" name="password" type="password" autocomplete="current-password" required>
+<input id="password" name="password" type="password" autocomplete="current-password" required${prefilled ? html` autofocus` : null}>
 </div>
 <button class="bouton" type="submit">Se connecter</button>
 </form>`);
 }
 
-export function forbiddenPage() {
-  return cardLayout('Requête refusée', html`<h1>Requête refusée</h1>
+/**
+ * Refus d'un envoi de formulaire (contrôle anti-falsification, web.js). connected : une session
+ * valide accompagne la requête ; le lien mène alors à l'inventaire plutôt qu'à la connexion.
+ */
+export function forbiddenPage(connected = false) {
+  return cardLayout('Action refusée', html`<h1>Action refusée</h1>
 <p class="sous-titre">La page a peut-être expiré. Rechargez-la puis recommencez.</p>
-<a class="bouton" href="/login">Revenir à la connexion</a>`);
+${connected
+    ? html`<a class="bouton" href="/">Revenir à l'inventaire</a>`
+    : html`<a class="bouton" href="/login">Revenir à la connexion</a>`}`);
+}
+
+// Pages d'erreur de l'interface web (web.js, sendErrorPage ; 500 : http.js). Textes constants,
+// sans code d'erreur ni détail technique (la cause reste dans le journal du serveur), et sans
+// aucune donnée de la requête. Clé : code HTTP, ou '405-adresse' (405 sur une adresse ouverte
+// directement, sans formulaire : GET /logout tapé dans la barre d'adresse, par exemple).
+const UNREADABLE_FORM = { title: 'Action impossible', text: 'Le formulaire envoyé n\'a pas pu être lu. Revenez en arrière et réessayez.' };
+const ERROR_PAGES = {
+  400: UNREADABLE_FORM,
+  404: { title: 'Page introuvable', text: 'Cette page n\'existe pas ou n\'existe plus.' },
+  405: UNREADABLE_FORM,
+  '405-adresse': { title: 'Action impossible', text: 'Cette adresse ne s\'ouvre pas directement.' },
+  413: {
+    title: 'Formulaire trop long',
+    text: 'Le texte envoyé dépasse la taille permise. Revenez en arrière : votre saisie est peut-être encore dans la page précédente.',
+  },
+  500: { title: 'Un problème est survenu', text: 'L\'opération n\'a pas abouti. Réessayez dans un instant.' },
+};
+
+/**
+ * Page d'erreur pour une clé de ERROR_PAGES. Carte centrée, comme la connexion : elle ne lit
+ * rien du compte (pas de bandeau), et peut donc être produite même quand l'erreur vient de là.
+ * connected : lien « Revenir à l'inventaire » ; sinon « Se connecter ».
+ */
+export function errorPage(status, connected = false) {
+  const { title, text } = ERROR_PAGES[status];
+  return cardLayout(title, html`<h1>${title}</h1>
+<p class="sous-titre">${text}</p>
+${connected
+    ? html`<a class="bouton" href="/">Revenir à l'inventaire</a>`
+    : html`<a class="bouton" href="/login">Se connecter</a>`}`);
 }
 
 // ---------------------------------------------------------------- application
@@ -166,6 +213,17 @@ function timeTag(iso, now) {
   return html`<time datetime="${iso}" title="${formatDateTime(iso)}">${formatAge(iso, now)}</time>`;
 }
 
+/**
+ * Heure d'arrivée à l'emplacement actuel (inventory.js, withLocations), pour « Depuis ».
+ * Remontée bornée (arrived_at_bounded = 1) : « au moins » devant l'heure, car l'objet est là
+ * depuis plus longtemps encore ; la date exacte au survol est celle du plus ancien scan examiné.
+ * bounded : texte placé devant l'heure dans ce cas (« au moins » sous l'en-tête « Depuis »).
+ * arrived_at manquant (ne devrait pas arriver) : heure du dernier événement.
+ */
+function arrivalTag(row, now, bounded = 'au moins') {
+  return html`${row.arrived_at_bounded === 1 ? html`${bounded} ` : null}${timeTag(row.arrived_at ?? row.at, now)}`;
+}
+
 const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
 const thousands = (n) => n.toLocaleString('fr-FR');
 
@@ -195,7 +253,7 @@ export function inventoryPage(user, { query, items, now, notice = null }) {
 ${items.map((item) => html`<tr>
 <td class="cellule-objet"><a class="lien-objet" href="/items/${item.id}">${item.name}</a>${item.uid_nfc === null ? null : html`<span class="uid">${item.uid_nfc}</span>`}</td>
 <td data-label="Localisation">${locationBadge(item)}</td>
-<td data-label="Depuis">${item.at === null ? html`<span class="texte-doux">—</span>` : timeTag(item.at, now)}</td>
+<td data-label="Depuis">${item.at === null ? html`<span class="texte-doux">—</span>` : arrivalTag(item, now)}</td>
 </tr>
 `)}</tbody>
 </table>
@@ -226,10 +284,15 @@ export function itemPage(user, { item, scans, history = [], now, notice = null }
   let source;
   if (item.at === null) {
     source = html`<p class="texte-doux">${item.uid_nfc === null ? 'Aucune puce associée : l\'objet ne peut pas être localisé par un scan.' : 'Cette puce n\'a encore été scannée sur aucun poste.'}</p>`;
-  } else if (item.source === 'manual') {
-    source = html`<p class="localisation-detail">${timeTag(item.at, now)} · correction manuelle par ${item.corrected_by ?? 'un compte inconnu'}</p>`;
   } else {
-    source = html`<p class="localisation-detail">${timeTag(item.at, now)} · scan, lecteur n° ${item.reader_id}</p>`;
+    // D'abord l'heure d'arrivée à cet emplacement (« depuis »), puis le dernier événement. Si
+    // l'objet y a été signalé à nouveau depuis son arrivée, l'heure de ce dernier signalement
+    // est ajoutée. Remontée bornée : « depuis au moins » devant l'heure d'arrivée.
+    const again = (item.arrived_at ?? item.at) !== item.at;
+    const last = item.source === 'manual'
+      ? html`${again ? html`dernière correction manuelle ${timeTag(item.at, now)}` : 'correction manuelle'} par ${item.corrected_by ?? 'un compte inconnu'}`
+      : html`${again ? html`dernier scan ${timeTag(item.at, now)}` : 'scan'}, lecteur n° ${item.reader_id}`;
+    source = html`<p class="localisation-detail">${arrivalTag(item, now, 'depuis au moins')} · ${last}</p>`;
   }
 
   const properties = item.properties.length === 0
@@ -619,7 +682,7 @@ ${readers.map((reader) => html`<tr>
 <tbody>
 ${items.map((item) => html`<tr>
 <td class="cellule-objet"><a class="lien-objet" href="/items/${item.id}">${item.name}</a>${item.uid_nfc === null ? null : html`<span class="uid">${item.uid_nfc}</span>`}</td>
-<td data-label="Depuis">${timeTag(item.at, now)}${item.source === 'manual' ? html` <span class="texte-doux">(correction)</span>` : null}</td>
+<td data-label="Depuis">${arrivalTag(item, now)}${item.arrival_source === 'manual' ? html` <span class="texte-doux">(correction)</span>` : null}</td>
 </tr>
 `)}</tbody>
 </table>`;

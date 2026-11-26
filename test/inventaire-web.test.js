@@ -359,11 +359,13 @@ test('fiches invalides ou inexistantes : 404 propre dans le gabarit, sans planta
     assert.match(res.body, /Connecté en tant que <strong>alice<\/strong>/, id);
     assertWellFormed(res.body, id);
   }
-  // Chemin plus profond : pas une route (404 sans corps).
+  // Chemin plus profond : pas une route (404, page « Page introuvable » depuis l'étape U0).
   for (const path of ['/items/1/x', '/items//1', '/items']) {
     const res = await page(path);
     assert.equal(res.status, 404, path);
-    assert.equal(res.body, '', path);
+    assert.ok(res.body.includes('<h1>Page introuvable</h1>'), path);
+    assertWebHeaders(res, path);
+    assertWellFormed(res.body, path);
   }
   assert.ok(server.listening);
   assert.ok(!logs.some((l) => l.startsWith('erreur interne')), logs.filter((l) => l.startsWith('erreur interne')).join('\n'));

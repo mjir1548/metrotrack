@@ -132,7 +132,7 @@ const GET_ROUTES = ['/items/new', '/items/1/edit', '/items/1/delete', '/items/1/
 const POST_ROUTES = ['/items/new', '/items/1/edit', '/items/1/delete', '/items/1/location'];
 const VALID_POST = { name: 'Écrasé', notes: 'x', station: '1' };
 
-test('sans session (ou session inconnue) : pages d\'édition et envois → 303 vers /login, aucune écriture', async () => {
+test('sans session (ou session inconnue) : pages d\'édition et envois → 303 vers /login (envois : avec ?info=session), aucune écriture', async () => {
   const before = snapshot();
   for (const session of [null, 'A'.repeat(43)]) {
     for (const path of GET_ROUTES) {
@@ -140,10 +140,13 @@ test('sans session (ou session inconnue) : pages d\'édition et envois → 303 v
       assert.equal(res.status, 303, path);
       assert.equal(res.headers.location, '/login', path);
     }
+    // Étape U0 : un envoi avec un cookie de session invalide mène à la connexion avec le message
+    // « session expirée » ; sans aucun cookie de session, à /login sans message.
+    const expected = session === null ? '/login' : '/login?info=session';
     for (const path of POST_ROUTES) {
       const res = await post(path, VALID_POST, { session });
       assert.equal(res.status, 303, path);
-      assert.equal(res.headers.location, '/login', path);
+      assert.equal(res.headers.location, expected, path);
       assert.equal(res.body, '', path);
     }
   }
@@ -165,7 +168,9 @@ test('CSRF : chaque envoi sans jeton, avec un mauvais jeton, sans Origin ou avec
     for (const [name, options] of Object.entries(variants)) {
       const res = await post(path, VALID_POST, options);
       assert.equal(res.status, 403, `${path} ${name}`);
-      assert.match(res.body, /<h1>Requête refusée<\/h1>/, `${path} ${name}`);
+      assert.match(res.body, /<h1>Action refusée<\/h1>/, `${path} ${name}`);
+      // Session valide : le lien de la page mène à l'inventaire (étape U0).
+      assert.ok(res.body.includes('<a class="bouton" href="/">Revenir à l\'inventaire</a>'), `${path} ${name}`);
     }
   }
   assert.equal(snapshot(), before);
@@ -186,11 +191,12 @@ test('identifiant invalide ou fiche inexistante : 404 « Fiche introuvable » su
       assert.ok(sent.body.includes('<h1>Fiche introuvable</h1>'), `POST ${path}`);
     }
   }
-  // Chemins qui ne sont pas des routes : 404 sans corps.
+  // Chemins qui ne sont pas des routes : 404, page « Page introuvable » (étape U0 : plus de
+  // corps vide).
   for (const path of ['/items/1/', '/items/1/x', '/items/1/edit/', '/items/1/edit/2', '/items/1/__proto__', '/items/1/constructor', '/items']) {
     const res = await page(path);
     assert.equal(res.status, 404, path);
-    assert.equal(res.body, '', path);
+    assert.ok(res.body.includes('<h1>Page introuvable</h1>'), path);
   }
   assert.equal(snapshot(), before);
   assert.ok(!logs.some((l) => l.startsWith('erreur interne')), logs.join('\n'));
@@ -359,7 +365,10 @@ test('« Ajouter des lignes » répété : jamais plus de 53 lignes (50 proprié
   assert.equal(snapshot(), before);
 });
 
-test('plus de 53 lignes de propriétés (prop_key ou prop_value) → 400 sans corps, connexion fermée, sans réaffichage ni écriture', async () => {
+// Étape U0 : le 400 n'est plus sans corps ; c'est la page « Action impossible », au texte
+// constant, qui ne réaffiche rien de la saisie.
+const unreadable = (body) => body.includes('<h1>Action impossible</h1>') && !body.includes('name="prop_key"') && !body.includes('v52');
+test('plus de 53 lignes de propriétés (prop_key ou prop_value) → 400 « Action impossible », connexion fermée, sans réaffichage ni écriture', async () => {
   const before = snapshot();
   const bodies = {
     '54 lignes remplies': itemFields('x', '', rowsOf(MAX_FORM_ROWS + 1)),
@@ -371,16 +380,17 @@ test('plus de 53 lignes de propriétés (prop_key ou prop_value) → 400 sans co
     for (const path of ['/items/new', '/items/1/edit']) {
       const res = await post(path, fields);
       assert.equal(res.status, 400, `${path} ${what}`);
-      assert.equal(res.body, '', `${path} ${what}`);
+      assert.ok(unreadable(res.body), `${path} ${what}`);
       assert.equal(res.headers.connection, 'close', `${path} ${what}`);
     }
   }
-  // Corps de 256 Kio rempli de « prop_key=a& » (environ 24 000 lignes) : même refus, réponse vide.
+  // Corps de 256 Kio rempli de « prop_key=a& » (environ 24 000 lignes) : même refus, même page courte.
   const flood = `csrf=${csrf}&name=x&${'prop_key=a&'.repeat(Math.floor((MAX_EDIT_FORM_BYTES - 200) / 11))}`;
   assert.ok(flood.length <= MAX_EDIT_FORM_BYTES);
   const res = await send({ method: 'POST', path: '/items/new', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: origin, ...cookie() }, body: flood });
   assert.equal(res.status, 400);
-  assert.equal(res.body, '');
+  assert.ok(unreadable(res.body));
+  assert.ok(res.body.length < 2000, String(res.body.length)); // rien de la saisie n'est réaffiché
   assert.equal(snapshot(), before);
   assert.ok(logs.some((l) => /^formulaire de fiche refusé : \d+ lignes de propriétés \(plafond 53\)$/.test(l)));
 });
@@ -431,7 +441,9 @@ test('413 strict : session et Origin valides, Content-Length: 300000 annoncé sa
   });
   assert.equal(res.status, 413);
   assert.equal(res.headers.connection, 'close');
-  assert.equal(res.body, '');
+  // Étape U0 : page « Formulaire trop long » au lieu d'un corps vide ; session valide → lien vers l'inventaire.
+  assert.ok(res.body.includes('<h1>Formulaire trop long</h1>'));
+  assert.ok(res.body.includes('href="/">Revenir à l\'inventaire</a>'));
   assert.equal(snapshot(), before);
   assert.ok(server.listening);
 });

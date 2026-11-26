@@ -87,6 +87,10 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
   - toute exception dans le gestionnaire HTTP donne un 500 sans corps, sans jamais arrêter le serveur.
 - **Alternative écartée** : garder la connexion ouverte après un rejet. Les en-têtes différeraient alors selon la cause (rejet précoce ou non).
 - **Raison** : ne rien révéler à l'émetteur ; garder le traitement indépendant du transport ; résister aux requêtes mal formées.
+- **Amendement (2026-11-25, étape U0)** :
+  - « 400 sans corps » et « 500 sans corps » ne valent plus que pour `POST /api/frames`, avec le contrat des boîtiers inchangé.
+  - L'interface web renvoie maintenant des pages au texte constant pour les 400, 404, 405, 413 et 500, et « Action refusée » pour le 403, toujours avec `Connection: close`. Rien de la requête n'y est repris.
+  - Si la page d'erreur elle-même échoue : 500 sans corps.
 
 ## D-009 — Politique TLS du serveur
 
@@ -125,6 +129,12 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
   - `Referrer-Policy: same-origin` et non `no-referrer` : avec `no-referrer`, les navigateurs envoient `Origin: null` sur un POST de formulaire, et le contrôle d'`Origin` refuserait toute connexion. `same-origin` n'envoie aucun Referer vers un autre site.
 - **Alternatives écartées** : paramètres argon2 RFC 9106 (64 Mio, p = 4), plus coûteux en mémoire par tentative ; jeton CSRF stocké en base, une colonne de plus pour le même effet ; expiration glissante, plus de code.
 - **Raison** : CLAUDE.md §4, cadrage.md §4 étape 3.
+- **Amendement (2026-11-25, étape U0)** :
+  - Nouveau cas « page de connexion restée ouverte » : `Origin` correcte, champ CSRF bien formé, mais cookie `__Host-mt_login_csrf` absent (expiré au bout de 10 min). La page de connexion est réaffichée en 200, avec un message et un nouveau jeton. Il n'y a ni argon2, ni session, ni délai, puisque aucun mot de passe n'est vérifié. Ce chemin ne permet donc pas d'essayer des mots de passe plus vite.
+  - L'identifiant saisi est réaffiché uniquement s'il respecte `USERNAME_FORMAT`, et toujours échappé par le gabarit.
+  - Tous les autres écarts donnent toujours 403 : `Origin` absente ou fausse, champ absent ou mal formé, cookie présent mais différent.
+  - `/login?info=session` affiche un message pris dans une liste fermée (`LOGIN_INFO`). Cette redirection n'est utilisée que si un cookie de session, devenu invalide, était présent ; sans cookie, la redirection va vers `/login`, sans message.
+  - Cas restant : un vieil onglet de connexion renvoyé après l'ouverture d'un autre onglet (cookie présent mais différent) reçoit toujours 403.
 
 ## D-012 — Recentrage : un logiciel fonctionnel et soigné, sans préparation du pilote
 
@@ -142,6 +152,7 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
 - **Raison** : mesure de la revue sécurité. Avec 300 000 scans, la liste passait de 1,9 s à 44 ms et la fiche de 1,9 s à 0,2 ms. `node:sqlite` est synchrone : une vue lente bloquait tout le serveur, réception des trames comprise.
 - **Pour l'étape 5** : garder cette forme, avec une sous-requête pour le dernier scan, une pour la dernière correction manuelle, et la plus récente des deux l'emporte.
 - **Alternative écartée** : une colonne de localisation stockée sur la fiche. Elle serait un doublon (CLAUDE.md §5.3).
+- Complétée par D-016 (heure d'arrivée).
 
 ## D-014 — Numéros de fiche jamais réutilisés (AUTOINCREMENT)
 
@@ -187,3 +198,33 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
 - **Pas de compteur de puces inconnues dans le bandeau.** Il coûterait environ 20 ms par page.
 - **UID dans les adresses `/chips/<UID>` : majuscules seulement, sans normalisation.** Une adresse en minuscules donne 404. Les liens de l'application sont toujours en majuscules.
 - **Association.** La confirmation porte la puce que la fiche avait au moment de l'affichage. Si elle a changé entre-temps, l'association est refusée (409) sans rien écrire.
+
+## D-016 — « Depuis » = heure d'arrivée à l'emplacement actuel, calculée
+
+- **Date** : 2026-11-25 · **Statut** : Proposée (étape U0)
+- **Décision** :
+  - « Depuis » affiche l'heure du **premier** événement de la dernière série ininterrompue au même emplacement. Un événement est un scan de la puce actuelle ou une correction manuelle. « Lecteur non affecté » compte comme un emplacement à part.
+  - L'ordre des événements est celui de la vue : heure, puis scan avant correction, puis numéro.
+  - Rien n'est stocké (D-006, CLAUDE.md §5.3) : la colonne `arrived_at` est recalculée à chaque lecture par `withLocations` (`server/inventory.js`).
+  - Migration 006 : l'index `scans_by_uid` devient `(uid_nfc, received_at, id, station_id)`. La remontée se fait alors dans l'index seul (index couvrant).
+  - La remontée est bornée à `MAX_RUN_SCANS` (voir « Limites acceptées pour le MVP (étape U0) »).
+- **Coûts mesurés** (5 000 objets, 300 000 scans) :
+  - `GET /` de +21 à +37 % ;
+  - pire cas, des objets toujours scannés au même poste : 89 ms avec l'index, 1,8 s sans.
+- **Alternatives écartées** :
+  - une colonne `arrived_at` stockée : un doublon ;
+  - garder l'heure du dernier scan : affichage trompeur, audit UX G1 (« depuis 20 min » pour un objet présent depuis 3 jours).
+- **Raison** : audit UX, parcours « Où est cet objet ? ».
+
+## Limites acceptées pour le MVP (étape U0)
+
+- **Coût de « Depuis »**. Le calcul remonte la dernière série de scans d'une même puce au même poste. Deux situations peuvent la rendre très longue :
+  - une puce posée en permanence sur un lecteur, si le firmware émet une trame à chaque lecture ;
+  - un lecteur compromis.
+
+  Pour borner ce coût, la remontée ne lit que les `MAX_RUN_SCANS = 2000` scans les plus récents de la puce (`server/inventory.js`). Si ces 2 000 scans sont tous au poste actuel, l'heure affichée est celle du plus ancien d'entre eux, précédée de « au moins » (liste, fiche poste) ou de « depuis au moins » (fiche objet). C'est vrai aussi pour une puce qui a exactement 2 000 scans au même poste : « au moins » reste exact.
+  - Coût mesuré : le temps ne croît plus avec la longueur de la série (liste à environ 23 ms avec 2 000, 50 000 ou 300 000 scans d'affilée).
+  - Sur des données ordinaires, la borne coûte environ 2 µs par objet : `GET /` passe à +30 % par rapport à l'état d'avant U0.
+  - Pire cas global : environ 0,2 ms par objet dont la série atteint la borne, soit environ 1 s si les 5 000 objets l'atteignent. Il faudrait pour cela plus de 10 millions de trames injectées, ce qui se verrait dans le journal. Même ordre de grandeur que la limite des puces inconnues (étape 7).
+  - La recherche de la dernière correction vers un autre poste n'est pas bornée : seuls des utilisateurs connectés peuvent créer des corrections. **Question pour Yanis** : le boîtier émet-il une trame à chaque lecture, ou seulement quand la puce arrive ?
+- **Page de connexion**. Un navigateur qui refuse les cookies affiche en boucle « page restée ouverte trop longtemps ».

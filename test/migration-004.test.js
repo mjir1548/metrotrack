@@ -178,8 +178,9 @@ test('migration 004 : base en version 3 avec des données → version 4, localis
 
     const db = openDb(path);
     try {
-      // openDb applique aussi les migrations suivantes (005 : postes et lecteurs).
-      assert.equal(db.prepare('PRAGMA user_version').get().user_version, 5);
+      // openDb applique aussi les migrations suivantes (005 : postes et lecteurs ; 006 : index
+      // scans_by_uid élargi, étape U0).
+      assert.equal(db.prepare('PRAGMA user_version').get().user_version, 6);
       // Reconstruction de items (AUTOINCREMENT) : données et localisations identiques.
       assert.deepEqual(db.prepare('SELECT * FROM items ORDER BY id').all().map((r) => ({ ...r })), itemsBefore);
       assert.deepEqual(rowsOf(db, 'item_locations'), before);
@@ -220,7 +221,7 @@ test('migration 004 : base en version 3 avec des données → version 4, localis
       db.close();
     }
     const again = openDb(path); // aucune migration rejouée
-    assert.equal(again.prepare('PRAGMA user_version').get().user_version, 5);
+    assert.equal(again.prepare('PRAGMA user_version').get().user_version, 6);
     again.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -339,7 +340,12 @@ test('plans : fiche et liste lisent scans et corrections par leurs index, sans p
     for (const index of ['scans_by_uid', 'corrections_by_item']) {
       assert.ok(locationPlan.some((d) => new RegExp(`USING (COVERING )?INDEX ${index}`).test(d)), locationPlan.join('\n'));
     }
-    assert.ok(!locationPlan.some((d) => /MATERIALIZE/.test(d) || FULL_SCAN.test(d)), locationPlan.join('\n'));
+    // Étape U0 : « MATERIALIZE locations » est attendu (table d'une seule ligne, filtrée par
+    // l'id de la fiche, inventory.js, withLocations) ; la vue item_locations, elle, n'est jamais
+    // matérialisée pour tous les objets.
+    assert.ok(!locationPlan.some((d) => /MATERIALIZE item_locations/.test(d) || FULL_SCAN.test(d)), locationPlan.join('\n'));
+    assert.ok(locationPlan.some((d) => /SEARCH i USING INTEGER PRIMARY KEY/.test(d)), locationPlan.join('\n'));
+    assert.ok(!locationPlan.some((d) => /SCAN i\b/.test(d)), locationPlan.join('\n'));
     assert.ok(authorPlan.some((d) => /INDEX corrections_by_item/.test(d)), authorPlan.join('\n'));
     assert.ok(!authorPlan.some((d) => FULL_SCAN.test(d)), authorPlan.join('\n'));
 

@@ -173,10 +173,11 @@ test('GET /static/style.css : CSS servi localement, sans import ni URL distante'
 });
 
 test('routes inconnues : 404 (aucun accès aux fichiers par l\'URL) ; méthode inadaptée : 405 avec Allow', async () => {
+  // Étape U0 : page « Page introuvable » au lieu d'un corps vide.
   for (const path of ['/inconnu', '/static/', '/static/../server/main.js', '/static/%2e%2e/config.json', '/__proto__', '/constructor', '/login/']) {
     const res = await send({ path });
     assert.equal(res.status, 404, path);
-    assert.equal(res.body, '', path);
+    assert.ok(res.body.includes('<h1>Page introuvable</h1>'), path);
   }
   const put = await send({ method: 'PUT', path: '/login', body: '' });
   assert.equal(put.status, 405);
@@ -339,14 +340,23 @@ test('connexion : Content-Type autre que formulaire → 400 ; corps trop gros �
 
 // ---------------------------------------------------------------- CSRF
 
-test('POST /login : sans jeton, mauvais jeton, sans cookie, sans Origin, Origin étranger ou en clair → 403', async () => {
+// Étape U0 : le cas « sans cookie » (champ bien formé, Origin correcte) n'est plus un 403 : c'est
+// un jeton de connexion expiré, la page de connexion est réaffichée (test dédié plus bas).
+// « sans cookie » reste refusé quand le champ est absent, vide ou mal formé.
+test('POST /login : sans jeton, mauvais jeton, sans cookie avec champ absent ou mal formé, sans Origin, Origin étranger ou en clair → 403', async () => {
   const csrf = await loginCsrf();
   const other = await loginCsrf();
   const cases = {
     'sans champ csrf': { origin, cookie: csrf, field: null },
     'champ csrf vide': { origin, cookie: csrf, field: '' },
     'mauvais jeton': { origin, cookie: csrf, field: other },
-    'sans cookie': { origin, cookie: null, field: csrf },
+    'sans cookie ni champ': { origin, cookie: null, field: null },
+    'sans cookie, champ mal formé': { origin, cookie: null, field: 'abc' },
+    'sans cookie, champ vide': { origin, cookie: null, field: '' },
+    'cookie mal formé': { origin, cookie: 'abc', field: csrf },
+    'cookie vide': { origin, cookie: '', field: csrf },
+    'sans cookie, sans Origin': { origin: null, cookie: null, field: csrf },
+    'sans cookie, Origin étranger': { origin: 'https://evil.example', cookie: null, field: csrf },
     'cookie et champ vides': { origin, cookie: '', field: '' },
     'sans Origin': { origin: null, cookie: csrf, field: csrf },
     'Origin étranger': { origin: 'https://evil.example', cookie: csrf, field: csrf },

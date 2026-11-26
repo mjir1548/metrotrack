@@ -162,7 +162,7 @@ const VALID_POST = { name: 'Écrasé', description: 'x', station: '' };
 
 // ---------------------------------------------------------------- session, CSRF, identifiants, méthodes
 
-test('sans session (ou session inconnue) : chaque nouvelle page et chaque nouvel envoi → 303 vers /login, aucune écriture', async () => {
+test('sans session (ou session inconnue) : chaque nouvelle page et chaque nouvel envoi → 303 vers /login (envois : avec ?info=session), aucune écriture', async () => {
   const before = snapshot();
   for (const session of [null, 'A'.repeat(43)]) {
     for (const path of GET_ROUTES) {
@@ -170,10 +170,13 @@ test('sans session (ou session inconnue) : chaque nouvelle page et chaque nouvel
       assert.equal(res.status, 303, path);
       assert.equal(res.headers.location, '/login', path);
     }
+    // Étape U0 : un envoi avec un cookie de session invalide mène à la connexion avec le message
+    // « session expirée » ; sans aucun cookie de session, à /login sans message.
+    const expected = session === null ? '/login' : '/login?info=session';
     for (const path of POST_ROUTES) {
       const res = await post(path, VALID_POST, { session });
       assert.equal(res.status, 303, path);
-      assert.equal(res.headers.location, '/login', path);
+      assert.equal(res.headers.location, expected, path);
       assert.equal(res.body, '', path);
     }
   }
@@ -195,7 +198,7 @@ test('CSRF : chaque nouvel envoi sans jeton, avec un mauvais jeton, sans Origin 
     for (const [name, options] of Object.entries(variants)) {
       const res = await post(path, VALID_POST, options);
       assert.equal(res.status, 403, `${path} ${name}`);
-      assert.match(res.body, /<h1>Requête refusée<\/h1>/, `${path} ${name}`);
+      assert.match(res.body, /<h1>Action refusée<\/h1>/, `${path} ${name}`); // titre renommé à l'étape U0
     }
   }
   assert.equal(snapshot(), before);
@@ -228,12 +231,12 @@ test('identifiant invalide ou inexistant : 404 propre sur chaque page et chaque 
     assert.equal(res.status, 404, path);
     assert.ok(res.body.includes('introuvable</h1>'), path);
   }
-  // Chemins qui ne sont pas des routes : 404 sans corps.
+  // Chemins qui ne sont pas des routes : 404, page « Page introuvable » (étape U0).
   for (const path of ['/stations/1/', '/stations/1/x', '/stations/1/edit/2', '/stations/1/location', '/stations/1/station',
     '/readers/1/edit', '/readers/1/delete', '/readers/1/station/', '/readers/1/__proto__', '/station', '/reader', '/readers/new/x']) {
     const res = await page(path);
     assert.equal(res.status, 404, path);
-    assert.equal(res.body, '', path);
+    assert.ok(res.body.includes('<h1>Page introuvable</h1>'), path);
   }
   assert.equal(snapshot(), before);
   assert.ok(!logs.some((l) => l.startsWith('erreur interne')), logs.join('\n'));
@@ -662,7 +665,11 @@ test('atomicité : si l\'écriture d\'audit échoue, rien n\'est écrit (500), a
       ['/readers/new', { station: '1' }], ['/readers/1/station', { station: '' }], ['/readers/1/replace', {}], ['/readers/1/deactivate', {}]]) {
       const res = await post(path, fields);
       assert.equal(res.status, 500, path);
-      assert.equal(res.body, '', path);
+      // Étape U0 : page « Un problème est survenu » au lieu d'un corps vide, sans aucun détail
+      // technique (ni le message de l'erreur, ni une clé de lecteur).
+      assert.ok(res.body.includes('<h1>Un problème est survenu</h1>'), path);
+      assert.ok(!res.body.includes('audit en panne') && !/[0-9a-f]{64}/.test(res.body), path);
+      assert.equal(res.headers.connection, 'close', path);
     }
   } finally {
     db.exec('DROP TRIGGER temp.audit_en_panne');

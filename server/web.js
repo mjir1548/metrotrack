@@ -7,7 +7,15 @@
 // avec html`...` (server/html.js), qui échappe automatiquement chaque valeur interpolée.
 // sendHtml n'accepte qu'un fragment produit par ce gabarit : une chaîne construite à la main
 // ne peut pas être envoyée par erreur.
-// Le formulaire de connexion ne réaffiche aucune saisie (pas même l'identifiant tapé).
+// Le formulaire de connexion ne réaffiche jamais le mot de passe. L'identifiant tapé n'est
+// réaffiché que dans un cas : jeton de connexion expiré (voir login), et seulement s'il
+// respecte le format des identifiants.
+//
+// ERREURS : les refus de l'interface (404, 405, 400, 413, 403, et 500 via server/http.js)
+// renvoient une petite page lisible au texte constant (views.js, errorPage, forbiddenPage),
+// jamais un détail technique ni une donnée de la requête. Les réponses de POST /api/frames,
+// elles, restent sans corps (contrat avec les boîtiers, docs/protocole.md §5, D-008) : elles
+// ne passent pas par ce fichier.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -31,7 +39,8 @@ import {
   listUnknownChips, getChip, chipPreviousOwner, createItemForChip, associateChip, MAX_ASSOCIATE_RESULTS,
 } from './chips.js';
 import {
-  loginPage as loginView, forbiddenPage, inventoryPage, itemPage as itemView, itemNotFoundPage, BUSY_MESSAGE,
+  loginPage as loginView, forbiddenPage, errorPage, inventoryPage, itemPage as itemView, itemNotFoundPage, BUSY_MESSAGE,
+  LOGIN_EXPIRED_MESSAGE, SESSION_EXPIRED_MESSAGE,
   itemFormPage, deleteItemPage as deleteView, locationPage as locationView,
   stationsPage, stationPage as stationView, stationFormPage, deleteStationPage as deleteStationView, stationNotFoundPage,
   readersPage, readerPage as readerView, readerFormPage, readerStationPage, deactivateReaderPage as deactivateView,
@@ -48,7 +57,8 @@ const LOGIN_CSRF_MAX_AGE_S = 600;
 // largement. Au-delà, on cesse de lire (pas de consommation mémoire à la demande d'un client).
 const MAX_FORM_BYTES = 4096;
 // Plafond du corps des formulaires d'édition (fiche, suppression, localisation). Au-delà :
-// 413 sans corps, comme /login, et la lecture s'arrête.
+// 413 avec une page d'erreur au texte constant (« Formulaire trop long »), comme /login, et la
+// lecture s'arrête.
 // - Une fiche remplie au maximum en texte courant (nom 200, notes 10 000, 50 propriétés de
 //   1 100 caractères ; accents et ponctuation encodés en %XX, 6 à 9 octets par caractère)
 //   tient sous ce plafond.
@@ -67,12 +77,28 @@ const BLANK_ROWS = 3;
 //   - modification : propriétés enregistrées (au plus MAX_PROPERTIES, validées) + 3 vides ;
 //   - saisie refusée : lignes reçues non vides (≤ MAX_FORM_ROWS) + vides jusqu'au total ;
 //   - « Ajouter des lignes » : 3 vides de plus, sans jamais dépasser le total.
-// Au-delà, la requête ne vient pas de nos pages : 400 sans corps, sans réaffichage (une page
+// Au-delà, la requête ne vient pas de nos pages : 400 avec une page d'erreur au texte
+// constant, sans réaffichage de la saisie (une page
 // de 24 000 lignes serait sinon produite à partir d'un corps de 256 Kio).
 export const MAX_FORM_ROWS = MAX_PROPERTIES + BLANK_ROWS;
 // Valeur du bouton « Ajouter des lignes » : réaffiche le formulaire, sans rien enregistrer.
 const ADD_ROWS_ACTION = 'lignes';
 const GENERIC_LOGIN_ERROR = 'Identifiant ou mot de passe incorrect.';
+// Messages de la page de connexion choisis par ?info= : la page reçoit seulement un code
+// constant, le texte affiché est toujours l'un de ceux-ci (code inconnu : aucun message).
+const LOGIN_INFO = { session: SESSION_EXPIRED_MESSAGE };
+// Redirection d'un envoi de formulaire dont la session a expiré : la connexion l'explique.
+const LOGIN_AFTER_EXPIRY = '/login?info=session';
+
+/**
+ * Cible de la redirection d'un envoi sans session valide : « session expirée » seulement si
+ * la requête portait un cookie de session (non vide) devenu invalide ; sans aucun cookie
+ * (jamais connecté, ou requête venue d'ailleurs : SameSite=Strict ne l'envoie pas), /login
+ * sans message. Le cookie n'est que constaté présent, jamais lu ni journalisé.
+ */
+function loginAfterNoSession(req) {
+  return readCookies(req).get(SESSION_COOKIE) ? LOGIN_AFTER_EXPIRY : '/login';
+}
 // Connexions (sockets) sur lesquelles un 503 « Connection: close » est déjà en file : Node
 // les fermera après cette réponse. Références faibles : aucune fuite mémoire.
 const closingConnections = new WeakSet();
@@ -183,12 +209,15 @@ function resolveRoute(path) {
 export function handleWeb(ctx, path, req, res) {
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
   const resolved = resolveRoute(path);
-  if (!resolved) return sendStatus(res, 404);
+  if (!resolved) return sendErrorPage(res, 404, isConnected(ctx, req));
   const { route, idText, subIdText = null } = resolved;
   const handler = Object.hasOwn(route, req.method) ? route[req.method] : null;
   if (!handler) {
     res.setHeader('Allow', Object.keys(route).join(', '));
-    return sendStatus(res, 405);
+    // GET (ou HEAD) sur une adresse qui n'accepte qu'un envoi de formulaire, par exemple
+    // /logout tapé dans la barre d'adresse : il n'y a pas de formulaire à évoquer.
+    const page = req.method === 'GET' || req.method === 'HEAD' ? '405-adresse' : 405;
+    return sendErrorPage(res, 405, isConnected(ctx, req), page);
   }
   handler(ctx, req, res, idText, subIdText);
 }
@@ -327,7 +356,8 @@ function findItem(ctx, res, user, idText) {
  * Envoi du formulaire de fiche (création : item null ; modification : la fiche). Champs :
  * name, notes, et prop_key / prop_value répétés, appariés par position.
  * Renvoie la fiche validée à enregistrer, ou null après avoir répondu :
- *   - plus de MAX_FORM_ROWS lignes : 400 sans corps, connexion fermée, rien réaffiché ;
+ *   - plus de MAX_FORM_ROWS lignes : 400, page d'erreur au texte constant (rien de la saisie
+ *     n'est réaffiché), connexion fermée ;
  *   - « Ajouter des lignes » : 200, saisie réaffichée (nettoyée, sans erreurs) avec
  *     BLANK_ROWS lignes vides de plus, dans la limite de MAX_FORM_ROWS ; rien n'est écrit ;
  *   - saisie invalide : 400, formulaire réaffiché avec les valeurs et les erreurs.
@@ -338,7 +368,7 @@ function submittedItem(ctx, res, user, form, item, chip = null) {
   const values = form.getAll('prop_value');
   if (keys.length > MAX_FORM_ROWS || values.length > MAX_FORM_ROWS) {
     ctx.log(`formulaire de fiche refusé : ${Math.max(keys.length, values.length)} lignes de propriétés (plafond ${MAX_FORM_ROWS})`);
-    sendStatus(res, 400);
+    sendErrorPage(res, 400, true); // appelé après postForm : la session est valide
     return null;
   }
   const result = validateItemInput({ name: form.get('name'), notes: form.get('notes'), keys, values });
@@ -762,23 +792,42 @@ function loginPage(ctx, req, res) {
   // formé (plusieurs onglets restent valides), sinon nouveau. Durée de validité renouvelée.
   const existing = readCookies(req).get(LOGIN_CSRF_COOKIE);
   const csrf = isTokenFormat(existing) ? existing : newToken();
-  sendHtml(res, 200, loginView(csrf, null), [loginCsrfCookie(csrf)]);
+  // ?info= : code constant (LOGIN_INFO), par exemple après une session expirée pendant un envoi.
+  const code = queryParam(req, 'info');
+  const message = code !== null && Object.hasOwn(LOGIN_INFO, code) ? LOGIN_INFO[code] : null;
+  sendHtml(res, 200, loginView(csrf, message), [loginCsrfCookie(csrf)]);
 }
 
 function login(ctx, req, res) {
   // Adresse lue dès le début : si le client coupe pendant le calcul, req.socket.remoteAddress
   // devient indéfini, et l'adresse disparaîtrait du journal.
   const remote = req.socket.remoteAddress ?? '-';
-  if (!originMatchesHost(req)) return forbidden(ctx, res, 'origin', remote);
+  if (!originMatchesHost(req)) return forbidden(ctx, req, res, 'origin', remote);
   readForm(ctx, req, res, MAX_FORM_BYTES, (form) => {
     const cookies = readCookies(req);
     const csrfCookie = cookies.get(LOGIN_CSRF_COOKIE);
+    const username = form.get('username') ?? '';
+    // Jeton de connexion EXPIRÉ : la page de connexion est restée ouverte plus de
+    // LOGIN_CSRF_MAX_AGE_S, le navigateur a supprimé le cookie, mais le formulaire porte encore
+    // un jeton bien formé. La page est réaffichée avec un nouveau jeton et un message ;
+    // l'identifiant est pré-rempli s'il respecte le format, le mot de passe est vidé.
+    // SÉCURITÉ : ce chemin ne fait AUCUNE vérification de mot de passe (pas d'argon2), ne crée
+    // aucune session et n'écrit rien : il ne fait que redonner un formulaire, comme GET /login.
+    // Il n'affaiblit donc pas la protection contre la falsification de connexion, qui reste
+    // assurée par Origin (déjà vérifié ci-dessus) et par la double soumission pour toute
+    // connexion effective. Tout autre écart (cookie présent mais différent ou mal formé, champ
+    // absent ou mal formé) reste refusé en 403 ci-dessous.
+    if (csrfCookie === undefined && isTokenFormat(form.get('csrf'))) {
+      ctx.log(`connexion : jeton de connexion expiré, formulaire réaffiché, depuis ${remote}`);
+      const csrf = newToken();
+      const shown = USERNAME_FORMAT.test(username) ? username : '';
+      return sendHtml(res, 200, loginView(csrf, LOGIN_EXPIRED_MESSAGE, shown), [loginCsrfCookie(csrf)]);
+    }
     // Double soumission : le champ du formulaire doit égaler le cookie __Host- posé par
     // GET /login. Un site tiers ne peut ni lire ni poser ce cookie. isTokenFormat exclut le
     // cas « cookie vide = champ vide ».
-    if (!isTokenFormat(csrfCookie) || !safeEqual(form.get('csrf'), csrfCookie)) return forbidden(ctx, res, 'csrf', remote);
+    if (!isTokenFormat(csrfCookie) || !safeEqual(form.get('csrf'), csrfCookie)) return forbidden(ctx, req, res, 'csrf', remote);
 
-    const username = form.get('username') ?? '';
     const password = form.get('password') ?? '';
     // COLLATE NOCASE sur la colonne : identifiant insensible à la casse.
     const user = USERNAME_FORMAT.test(username)
@@ -830,11 +879,11 @@ function login(ctx, req, res) {
 
 function logout(ctx, req, res) {
   const remote = req.socket.remoteAddress ?? '-';
-  if (!originMatchesHost(req)) return forbidden(ctx, res, 'origin', remote);
+  if (!originMatchesHost(req)) return forbidden(ctx, req, res, 'origin', remote);
   readForm(ctx, req, res, MAX_FORM_BYTES, (form) => {
     const session = currentSession(ctx, req);
     // Sans session valide, aucun jeton CSRF ne peut être valide : 403 comme tout POST non vérifié.
-    if (!session || !safeEqual(form.get('csrf'), csrfTokenFor(session.token))) return forbidden(ctx, res, 'csrf', remote);
+    if (!session || !safeEqual(form.get('csrf'), csrfTokenFor(session.token))) return forbidden(ctx, req, res, 'csrf', remote);
     deleteSession(ctx.db, session.token); // invalidation côté serveur, pas seulement le cookie
     ctx.log(`déconnexion : compte ${session.username}`);
     redirect(res, '/login', [clearCookie(SESSION_COOKIE)]);
@@ -843,24 +892,27 @@ function logout(ctx, req, res) {
 
 /**
  * Envoi d'un formulaire de l'application (POST), dans cet ordre :
- *   1. session valide, sinon 303 vers /login (corps non lu, rien n'est écrit) ;
+ *   1. session valide, sinon 303 vers la connexion (corps non lu, rien n'est écrit) :
+ *      /login?info=session si un cookie de session était présent (session expirée ou fermée :
+ *      la page l'explique), /login sans message si la requête n'en avait aucun ;
  *   2. CSRF, première barrière : Origin égal à ce serveur, sinon 403 avant de lire le corps ;
  *   3. corps lu, plafonné à MAX_EDIT_FORM_BYTES (sinon 413) ;
- *   4. session relue (elle a pu être fermée pendant la lecture), puis jeton CSRF du formulaire
- *      comparé en temps constant au jeton dérivé de la session (D-011), sinon 403 ;
+ *   4. session relue (elle a pu être fermée pendant la lecture, même redirection), puis jeton
+ *      CSRF du formulaire comparé en temps constant au jeton dérivé de la session (D-011),
+ *      sinon 403 ;
  *   5. onForm(session, form) : seule étape qui peut écrire.
  */
 function postForm(ctx, req, res, onForm) {
   const remote = req.socket.remoteAddress ?? '-';
   if (!currentSession(ctx, req)) {
     res.setHeader('Connection', 'close'); // corps non lu : la connexion n'est pas réutilisée
-    return redirect(res, '/login');
+    return redirect(res, loginAfterNoSession(req));
   }
-  if (!originMatchesHost(req)) return forbidden(ctx, res, 'origin', remote);
+  if (!originMatchesHost(req)) return forbidden(ctx, req, res, 'origin', remote);
   readForm(ctx, req, res, MAX_EDIT_FORM_BYTES, (form) => {
     const session = currentSession(ctx, req);
-    if (!session) return redirect(res, '/login');
-    if (!safeEqual(form.get('csrf'), csrfTokenFor(session.token))) return forbidden(ctx, res, 'csrf', remote);
+    if (!session) return redirect(res, loginAfterNoSession(req));
+    if (!safeEqual(form.get('csrf'), csrfTokenFor(session.token))) return forbidden(ctx, req, res, 'csrf', remote);
     onForm(session, form);
   });
 }
@@ -919,7 +971,7 @@ function originMatchesHost(req) {
 /** Lit un corps application/x-www-form-urlencoded plafonné à maxBytes, puis appelle onForm(URLSearchParams). */
 function readForm(ctx, req, res, maxBytes, onForm) {
   const [type, ...params] = (req.headers['content-type'] ?? '').split(';');
-  if (type.trim().toLowerCase() !== 'application/x-www-form-urlencoded') return sendStatus(res, 400);
+  if (type.trim().toLowerCase() !== 'application/x-www-form-urlencoded') return sendErrorPage(res, 400, isConnected(ctx, req));
   // Le corps est décodé en UTF-8 : un autre jeu de caractères annoncé est refusé plutôt que
   // mal interprété (un même mot de passe ne doit avoir qu'une seule représentation).
   for (const param of params) {
@@ -927,9 +979,9 @@ function readForm(ctx, req, res, maxBytes, onForm) {
     const name = (eq < 0 ? param : param.slice(0, eq)).trim().toLowerCase();
     if (name !== 'charset') continue;
     const value = eq < 0 ? '' : param.slice(eq + 1).trim().replace(/^"(.*)"$/, '$1').toLowerCase();
-    if (value !== 'utf-8') return sendStatus(res, 400);
+    if (value !== 'utf-8') return sendErrorPage(res, 400, isConnected(ctx, req));
   }
-  if (Number(req.headers['content-length']) > maxBytes) return sendStatus(res, 413);
+  if (Number(req.headers['content-length']) > maxBytes) return sendErrorPage(res, 413, isConnected(ctx, req));
   const chunks = [];
   let size = 0;
   let aborted = false;
@@ -940,7 +992,7 @@ function readForm(ctx, req, res, maxBytes, onForm) {
     if (size > maxBytes) {
       aborted = true;
       req.pause(); // on cesse de lire ; la connexion est fermée après la réponse
-      return sendStatus(res, 413);
+      return sendErrorPage(res, 413, isConnected(ctx, req));
     }
     chunks.push(chunk);
   }));
@@ -972,18 +1024,51 @@ function redirect(res, location, cookies = []) {
   res.end();
 }
 
-// Réponse d'erreur sans corps ; connexion fermée (le corps de la requête n'a peut-être pas
-// été lu, et il ne doit pas l'être).
-function sendStatus(res, status) {
+/**
+ * Vrai si la requête porte une session valide. Sert UNIQUEMENT à choisir le lien d'une page
+ * d'erreur (« Revenir à l'inventaire » ou « Se connecter ») : jamais à autoriser quoi que ce
+ * soit. Une page d'erreur ne dit rien d'autre de la ressource demandée.
+ */
+function isConnected(ctx, req) {
+  return currentSession(ctx, req) !== null;
+}
+
+// Page d'erreur au texte constant (views.js, errorPage) ; connexion fermée (le corps de la
+// requête n'a peut-être pas été lu, et il ne doit pas l'être).
+// page : texte à afficher (views.js, ERROR_PAGES), par défaut celui du code HTTP.
+function sendErrorPage(res, status, connected, page = status) {
   res.setHeader('Connection', 'close');
-  res.writeHead(status);
-  res.end();
+  sendHtml(res, status, errorPage(page, connected));
+}
+
+/**
+ * Erreur interne (500) d'une requête de l'interface web, appelée par server/http.js quand un
+ * gestionnaire lève une exception avant d'avoir répondu. Page au texte constant, sans aucun
+ * détail (la cause est déjà au journal), connexion fermée. Les en-têtes de sécurité sont
+ * reposés : l'exception a pu survenir n'importe où. Les cookies et la redirection
+ * éventuellement préparés par le gestionnaire interrompu sont retirés : rien de cette
+ * réponse inachevée ne doit partir. Si la session ne peut pas être lue (base en cause),
+ * le lien proposé est « Se connecter ».
+ */
+export function sendInternalError(ctx, req, res) {
+  // Réponse déjà partie (en-têtes envoyés) : impossible d'y substituer une page, on coupe.
+  if (res.headersSent) return res.destroy();
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
+  res.removeHeader('Set-Cookie');
+  res.removeHeader('Location');
+  let connected = false;
+  try {
+    connected = isConnected(ctx, req);
+  } catch {
+    connected = false;
+  }
+  sendErrorPage(res, 500, connected);
 }
 
 // Refus CSRF (cause « origin » ou « csrf »). Le journal ne contient que la cause et l'adresse,
 // jamais les valeurs reçues (en-têtes, cookies, champs : données de l'attaquant).
-function forbidden(ctx, res, cause, remote) {
+function forbidden(ctx, req, res, cause, remote) {
   ctx.log(`requête refusée : ${cause}, depuis ${remote}`);
   res.setHeader('Connection', 'close');
-  sendHtml(res, 403, forbiddenPage());
+  sendHtml(res, 403, forbiddenPage(isConnected(ctx, req)));
 }

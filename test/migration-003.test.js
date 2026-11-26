@@ -180,7 +180,9 @@ test('plans : la fiche lit la localisation par l\'index, sans matérialiser la v
     const [itemPlan, locationPlan] = plansOf(db, (spy) => getItem(spy, 1n));
     assert.ok(itemPlan.some((d) => /SEARCH items USING INTEGER PRIMARY KEY/.test(d)), itemPlan.join('\n'));
     assert.ok(locationPlan.some((d) => /USING (COVERING )?INDEX scans_by_uid/.test(d)), locationPlan.join('\n'));
-    assert.ok(!locationPlan.some((d) => /MATERIALIZE|SCAN s\b|SCAN s2\b|SCAN scans|TEMP B-TREE/.test(d)), locationPlan.join('\n'));
+    // Étape U0 : « MATERIALIZE locations » (une seule ligne, filtrée par l'id de la fiche) est
+    // attendu ; la vue item_locations n'est jamais matérialisée.
+    assert.ok(!locationPlan.some((d) => /MATERIALIZE item_locations|SCAN s\b|SCAN s2\b|SCAN scans|TEMP B-TREE/.test(d)), locationPlan.join('\n'));
 
     const [listPlan] = plansOf(db, (spy) => listItems(spy, ''));
     assert.ok(listPlan.some((d) => /USING (COVERING )?INDEX scans_by_uid/.test(d)), listPlan.join('\n'));

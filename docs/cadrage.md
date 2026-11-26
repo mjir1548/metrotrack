@@ -127,7 +127,7 @@ CREATE TABLE scans (
   received_at TEXT    NOT NULL,
   UNIQUE (reader_id, counter)                     -- anti-rejeu : filet de sécurité au niveau base
 );
-CREATE INDEX scans_by_uid ON scans (uid_nfc, received_at);
+CREATE INDEX scans_by_uid ON scans (uid_nfc, received_at);  -- migration 006 : remplacé par (uid_nfc, received_at, id, station_id), voir D-016
 
 -- Corrections manuelles de localisation. Cette table est son propre journal (qui, où, quand).
 CREATE TABLE location_corrections (

@@ -192,10 +192,13 @@ test('sans session (ou session inconnue) : pages et envois → 303 vers /login, 
       assert.equal(res.status, 303, path);
       assert.equal(res.headers.location, '/login', path);
     }
+    // Étape U0 : un envoi avec un cookie de session invalide mène à la connexion avec le message
+    // « session expirée » ; sans aucun cookie de session, à /login sans message.
+    const expected = session === null ? '/login' : '/login?info=session';
     for (const path of posts) {
       const res = await post(path, VALID_POST, { session });
       assert.equal(res.status, 303, path);
-      assert.equal(res.headers.location, '/login', path);
+      assert.equal(res.headers.location, expected, path);
     }
   }
   assert.equal(snapshot(), before);
@@ -501,7 +504,7 @@ test('413 strict : envoi annoncé à 300 000 octets sur la création depuis une 
   const res = await announceOnly('/chips/0A0B0C0D/new', 300_000);
   assert.equal(res.status, 413);
   assert.equal(res.headers.connection, 'close');
-  assert.equal(res.body, '');
+  assert.ok(res.body.includes('<h1>Formulaire trop long</h1>')); // étape U0 : plus de corps vide
   assert.equal(snapshot(), before);
 });
 

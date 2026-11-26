@@ -1,0 +1,24 @@
+-- Migration 006 : index scans_by_uid élargi au poste (étape U0, heure d'arrivée « Depuis »).
+--
+-- L'heure d'arrivée à l'emplacement actuel (server/inventory.js, withLocations) remonte les
+-- scans de la puce à rebours, dans l'index scans_by_uid, jusqu'au premier scan d'un autre
+-- emplacement. Avec l'ancien index (uid_nfc, received_at), chaque scan parcouru oblige à
+-- relire sa ligne dans la table pour connaître son poste : lectures dispersées dans tout le
+-- fichier. Avec station_id dans l'index, ce parcours ne lit que l'index (« covering index »).
+-- Mesure, liste complète de l'inventaire (listItems), 5 000 objets, 300 000 scans :
+--   objets qui changent souvent de poste : 109 ms sans cette colonne, 76 ms avec
+--     (45 ms avant l'étape U0, sans heure d'arrivée) ;
+--   objets toujours scannés au même poste (pire cas) : 1,8 s sans, 89 ms avec.
+--
+-- Ordre des colonnes : id (le rowid) est écrit EXPLICITEMENT juste après received_at, avant
+-- station_id. Les lectures « dernier scan d'une puce » trient par (received_at, id) : avec
+-- (uid_nfc, received_at, station_id), l'id n'arriverait plus juste après received_at dans
+-- l'index et SQLite devrait trier les ex aequo à chaque lecture (mesuré).
+--
+-- Même nom, même début de clé (uid_nfc, received_at) : toutes les lectures qui utilisaient
+-- l'ancien index (vue item_locations, derniers scans d'une fiche, puces inconnues) utilisent
+-- celui-ci de la même façon. Il REMPLACE l'ancien : toujours un seul index par uid à tenir à
+-- jour par scan reçu (quelques octets de plus par entrée).
+-- DROP puis CREATE dans la transaction de la migration (server/db.js).
+DROP INDEX scans_by_uid;
+CREATE INDEX scans_by_uid ON scans (uid_nfc, received_at, id, station_id);

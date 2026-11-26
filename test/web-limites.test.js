@@ -203,12 +203,16 @@ test('méthodes inattendues sur /login, / et /logout : 405 ; CONNECT : connexion
   assert.equal((await send({ path: '/login' })).status, 200);
 });
 
-test('chemins tordus : 404 sans corps ; requête ignorée pour le routage ; aucune redirection ouverte', async () => {
+// Étape U0 : le 404 n'est plus sans corps (page « Page introuvable », texte constant). L'ancien
+// contrôle « corps vide » acceptait aussi, sans le vouloir, toute réponse en morceaux (chunked).
+test('chemins tordus : 404 « Page introuvable » au texte constant ; requête ignorée pour le routage ; aucune redirection ouverte', async () => {
   for (const path of ['//', '/static//style.css', '/STATIC/style.css', '/static/style.css%00', '/./login', '/login;x',
     '/%2e%2e/config.json', '/static/..%2f..%2fserver/main.js', '/\\..\\config.json', '*', 'https://evil.example/login']) {
     const response = await raw(`GET ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`);
     assert.equal(statusOf(response), '404', path);
-    assert.ok(response.endsWith('\r\n\r\n') || /\r\n\r\n0\r\n\r\n$/.test(response), `${path} : corps inattendu`);
+    assert.ok(response.includes('<h1>Page introuvable</h1>'), path);
+    // Rien du chemin demandé n'est reflété dans la page.
+    assert.ok(!/evil|config|main\.js|STATIC|%00|login;x/.test(response.split('\r\n\r\n').slice(1).join('')), `${path} : chemin reflété`);
   }
   assert.equal((await send({ path: '/static/style.css?x=1' })).status, 200);
   const withNext = await send({ path: '/login?next=https://evil.example/' });
@@ -415,7 +419,7 @@ test('Content-Type avec charset autre qu\'UTF-8 : 400 ; charset=UTF-8 (toute cas
 
 // ---------------------------------------------------------------- défense en profondeur
 
-test('identifiant hors format présent en base (contrainte contournée) : 500 sans corps, jamais affiché', async () => {
+test('identifiant hors format présent en base (contrainte contournée) : 500 « Un problème est survenu », identifiant jamais affiché', async () => {
   db.exec('PRAGMA ignore_check_constraints = ON');
   let userId;
   try {
@@ -429,6 +433,10 @@ test('identifiant hors format présent en base (contrainte contournée) : 500 sa
     const res = await home(`__Host-mt_session=${token}`);
     assert.equal(res.status, 500);
     assert.ok(!res.body.includes('<script>'));
+    assert.ok(!res.body.includes('script'));
+    // Étape U0 : page lisible, sans détail technique ni bandeau de compte.
+    assert.ok(res.body.includes('<h1>Un problème est survenu</h1>'));
+    assert.ok(!res.body.includes('hors format') && !res.body.includes('Connecté en tant que'));
     assert.equal((await send({ path: '/login' })).status, 200);
   } finally {
     db.prepare('DELETE FROM users WHERE id = ?').run(userId);

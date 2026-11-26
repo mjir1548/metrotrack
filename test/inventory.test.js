@@ -153,8 +153,9 @@ test('localisation dérivée : jamais localisé, poste, lecteur non affecté ; d
   assert.equal(row().at, null);
   assert.equal(ingestFrame(db, encodeFrame({ readerId: 1, counter: 1, uid, key: KEY }), '2026-11-17T10:01:00.000Z').ok, true);
   assert.deepEqual({ ...row() }, {
-    id: 1, name: 'Multimètre démo', uid_nfc: '04A1B2C3D4E5F6', at: '2026-11-17T10:01:00.000Z', source: 'scan',
-    reader_id: 1, station_id: 1, station_name: 'Poste 1',
+    id: 1, name: 'Multimètre démo', uid_nfc: '04A1B2C3D4E5F6', at: '2026-11-17T10:01:00.000Z',
+    arrived_at: '2026-11-17T10:01:00.000Z', arrived_at_bounded: 0, arrival_source: 'scan',
+    source: 'scan', reader_id: 1, station_id: 1, station_name: 'Poste 1',
   });
   assert.equal(ingestFrame(db, encodeFrame({ readerId: 2, counter: 1, uid, key: KEY }), '2026-11-17T10:02:00.000Z').ok, true);
   assert.equal(row().station_id, null);

@@ -91,7 +91,7 @@ ${CHAMPS_FICHE}
 
 const fiche = encadre(html`<p>La fiche rassemble tout ce que l'on sait de l'objet.</p>
 <ul>
-<li>Localisation actuelle : le poste où se trouve l'objet, et d'où vient l'information. Soit un scan (avec le numéro du lecteur), soit une correction à la main (avec son auteur). Le plus récent l'emporte.</li>
+<li>Localisation actuelle : le poste où se trouve l'objet, depuis quand il y est, et d'où vient l'information. Soit un scan (avec le numéro du lecteur), soit une correction à la main (avec son auteur). Le plus récent l'emporte. Si l'objet a été scanné à nouveau au même poste, l'heure de ce dernier scan est ajoutée.</li>
 <li>Identification : la puce de l'objet, et les dates de création et de dernière modification de la fiche.</li>
 <li>Propriétés et notes : ce qui a été saisi dans la fiche.</li>
 <li>Derniers scans : les ${RECENT_SCANS} derniers passages de la puce devant un lecteur, le plus récent en premier.</li>
@@ -130,7 +130,7 @@ const postes = encadre(html`<p>Un poste est un lieu de travail où l'on scanne l
 
 const poste = encadre(html`<p>La fiche du poste montre sa description, ses lecteurs et les objets qui s'y trouvent en ce moment.</p>
 <ul>
-<li>Objets présents : localisés ici par leur dernier scan, ou par une correction à la main (mention «&nbsp;correction&nbsp;»).</li>
+<li>Objets présents : localisés ici par leur dernier scan, ou par une correction à la main. «&nbsp;Depuis&nbsp;» donne leur heure d'arrivée au poste, avec la mention «&nbsp;correction&nbsp;» s'ils y sont arrivés par une correction à la main.</li>
 <li>Lecteurs : ceux rattachés à ce poste. Pour en rattacher un, ouvrez sa fiche dans l'onglet «&nbsp;Lecteurs&nbsp;», puis «&nbsp;Changer de poste&nbsp;».</li>
 <li>«&nbsp;Modifier&nbsp;» : changer le nom ou la description.</li>
 <li>«&nbsp;Supprimer&nbsp;» n'apparaît que si le poste n'a aucun historique : ni scan, ni correction, ni lecteur. Sinon, renommez-le.</li>

@@ -129,7 +129,7 @@ test('affichage : liste, fiche, fiche du poste, frise des scans de l\'objet ; nu
   const station = await page('/stations/1');
   assert.ok(station.body.includes('<a class="lien-objet" href="/readers/1">Boîtier établi gauche</a>'));
   const item = await page('/items/1');
-  assert.match(item.body, /<p class="frise-detail">Scanné par Boîtier établi gauche <span class="badge badge--ok">Emplacement actuel<\/span><\/p>/);
+  assert.match(item.body, /<p class="frise-detail">Scanné par Boîtier établi gauche <span class="badge badge--ok"><svg[^>]*><use href="#i-poste"><\/use><\/svg>Emplacement actuel<\/span><\/p>/);
   for (const path of ['/readers/1/station', '/readers/1/replace', '/readers/1/deactivate', '/readers/1/rename']) {
     const res = await page(path);
     assert.ok(res.body.includes('<p class="sous-titre-page">Boîtier établi gauche · Atelier</p>'), path);

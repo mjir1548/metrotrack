@@ -69,7 +69,7 @@ function page(path) {
 }
 // Page sans son aide « Comment ça marche ? » (texte constant qui cite les pastilles, dont « jamais localisé »).
 const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<\/details>/, '');
-// Derniers scans de la fiche : frise verticale depuis l'étape U1 (une étape par scan).
+// Frise des déplacements de la fiche (étape U3) : une étape par déplacement, au plus 30 (et la création).
 const historyRows = (html) => /<ol class="frise">([\s\S]*?)<\/ol>/.exec(html)?.[1].match(/<li class="frise-etape/g)?.length ?? 0;
 
 test(`liste de ${ITEMS} objets avec ${SCANS} scans : toutes les lignes, en moins de ${MAX_MS} ms`, async (t) => {
@@ -96,19 +96,22 @@ test('recherche sur la base chargée : résultats corrects, en moins de la borne
   assert.ok(res.ms < MAX_MS);
 });
 
-test(`fiche d'un objet à ${HOT_SCANS} scans : 20 scans affichés au plus, le plus récent d'abord, localisation = dernier scan`, async (t) => {
+test(`fiche d'un objet à ${HOT_SCANS} scans : 30 déplacements affichés au plus, le plus récent d'abord, localisation = dernier scan`, async (t) => {
   const res = await page('/items/1');
   t.diagnostic(`GET /items/1 : ${Math.round(res.ms)} ms`);
   assert.equal(res.status, 200);
-  assert.equal(historyRows(res.body), 20);
+  assert.equal(historyRows(res.body), 30);
+  assert.ok(res.body.includes('href="/items/1/historique"'), 'Voir tout l\'historique');
   const last = db.prepare('SELECT received_at, station_id, reader_id FROM scans WHERE uid_nfc = ? ORDER BY received_at DESC, id DESC LIMIT 1').get(uidOf(0));
   const datetimes = [...res.body.matchAll(/<p class="frise-quand"><time datetime="([^"]+)"/g)].map((m) => m[1]);
-  assert.equal(datetimes[0], last.received_at);
+  // Le dernier scan est l'arrivée de l'étape en tête, ou son « dernier scan » s'il y a été rescanné.
+  const top = /<li class="frise-etape frise-etape--actuel">[\s\S]*?<\/li>/.exec(res.body)[0];
+  assert.ok(datetimes[0] === last.received_at || top.includes(`dernier scan <time datetime="${last.received_at}"`), top);
   assert.deepEqual(datetimes, [...datetimes].sort().reverse());
   // Emplacement en grand dans l'en-tête de la fiche (étape U1).
   const expected = last.station_id === null
     ? `<a class="lien-etat" href="/readers/${last.reader_id}"><span class="etat etat-inconnue">lecteur non affecté</span></a></p>`
-    : `<span class="etat etat-poste">Poste ${last.station_id}</span></p>`;
+    : `<span class="etat etat-poste">Poste ${last.station_id}</span></a></p>`; // étape U3 : lien vers le poste
   assert.ok(res.body.includes('<p class="emplacement') && res.body.includes(expected));
   assert.ok(res.ms < MAX_MS);
 });

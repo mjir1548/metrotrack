@@ -340,3 +340,20 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
 - **D-021, page Inventaire** : quand le champ est vidé, la liste de départ est réaffichée sans appel au serveur. La réponse `&tout=1` est allégée.
 - **D-021, association d'une puce** : la recherche s'y fait aussi pendant la frappe, avec les fiches sans puce en tête.
 - **D-021, page de clé** : bouton « Copier la clé » (`navigator.clipboard.writeText`, écriture seule). Le texte de la page est réduit à une phrase. L'avertissement « ne rechargez pas » a été retiré de la page ; le risque reste décrit dans les limites de l'étape 6.
+
+## D-023 — Fiche objet : frise des déplacements et gestion de la puce (étape U3)
+
+- **Date** : 2026-11-27 · **Statut** : Proposée (choix de l'orchestrateur selon D-022, à revoir par l'humain s'il le souhaite)
+- **Décision** :
+  - une seule frise « Historique des déplacements » (`server/timeline.js`) :
+    - les scans consécutifs au même poste sont regroupés en une arrivée ;
+    - les corrections manuelles et les repères de puce (« Puce donnée / changée / retirée ») sont des entrées distinctes ;
+    - la frise suit **toutes les puces successives** de la fiche, en reconstruisant les périodes de possession depuis `audit_log`. Chaque période montre les scans de sa puce pendant la période, plus le dernier scan juste avant l'attribution, pour rester cohérente avec la vue ;
+    - lectures bornées à 2 000 scans au total ; pagination par curseur `?avant=` ;
+  - la vue `item_locations` (emplacement actuel) et le schéma sont inchangés ;
+  - **retirer une puce** : une case cochée par défaut, « Garder « <poste> » comme emplacement », enregistre une correction manuelle vers ce poste à la même heure, dans la même transaction. L'audit reçoit alors deux lignes : `item.location_correct` puis `item.chip_detach` (nouvelle action) ;
+  - « Donner / changer de puce » depuis la fiche : choix parmi les 20 puces inconnues les plus récentes, en réutilisant les contrôles et les confirmations de l'étape 7 ;
+  - heures affichées au format « 16:06 » partout.
+- **Limites acceptées** :
+  - juste après un retrait avec conservation, « depuis » vaut « à l'instant » : l'arrivée devient la correction automatique (D-016) ;
+  - « Modifier la fiche sur place » et l'attente en direct d'une puce sont reportés (le direct arrive avec U4).

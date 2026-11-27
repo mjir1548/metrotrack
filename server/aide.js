@@ -9,8 +9,8 @@
 // impossible), et la page de la clé d'un lecteur, dont l'avertissement ne doit pas être dilué.
 
 import { html } from './html.js';
-import { RECENT_SCANS } from './inventory.js';
-import { MAX_UNKNOWN_CHIPS, MAX_ASSOCIATE_RESULTS } from './chips.js';
+import { MAX_UNKNOWN_CHIPS, MAX_ASSOCIATE_RESULTS, MAX_OFFERED_CHIPS } from './chips.js';
+import { TIMELINE_PAGE_ENTRIES } from './timeline.js';
 
 export const AIDE_SUMMARY = 'Comment ça marche ?';
 
@@ -66,7 +66,7 @@ ${CHAMPS_FICHE}
 <p>La puce :</p>
 <ul>
 <li>Une nouvelle fiche n'a pas de puce : l'objet reste «&nbsp;jamais localisé&nbsp;» tant qu'il n'est ni scanné ni corrigé à la main.</li>
-<li>Pour lui en donner une : scannez sa puce sur un poste, puis, dans «&nbsp;Puces inconnues&nbsp;», choisissez «&nbsp;Associer à une fiche existante&nbsp;».</li>
+<li>Pour lui en donner une : sur sa fiche, cliquez sur «&nbsp;Donner une puce&nbsp;», scannez la puce sur un lecteur, puis choisissez-la.</li>
 <li>Autre possibilité : partir de «&nbsp;Puces inconnues&nbsp;» avec «&nbsp;Créer une fiche&nbsp;». Le numéro de la puce est alors déjà rempli.</li>
 </ul>
 <p>La création est notée dans l'historique de la fiche.</p>`);
@@ -87,22 +87,29 @@ ${CHAMPS_FICHE}
 <ul>
 <li>Chaque changement est noté dans l'historique de la fiche, avec l'avant et l'après.</li>
 <li>Si rien n'a changé, l'historique ne reçoit aucune ligne.</li>
-<li>La puce et l'emplacement ne se changent pas ici : utilisez «&nbsp;Corriger l'emplacement&nbsp;» sur la fiche, ou «&nbsp;Puces inconnues&nbsp;» pour donner une autre puce à l'objet.</li>
+<li>La puce et l'emplacement ne se changent pas ici : utilisez «&nbsp;Corriger l'emplacement&nbsp;» sur la fiche, ou son menu «&nbsp;…&nbsp;» pour changer ou retirer sa puce.</li>
 </ul>`);
 
-const fiche = encadre(html`<p>La fiche rassemble tout ce que l'on sait de l'objet.</p>
+// Fiche d'un objet : trois phrases au plus (étape U3).
+const fiche = encadre(html`<p>L'emplacement affiché est celui du dernier scan de la puce, ou de la dernière correction à la main : le plus récent l'emporte.</p>
+<p>Si l'objet a bougé sans passer devant un lecteur, utilisez «&nbsp;Corriger l'emplacement&nbsp;» : la correction apparaît dans l'historique, avec votre nom.</p>
+<p>Le menu «&nbsp;…&nbsp;» sert à changer ou retirer la puce, ou à supprimer la fiche.</p>`);
+
+const historique = encadre(html`<p>Chaque ligne est un déplacement : l'arrivée à un poste (plusieurs scans de suite au même poste comptent pour un), une correction à la main ou un changement de puce.</p>
+<p>Le plus récent est en haut, ${TIMELINE_PAGE_ENTRIES} par page ; «&nbsp;Déplacements plus anciens&nbsp;» affiche la suite.</p>`);
+
+const donnerPuce = encadre(html`<p>Posez la puce sur l'objet, scannez-la sur n'importe quel lecteur, puis cliquez sur «&nbsp;Actualiser&nbsp;» : elle apparaît en tête de liste.</p>
 <ul>
-<li>Emplacement actuel, en grand : le poste où se trouve l'objet, depuis quand il y est, et d'où vient l'information. Soit un scan, soit une correction à la main (avec son auteur). Le plus récent l'emporte. Si l'objet a été scanné à nouveau au même poste, l'heure de ce dernier scan est ajoutée.</li>
-<li>Identification : le numéro de la puce de l'objet, et les dates de création et de dernière modification de la fiche.</li>
-<li>Propriétés et notes : ce qui a été saisi dans la fiche.</li>
-<li>Derniers scans : les ${RECENT_SCANS} derniers passages de la puce devant un lecteur, le plus récent en premier.</li>
-<li>Historique des modifications : qui a changé quoi, et quand.</li>
-</ul>
-<p>Les boutons :</p>
+<li>La liste montre les ${MAX_OFFERED_CHIPS} puces inconnues scannées le plus récemment, la plus récente en premier.</li>
+<li>Dès qu'elle est choisie, l'objet est localisé au poste où la puce a été scannée en dernier, sauf si une correction à la main est plus récente.</li>
+<li>Si la fiche avait déjà une puce, ou si la puce choisie a déjà servi à une autre fiche, une confirmation est demandée.</li>
+</ul>`);
+
+const retirerPuce = encadre(html`<p>Retirez la puce d'un objet si elle est cassée, perdue ou posée par erreur.</p>
 <ul>
-<li>«&nbsp;Corriger l'emplacement&nbsp;» : indiquer à la main où se trouve l'objet, s'il a bougé sans être scanné.</li>
-<li>«&nbsp;Modifier la fiche&nbsp;» : changer le nom, les notes ou les propriétés.</li>
-<li>«&nbsp;Supprimer&nbsp;» : retirer la fiche de l'inventaire, après confirmation.</li>
+<li>Ses scans sont conservés : elle redevient une puce inconnue, que l'on peut donner à un autre objet.</li>
+<li>Par défaut, l'objet garde son emplacement actuel (une correction à la main est notée). Sinon, sans puce, il n'est plus suivi par les lecteurs : son emplacement devient celui de sa dernière correction, ou «&nbsp;jamais localisé&nbsp;».</li>
+<li>Le retrait est noté dans les modifications de la fiche.</li>
 </ul>`);
 
 const localisation = encadre(html`<p>Indiquez à la main le poste où se trouve l'objet, par exemple s'il a été déplacé sans être scanné.</p>
@@ -251,6 +258,9 @@ export const AIDE = Object.freeze({
   ficheDepuisPuce,
   modifierFiche,
   fiche,
+  historique,
+  donnerPuce,
+  retirerPuce,
   localisation,
   supprimerFiche,
   postes,

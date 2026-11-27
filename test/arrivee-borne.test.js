@@ -75,8 +75,8 @@ test(`puce rescannée ${3 * MAX_RUN_SCANS} fois au même poste : indicateur lev�
   const post = stationPage(USER, { station: { id: B, name: 'Poste B', description: '', created_at: at(0) }, readers: [], items: stationItems(db, B), deletable: false, now }).toString();
   assert.ok(post.includes(`<td data-label="Depuis"><time datetime="${oldestExamined}" title="${title}">depuis au moins `), 'fiche du poste');
   const sheet = itemPage(USER, { item, scans: [], history: [], now }).toString();
-  assert.ok(sheet.includes(`<p class="localisation-detail"><time datetime="${oldestExamined}" title="${title}">depuis au moins `), 'fiche objet');
-  assert.ok(sheet.includes(' · dernier scan <time'), 'fiche objet : dernier scan');
+  assert.ok(sheet.includes(`<p class="localisation-detail"><span><time datetime="${oldestExamined}" title="${title}">depuis au moins `), 'fiche objet');
+  assert.ok(sheet.includes('Scanné <time'), 'fiche objet : dernier scan (badge, étape U3)');
 });
 
 test('remontée bornée, mais correction vers un autre poste plus récente que la borne : résultat exact', () => {

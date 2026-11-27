@@ -26,9 +26,10 @@ import {
   SESSION_COOKIE, createSession, findSession, deleteSession, csrfTokenFor, newToken, isTokenFormat, safeEqual,
 } from './sessions.js';
 import { isSafeHtml } from './html.js';
-import { listItems, searchItems, getItem, recentScans, parseItemId, parseUid, normalizeQuery } from './inventory.js';
+import { listItems, searchItems, getItem, parseItemId, parseUid, normalizeQuery } from './inventory.js';
+import { itemTimeline, parseCursor, TIMELINE_ENTRIES, TIMELINE_PAGE_ENTRIES } from './timeline.js';
 import {
-  validateItemInput, createItem, updateItem, deleteItem, correctLocation, listStations, itemHistory, MAX_PROPERTIES,
+  validateItemInput, createItem, updateItem, deleteItem, correctLocation, listStations, itemChanges, MAX_PROPERTIES,
   cleanLine, MAX_NAME_CHARS,
 } from './items.js';
 import {
@@ -39,7 +40,8 @@ import {
   createReader, assignReader, deactivateReader, replaceReader, renameReader, validateReaderName, listReaders, getReader, readerScans,
 } from './readers.js';
 import {
-  listUnknownChips, getChip, chipPreviousOwner, createItemForChip, associateChip, MAX_ASSOCIATE_RESULTS,
+  listUnknownChips, getChip, chipPreviousOwner, chipPreviousOwners, createItemForChip, associateChip, detachChip, MAX_ASSOCIATE_RESULTS,
+  MAX_OFFERED_CHIPS,
 } from './chips.js';
 import {
   loginPage as loginView, forbiddenPage, errorPage, inventoryPage, itemPage as itemView, itemNotFoundPage, BUSY_MESSAGE,
@@ -49,6 +51,7 @@ import {
   readersPage, readerPage as readerView, readerFormPage, readerStationPage, deactivateReaderPage as deactivateView,
   replaceReaderPage as replaceView, readerRenamePage, readerKeyPage, readerNotFoundPage, readerInactivePage, readerIdsExhaustedPage,
   chipsPage, associateSearchPage, associateConfirmPage, chipNotFoundPage, chipKnownPage, searchResult,
+  itemHistoryPage, giveChipPage as giveChipView, detachChipPage as detachChipView,
 } from './views.js';
 
 // Délai avant la réponse à un échec de connexion (ralentit les essais successifs ; la
@@ -178,6 +181,9 @@ const ITEM_ROUTES = {
   edit: { GET: editItemPage, POST: updateItemAction },
   delete: { GET: deleteItemPage, POST: deleteItemAction },
   location: { GET: locationPage, POST: correctLocationAction },
+  historique: { GET: historyPage }, // étape U3 : tout l'historique des déplacements
+  puce: { GET: giveChipPage }, // étape U3 : donner ou changer la puce depuis la fiche
+  'retirer-puce': { GET: detachChipPage, POST: detachChipAction }, // étape U3
 };
 const STATION_ROUTES = {
   '': { GET: stationPage },
@@ -269,9 +275,85 @@ function itemPage(ctx, req, res, idText) {
   const user = pageUser(session);
   const item = findItem(ctx, res, user, idText);
   if (!item) return;
-  const scans = item.uid_nfc === null ? [] : recentScans(ctx.db, item.uid_nfc);
-  const history = itemHistory(ctx.db, item.id);
-  sendHtml(res, 200, itemView(user, { item, scans, history, now: Date.now(), notice: queryParam(req, 'ok') }));
+  // Frise des déplacements (lectures bornées, server/timeline.js), autres modifications, et
+  // postes du panneau « Corriger l'emplacement ».
+  const timeline = itemTimeline(ctx.db, item, { limit: TIMELINE_ENTRIES });
+  const changes = itemChanges(ctx.db, item.id);
+  sendHtml(res, 200, itemView(user, {
+    item, timeline, changes, stations: listStations(ctx.db), now: Date.now(), notice: queryParam(req, 'ok'),
+  }));
+}
+
+// Tout l'historique des déplacements d'une fiche, par pages. ?avant= : curseur de la page
+// suivante, produit par la page précédente (timeline.js, parseCursor : format exact, sinon 404).
+function historyPage(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const item = findItem(ctx, res, user, idText);
+  if (!item) return;
+  const cursorText = queryParam(req, 'avant');
+  const cursor = cursorText === null ? null : parseCursor(cursorText);
+  if (cursorText !== null && cursor === null) return sendErrorPage(res, 404, true);
+  const timeline = itemTimeline(ctx.db, item, { cursor, limit: TIMELINE_PAGE_ENTRIES });
+  sendHtml(res, 200, itemHistoryPage(user, { item, timeline, first: cursor === null, now: Date.now() }));
+}
+
+// « Donner une puce » / « Changer de puce » : puces inconnues récentes (au plus
+// MAX_OFFERED_CHIPS). Le choix passe par les routes d'association de l'étape 7
+// (/chips/<UID>/associate/<id>) : mêmes contrôles, même audit, même 409.
+function giveChipPage(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const item = findItem(ctx, res, user, idText);
+  if (!item) return;
+  const { chips, more } = listUnknownChips(ctx.db, MAX_OFFERED_CHIPS);
+  // Anciens propriétaires des puces proposées : une seule lecture de audit_log, et aucune
+  // s'il n'y a pas de puce à proposer.
+  const owners = chips.length === 0 ? new Map() : chipPreviousOwners(ctx.db, chips.map((chip) => chip.uid));
+  sendHtml(res, 200, giveChipView(user, { item, chips, more, owners, now: Date.now() }));
+}
+
+// « Retirer la puce » : confirmation, puis retrait (chips.js, detachChip : transaction et audit).
+function detachChipPage(ctx, req, res, idText) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const user = pageUser(session);
+  const item = findItem(ctx, res, user, idText);
+  if (!item) return;
+  sendHtml(res, 200, detachChipView(user, { item, fallback: lastCorrectionStation(ctx.db, item.id) }));
+}
+
+/** Poste de la dernière correction d'une fiche (emplacement après retrait de la puce), ou null. */
+function lastCorrectionStation(db, itemId) {
+  return db.prepare(
+    `SELECT st.name FROM location_corrections c JOIN stations st ON st.id = c.station_id
+      WHERE c.item_id = ? ORDER BY c.created_at DESC, c.id DESC LIMIT 1`
+  ).get(itemId)?.name ?? null;
+}
+
+function detachChipAction(ctx, req, res, idText) {
+  postForm(ctx, req, res, (session, form) => {
+    const user = pageUser(session);
+    const id = parseItemId(idText);
+    if (id === null) return sendHtml(res, 404, itemNotFoundPage(user));
+    // previous : puce affichée sur la page de confirmation. Si la fiche a changé de puce
+    // depuis, rien n'est écrit et la page est réaffichée, à jour (409).
+    // garder=1 (case « Garder … comme emplacement ») : poste lu dans le champ poste (même format
+    // strict qu'un identifiant), vérifié dans la transaction d'écriture.
+    const keep = form.get('garder') === '1' ? parseItemId(form.get('poste') ?? '') : null;
+    if (form.get('garder') === '1' && keep === null) return sendErrorPage(res, 400, true);
+    const outcome = detachChip(ctx.db, session.userId, id, form.get('previous'), keep);
+    if (outcome === 'no_item') return sendHtml(res, 404, itemNotFoundPage(user));
+    if (outcome === 'no_station' || outcome.changed) {
+      const item = getItem(ctx.db, id);
+      if (!item) return sendHtml(res, 404, itemNotFoundPage(user));
+      return sendHtml(res, 409, detachChipView(user, { item, changed: true, fallback: lastCorrectionStation(ctx.db, id) }));
+    }
+    ctx.log(`puce ${outcome.previousUid} retirée de la fiche ${outcome.id} par ${session.username}${outcome.kept ? ' (emplacement gardé)' : ''}`);
+    redirect(res, `/items/${outcome.id}?ok=${outcome.kept ? 'puce_retiree_gardee' : 'puce_retiree'}`);
+  });
 }
 
 // ---------------------------------------------------------------- recherche pendant la frappe
@@ -878,7 +960,8 @@ function associateConfirm(ctx, req, res, uidText, itemIdText) {
   if (!chip) return;
   const item = findItem(ctx, res, user, itemIdText);
   if (!item) return;
-  sendHtml(res, 200, associateConfirmPage(user, { chip: withPreviousOwner(ctx, chip), item, now: Date.now() }));
+  const fromItem = queryParam(req, 'depuis') === 'fiche'; // page ouverte depuis « Donner une puce »
+  sendHtml(res, 200, associateConfirmPage(user, { chip: withPreviousOwner(ctx, chip), item, now: Date.now(), fromItem }));
 }
 
 function associateChipAction(ctx, req, res, uidText, itemIdText) {
@@ -896,7 +979,7 @@ function associateChipAction(ctx, req, res, uidText, itemIdText) {
       // La fiche a changé de puce depuis la confirmation : page réaffichée, à jour, sans écriture.
       const chip = withPreviousOwner(ctx, getChip(ctx.db, uid));
       const item = getItem(ctx.db, itemId);
-      return sendHtml(res, 409, associateConfirmPage(user, { chip, item, now: Date.now(), changed: true }));
+      return sendHtml(res, 409, associateConfirmPage(user, { chip, item, now: Date.now(), changed: true, fromItem: form.get('depuis') === 'fiche' }));
     }
     const replaced = outcome.previousUid === null ? '' : ` (remplace ${outcome.previousUid})`;
     ctx.log(`puce ${uid} associée à la fiche ${outcome.id} par ${session.username}${replaced}`);

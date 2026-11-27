@@ -125,6 +125,9 @@ const PAGES_WITH_HELP = [
   ['/items/1/edit', 'modifierFiche'],
   ['/items/1/location', 'localisation'],
   ['/items/1/delete', 'supprimerFiche'],
+  ['/items/1/historique', 'historique'], // étape U3
+  ['/items/1/puce', 'donnerPuce'],
+  ['/items/1/retirer-puce', 'retirerPuce'],
   ['/stations', 'postes'],
   ['/stations/new', 'nouveauPoste'],
   ['/stations/1', 'poste'],

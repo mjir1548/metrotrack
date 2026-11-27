@@ -713,3 +713,28 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
 - Retour à `dev` (U2, aller-retour 2/3) : 14 améliorations UX (création depuis une recherche vide, Ctrl K découvrable, « depuis » harmonisé, fiche poste, libellé des lecteurs, bouton « Copier la clé », 404 utiles, confirmations en une phrase, correction d'emplacement par boutons radio, etc.). La frise unique « Déplacé vers… » est réservée à l'étape U3.
 - `dev` (U2, aller-retour 2) : les 14 améliorations UX sont faites, 589 tests verts, captures avant/après. Orchestrateur : 589/589, captures relues (correction d'emplacement par boutons radio, page de clé avec « Copiée ✓ »).
 - **U2 commitée et poussée** (voir git log). Selon D-022, la vérification par le testeur et `revue-ux` de ces dernières retouches sera faite avec l'étape U3.
+
+### 2026-11-27 — Étape U3 lancée : la fiche objet
+- Contenu :
+  - une seule frise « Historique des déplacements » (scans regroupés par arrivée, corrections manuelles distinctes, création) ;
+  - en-tête de la maquette B ;
+  - correction d'emplacement dans un panneau, sans quitter la fiche ;
+  - « Donner une puce », « Changer de puce » et « Retirer la puce » depuis la fiche (choix parmi les puces inconnues récentes, à la place du détour en 6 étapes) ;
+  - modifications de la fiche dans une carte repliable.
+- Agent `dev` lancé. Boucle selon D-022 : `dev`, puis `testeur`, puis `revue-ux`.
+- `dev` (U3) : coupé une fois par la limite d'usage, puis repris. Terminé : 610 tests.
+  - `server/timeline.js` (frise), en-tête, panneau de correction, `/items/:id/puce`, `/items/:id/retirer-puce`, `/items/:id/historique` ;
+  - fiche à +5 ms à 300 000 scans.
+  - Une course ECONNRESET a été vue une fois dans `u1-verif`.
+  - Points à trancher : retirer une puce fait perdre la localisation par scans (conséquence de D-006) ; nouvel audit `item.chip_detach`.
+- Orchestrateur : 610/610 ; capture de la fiche relue (frise des déplacements claire, fidèle à la maquette B). Testeur et `revue-ux` lancés en parallèle.
+- `revue-ux` (U3) : « À corriger ». Deux bloquants : retirer une puce affiche un emplacement faux sans prévenir, et le badge « actuel » se coupe dans le panneau. Points importants : historique effacé au changement de puce, en-tête trop chargé, « Rescanné », noms de poste non cliquables, etc. Les retouches U2 sont toutes vérifiées.
+- Testeur (U3 et U2) : tout fonctionne, 615 tests (ajout de `u3-verif`, 413 de `u1-verif` rendu déterministe). Il fait le même constat sur l'historique au changement ou au retrait de puce.
+- **Choix de l'orchestrateur** (consigne UX de l'humain, sans le solliciter ; à revoir s'il le souhaite) :
+  - retrait de puce avec une case « Garder l'emplacement actuel » cochée par défaut, qui enregistre une correction ;
+  - frise qui suit toutes les puces successives de la fiche (reconstruites depuis `audit_log`), sans changement de schéma ;
+  - heures au format « 16:06 » partout.
+- Reportés : « Modifier la fiche sur place » et l'attente en direct d'une puce (avec U4).
+- Retour à `dev` (U3, aller-retour 2/3) : ces points et les suggestions de la revue.
+- `dev` (U3, aller-retour 2) : tout est fait, 621 tests. Captures relues par l'orchestrateur (retrait de puce avec la case « Garder… »). Mesures : fiche à environ 10 ms à 300 000 scans, y compris avec 40 puces successives. → D-023 (Proposée).
+- **U3 commitée et poussée** (voir git log). Démo relancée.

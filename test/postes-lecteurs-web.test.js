@@ -134,11 +134,11 @@ function keyFrom(res) {
 }
 
 // Balises autorisées : celles des gabarits. Toute autre serait une injection.
-const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
+const ALLOWED_TAGS = new Set(['small', 'dialog', 'html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
-  'textarea', 'select', 'option', 'ul', 'li', 'pre', 'details', 'summary',
+  'textarea', 'select', 'option', 'ul', 'li', 'pre', 'details', 'summary', 'fieldset', 'legend',
   'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g', 'kbd']);
-const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form',
+const PAIRED_TAGS = ['small', 'dialog', 'div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form',
   'h1', 'h2', 'main', 'textarea', 'select', 'option', 'button', 'label', 'ul', 'li', 'pre', 'nav', 'details', 'summary', 'ol', 'svg', 'symbol', 'use', 'kbd'];
 
 function assertSafePage(page, what) {
@@ -154,7 +154,9 @@ function assertSafePage(page, what) {
   for (const [, url] of html.matchAll(/\b(?:src|href|action)\s*=\s*"([^"]*)"/gi)) assert.match(url, /^(?:\/(?!\/)|#[a-z][a-z-]*$)/, `${what} : URL ${url}`);
   assert.doesNotMatch(html, /https?:|\/\//i, `${what} : URL externe`);
   assert.doesNotMatch(html, /<script|<style|\sstyle\s*=/i, `${what} : script ou style`);
-  assert.ok((html.match(/class="bouton( bouton-danger)?"/g)?.length ?? 0) <= 1, `${what} : un bouton principal au plus`);
+  // Le panneau <dialog> de la fiche d'un objet (étape U3) a son propre bouton principal : compté à part.
+  const outside = html.replace(/<dialog[\s\S]*?<\/dialog>/g, '');
+  assert.ok((outside.match(/class="bouton( bouton-danger)?"/g)?.length ?? 0) <= 1, `${what} : un bouton principal au plus`);
 }
 
 const GET_ROUTES = ['/stations', '/stations/new', '/stations/1', '/stations/1/edit', '/stations/1/delete',

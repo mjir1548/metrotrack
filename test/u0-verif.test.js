@@ -107,12 +107,25 @@ function depuisIn(html, name) {
   if (row === undefined) return null;
   return /<td data-label="Depuis"><time datetime="([^"]+)"/.exec(row)?.[1] ?? 'sans heure';
 }
+// Ligne « depuis » de la fiche (étape U3 : « depuis … · jour », puis UN badge « Scanné <heure> »
+// ou « Corrigé à la main par … »), ramenée à la forme texte qu'attendent ces tests :
+// « <arrivée> · scanné » (le dernier scan est l'arrivée), « <arrivée> · dernier scan <heure> »,
+// ou « <arrivée> · correction manuelle par … ».
+function detailText(inner) {
+  const m = /^<span>(<time datetime="([^"]+)"[^>]*>[^<]*<\/time>)(?: · [^<]*)?<\/span>([\s\S]*)$/.exec(inner);
+  if (!m) return inner;
+  const [, arrival, arrivedAt, badge] = m;
+  const scanned = /^<span class="badge badge--ok">[\s\S]*?Scanné (<time datetime="([^"]+)"[^>]*>[^<]*<\/time>)<\/span>$/.exec(badge);
+  if (scanned) return scanned[2] === arrivedAt ? `${arrival} · scanné` : `${arrival} · dernier scan ${scanned[1]}`;
+  const manual = /Corrigé à la main (par [^<]*)<\/span>$/.exec(badge);
+  return manual ? `${arrival} · correction manuelle ${manual[1]}` : inner;
+}
 async function shown() {
   const list = (await send({ path: '/', headers: withSession() })).body;
   const sheet = (await send({ path: '/items/1', headers: withSession() })).body;
   const stationA = (await send({ path: '/stations/1', headers: withSession() })).body;
   const stationB = (await send({ path: '/stations/2', headers: withSession() })).body;
-  const detail = /<p class="localisation-detail">(.*?)<\/p>/s.exec(sheet)?.[1].replace(/ title="[^"]*"/g, '').replace(/^Depuis : /, '').replace(/<\/time> — [^<·]*?(?= · |$)/, '</time>') ?? null; // « Depuis : » : étape U1 ; « — aujourd'hui à … » : étape U2
+  const detail = /<p class="localisation-detail">(.*?)<\/p>/s.exec(sheet)?.[1] === undefined ? null : detailText(/<p class="localisation-detail">(.*?)<\/p>/s.exec(sheet)[1]).replace(/ title="[^"]*"/g, '').replace(/^Depuis : /, '').replace(/<\/time> — [^<·]*?(?= · |$)/, '</time>') ?? null; // « Depuis : » : étape U1 ; « — aujourd'hui à … » : étape U2
   return { list: depuisIn(list, 'Oscilloscope'), A: depuisIn(stationA, 'Oscilloscope'), B: depuisIn(stationB, 'Oscilloscope'), detail };
 }
 const t = (iso) => `<time datetime="${iso}">`;
@@ -157,7 +170,8 @@ test('« Depuis » de bout en bout : A → B → B, A → B → A, correction pu
   assert.equal((await postForm('/items/1/location', { station: '2' })).status, 303);
   s = await shown();
   assert.equal(s.list, corrected);
-  assert.ok(s.detail.startsWith(t(corrected)) && s.detail.includes(`dernière correction manuelle ${t(lastCorrectionAt())}`) && s.detail.endsWith(' par alice'), s.detail);
+  // Étape U3 : l'en-tête ne donne plus l'heure de la dernière correction, seulement son auteur.
+  assert.ok(s.detail.startsWith(t(corrected)) && s.detail.endsWith(' · correction manuelle par alice'), s.detail);
 
   // Lecteur non affecté : emplacement à part entière.
   await scan(3);
@@ -292,7 +306,7 @@ test('puce rescannée plus de MAX_RUN_SCANS fois au même poste : « au moins »
   const pages = async () => ({
     list: cell((await send({ path: '/', headers: withSession() })).body),
     post: cell((await send({ path: '/stations/1', headers: withSession() })).body),
-    sheet: /<p class="localisation-detail">(.*?)<\/p>/s.exec((await send({ path: '/items/100', headers: withSession() })).body)?.[1] ?? null,
+    sheet: detailText(/<p class="localisation-detail">(.*?)<\/p>/s.exec((await send({ path: '/items/100', headers: withSession() })).body)?.[1] ?? ''),
   });
   // Étape U2 : « depuis au moins … » dans la balise <time>.
   const bounded = () => new RegExp(`^<time datetime="${oldestExamined}" title="[^"]+">depuis au moins `);
@@ -307,7 +321,7 @@ test('puce rescannée plus de MAX_RUN_SCANS fois au même poste : « au moins »
   p = await pages();
   assert.match(p.list, bounded('au moins'), p.list);
   assert.ok(!p.post.includes('(correction)'), p.post);
-  assert.ok(p.sheet.includes('dernière correction manuelle'), p.sheet);
+  assert.ok(p.sheet.includes('correction manuelle par alice'), p.sheet);
   // Un scan ailleurs (par le vrai point d'entrée) : calcul exact.
   await scan(2, uid);
   const elsewhere = lastScanAt(uid);
@@ -320,5 +334,5 @@ test('puce rescannée plus de MAX_RUN_SCANS fois au même poste : « au moins »
   await scan(1, uid);
   p = await pages();
   assert.match(p.list, new RegExp(`^<time datetime="${back}"`), p.list);
-  assert.match(p.sheet, new RegExp(`^<time datetime="${back}"[^>]*>depuis [^<]*</time>(?: — [^<·]*)? · dernier scan `), p.sheet);
+  assert.match(p.sheet, new RegExp(`^<time datetime="${back}"[^>]*>(?:depuis [^<]*|à l&#39;instant)</time> · dernier scan `), p.sheet); // étape U3 : « à l'instant » sous une minute
 });

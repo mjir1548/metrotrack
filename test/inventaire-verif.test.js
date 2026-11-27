@@ -106,9 +106,14 @@ const idOf = (name) => db.prepare('SELECT id FROM items WHERE name = ?').get(nam
 const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<\/details>/, '');
 const rowOf = (html, id) => /<tbody>([\s\S]*?)<\/tbody>/.exec(html)?.[1]
   .split('</tr>').find((r) => r.includes(`href="/items/${id}"`));
-// Derniers scans de la fiche : frise verticale depuis l'étape U1 (un lieu par étape).
-const historyStations = (html) => [...(/<ol class="frise">([\s\S]*?)<\/ol>/.exec(html)?.[1] ?? '')
-  .matchAll(/<p class="frise-lieu">([\s\S]*?)<\/p>/g)].map((m) => m[1]);
+// Frise des déplacements de la fiche (étape U3) : un lieu par déplacement (scans consécutifs au
+// même poste regroupés), sans l'étape « Fiche créée » du bas.
+const historySteps = (html) => (/<ol class="frise">([\s\S]*?)<\/ol>/.exec(html)?.[1] ?? '')
+  .split('</li>').filter((step) => step.includes('<li class="frise-etape') && !step.includes('frise-etape--creation'));
+// Lieu : texte du lien vers le poste (étape U3, lien discret), sans les balises.
+const historyStations = (html) => historySteps(html).map((step) => /<p class="frise-lieu">([\s\S]*?)<\/p>/.exec(step)[1].replace(/<[^>]+>/g, ''));
+// Nombre de scans représentés : « N scans ici » pour un déplacement rescanné, sinon un.
+const historyScans = (html) => historySteps(html).reduce((n, step) => n + Number(/(\d+) scans ici/.exec(step)?.[1] ?? 1), 0);
 // Page sans les icônes du gabarit (sprite constant et <svg><use> décoratifs, server/icones.js) :
 // tout autre <svg> serait une injection.
 const SPRITE_BLOCK = /^<svg class="sprite" aria-hidden="true">\n(?:<symbol id="i-[a-z]+" [^\n]*<\/symbol>\n)*<\/svg>$/m;
@@ -116,7 +121,7 @@ const ICON_TAG = /<svg class="ic" aria-hidden="true"><use href="#i-[a-z]+"><\/us
 const LOGO_TAG = /<svg class="logo-image" viewBox="0 0 900 900" aria-hidden="true">[\s\S]*?<\/svg>/g;
 const withoutIcons = (html) => html.replace(SPRITE_BLOCK, '').replace(ICON_TAG, '').replace(LOGO_TAG, '');
 
-const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
+const ALLOWED_TAGS = new Set(['small', 'dialog', 'fieldset', 'legend', 'select', 'option', 'html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
   'ul', 'li', 'details', 'summary',
   'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g', 'kbd']); // ul, li, details, summary : aide « Comment ça marche ? »
@@ -330,7 +335,8 @@ test('scans rapprochés en parallèle sur deux lecteurs : tous acceptés, histor
   const last = db.prepare("SELECT station_id FROM scans WHERE uid_nfc = '0A0A0A0A' ORDER BY received_at DESC, id DESC LIMIT 1").get();
   const sheet = await page(`/items/${id}`);
   assert.ok(sheet.body.includes(`<span class="etat etat-poste">Poste ${last.station_id}</span>`));
-  assert.equal(historyStations(sheet.body).length, 20);
+  // Tous les scans de la puce (les 20 nouveaux et celui du test précédent) sont représentés.
+  assert.equal(historyScans(sheet.body), db.prepare("SELECT count(*) AS n FROM scans WHERE uid_nfc = '0A0A0A0A'").get().n);
 });
 
 // ---------------------------------------------------------------- défauts corrigés (ex-todo)

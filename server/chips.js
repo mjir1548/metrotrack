@@ -16,7 +16,7 @@
 // cette transaction : une association concurrente ne peut pas passer entre la vérification et
 // l'écriture. UNIQUE (uid_nfc) reste le filet au niveau base. Requêtes paramétrées.
 
-import { ACTIONS, audit, inTransaction, insertItem } from './items.js';
+import { ACTIONS, audit, inTransaction, insertItem, insertCorrection } from './items.js';
 
 // Recherche de la fiche à associer : au plus ce nombre de fiches affichées (la page invite à
 // préciser la recherche au-delà), pour ne pas produire une page de milliers de lignes.
@@ -29,6 +29,9 @@ export const MAX_ASSOCIATE_RESULTS = 50;
 // la réception des trames. Le plafond borne le rendu et les décomptes de scans ; le parcours
 // de l'index, lui, reste proportionnel au nombre d'UID distincts (voir UNKNOWN_UIDS).
 export const MAX_UNKNOWN_CHIPS = 200;
+// Page « Donner une puce » (fiche d'un objet, étape U3) : les puces inconnues les plus récemment
+// scannées, au plus ce nombre (la puce qu'on vient de scanner est en tête).
+export const MAX_OFFERED_CHIPS = 20;
 
 // Puces inconnues. La table scans n'a pas de liste des UID distincts.
 // Forme retenue : un parcours de l'index scans_by_uid (uid_nfc, received_at) « par sauts ».
@@ -90,32 +93,47 @@ export function listUnknownChips(db, limit = MAX_UNKNOWN_CHIPS) {
  * Dernière fiche qui a porté cette puce, d'après le journal des modifications, ou null si
  * aucune. Sert à avertir avant de RÉUTILISER une puce : ses scans d'alors, restés au journal,
  * seront rattachés à la nouvelle fiche (cadrage.md §3, choix 1).
- * Une puce quitte une fiche de deux façons, toutes deux journalisées :
- *   - item.delete : la fiche supprimée, details.uid_nfc = UID (fiche complète d'avant) ;
- *   - item.chip_associate : la puce remplacée sur sa fiche, details.previous_uid = UID.
- * Lecture paramétrée de audit_log, sans index sur ces champs JSON : la table est parcourue.
- * Accepté : elle est remplie à la main, et ces pages (création depuis une puce, confirmation
- * d'association) sont rarement affichées.
  * @returns {{itemId: number, name: string|null, until: string, exists: boolean}|null}
- *   until : heure du détachement ; exists : la fiche existe encore (puce remplacée).
+ *   until : heure du détachement ; exists : la fiche existe encore (puce remplacée ou retirée).
  */
 export function chipPreviousOwner(db, uid) {
-  const row = db.prepare(
-    `SELECT a.entity_id, a.at, json_extract(a.details, '$.name') AS name, i.id IS NOT NULL AS item_exists
+  return chipPreviousOwners(db, [uid]).get(uid) ?? null;
+}
+
+/**
+ * Même information pour plusieurs puces en UNE lecture (page « Donner une puce », au plus
+ * MAX_OFFERED_CHIPS puces) : Map UID → ancien propriétaire (les puces sans ancien propriétaire
+ * sont absentes).
+ * Une puce quitte une fiche de trois façons, toutes journalisées :
+ *   - item.delete : la fiche supprimée, details.uid_nfc = UID (fiche complète d'avant) ;
+ *   - item.chip_associate : la puce remplacée sur sa fiche, details.previous_uid = UID ;
+ *   - item.chip_detach : la puce retirée de sa fiche (étape U3), details.previous_uid = UID.
+ * Lecture paramétrée de audit_log (liste d'UID liée en tableau JSON, lue par json_each), sans
+ * index sur ces champs JSON : la table est parcourue une fois. Accepté : elle est remplie à la
+ * main, et ces pages (création depuis une puce, confirmation d'association, choix d'une puce)
+ * sont rarement affichées.
+ */
+export function chipPreviousOwners(db, uids) {
+  const rows = db.prepare(
+    `SELECT a.entity_id, a.at, json_extract(a.details, '$.name') AS name, i.id IS NOT NULL AS item_exists,
+            CASE a.action WHEN ? THEN json_extract(a.details, '$.uid_nfc') ELSE json_extract(a.details, '$.previous_uid') END AS uid
        FROM audit_log a
        LEFT JOIN items i ON i.id = a.entity_id
-      WHERE (a.action = ? AND json_extract(a.details, '$.uid_nfc') = ?)
-         OR (a.action = ? AND json_extract(a.details, '$.previous_uid') = ?)
-      ORDER BY a.id DESC
-      LIMIT 1`
-  ).get(ACTIONS.delete, uid, ACTIONS.chipAssociate, uid);
-  if (!row) return null;
-  return {
-    itemId: row.entity_id,
-    name: typeof row.name === 'string' ? row.name : null,
-    until: row.at,
-    exists: row.item_exists === 1,
-  };
+      WHERE ((a.action = ? AND json_extract(a.details, '$.uid_nfc') IN (SELECT value FROM json_each(?)))
+          OR (a.action IN (?, ?) AND json_extract(a.details, '$.previous_uid') IN (SELECT value FROM json_each(?))))
+      ORDER BY a.id DESC`
+  ).all(ACTIONS.delete, ACTIONS.delete, JSON.stringify(uids), ACTIONS.chipAssociate, ACTIONS.chipDetach, JSON.stringify(uids));
+  const owners = new Map();
+  for (const row of rows) {
+    if (typeof row.uid !== 'string' || owners.has(row.uid)) continue; // la plus récente ligne l'emporte
+    owners.set(row.uid, {
+      itemId: row.entity_id,
+      name: typeof row.name === 'string' ? row.name : null,
+      until: row.at,
+      exists: row.item_exists === 1,
+    });
+  }
+  return owners;
 }
 
 /**
@@ -188,5 +206,34 @@ export function associateChip(db, userId, uid, itemId, expectedPrevious, now = n
       details: { uid, previous_uid: item.uid_nfc, name: item.name },
     });
     return { id: item.id, previousUid: item.uid_nfc };
+  });
+}
+
+/**
+ * Retire la puce d'une fiche (étape U3) : la fiche n'a plus de puce, la puce redevient inconnue
+ * (ses scans restent au journal, D-006). Ligne d'audit item.chip_detach : {previous_uid, name}.
+ *
+ * keepStationId : si non null, l'emplacement est gardé : une correction manuelle vers ce poste
+ * est enregistrée à la même heure, dans la même transaction (avec son audit habituel), avant le
+ * retrait. Sans elle, la fiche perdrait l'emplacement donné par les scans de sa puce.
+ * expectedUid : puce de la fiche telle qu'affichée sur la page de confirmation. Si la fiche n'a
+ * plus cette puce (autre retrait, remplacement), rien n'est écrit ({changed}) : on ne détache
+ * jamais une puce dont la page n'a pas parlé. Même règle que associateChip.
+ * @param {string|null} expectedUid champ du formulaire (null : absent, donc refusé)
+ * @param {bigint|number|null} [keepStationId] poste à garder, ou null
+ * @returns {'no_item'|'no_station'|{changed: true}|{id: number, previousUid: string, kept: boolean}}
+ */
+export function detachChip(db, userId, itemId, expectedUid, keepStationId = null, now = new Date().toISOString()) {
+  return inTransaction(db, () => {
+    const item = db.prepare('SELECT id, name, uid_nfc FROM items WHERE id = ?').get(itemId);
+    if (!item) return 'no_item';
+    if (item.uid_nfc === null || item.uid_nfc !== expectedUid) return { changed: true };
+    if (keepStationId !== null && !insertCorrection(db, userId, item.id, keepStationId, now)) return 'no_station';
+    db.prepare('UPDATE items SET uid_nfc = NULL, updated_at = ? WHERE id = ?').run(now, item.id);
+    audit(db, {
+      at: now, userId, action: ACTIONS.chipDetach, entityId: item.id,
+      details: { previous_uid: item.uid_nfc, name: item.name },
+    });
+    return { id: item.id, previousUid: item.uid_nfc, kept: keepStationId !== null };
   });
 }

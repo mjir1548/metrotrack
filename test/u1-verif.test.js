@@ -128,8 +128,31 @@ before(async () => {
   pages.set('PUT / (405)', await send({ method: 'PUT', path: '/' }));
   pages.set('POST sans Origin (403)', await send({ method: 'POST', path: '/items/new', body: 'a=1', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }));
   pages.set('POST text/plain (400)', await send({ method: 'POST', path: '/items/new', body: 'a', headers: { 'Content-Type': 'text/plain', Origin: `https://127.0.0.1:${port}` } }));
-  pages.set('POST trop long (413)', await send({ method: 'POST', path: '/items/new', body: `name=${'a'.repeat(300_000)}`, headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: `https://127.0.0.1:${port}` } }));
+  // 413 : longueur annoncée SANS corps envoyé. Avec un vrai corps de 300 000 octets, le serveur
+  // répond puis ferme sans lire la suite, et le client encore en train d'écrire pouvait recevoir
+  // ECONNRESET (course côté client, voir coupure.js) : le test échouait de temps en temps.
+  pages.set('POST trop long (413)', await announcedOnly('/items/new', 300_000));
 });
+
+// Requête POST dont seuls les en-têtes partent (Content-Length annoncé, aucun octet de corps) :
+// déterministe, le client ne peut pas être coupé en pleine écriture.
+function announcedOnly(path, length) {
+  return new Promise((resolve, reject) => {
+    const req = request({
+      host: '127.0.0.1', port, path, method: 'POST', ca: certs.ca, agent: false,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': String(length), Origin: `https://127.0.0.1:${port}`, Cookie: `__Host-mt_session=${token}` },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks).toString('utf8') });
+        req.destroy();
+      });
+    });
+    req.on('error', (err) => (err.code === 'ECONNRESET' ? undefined : reject(err)));
+    req.flushHeaders();
+  });
+}
 
 after(() => {
   server.closeAllConnections();

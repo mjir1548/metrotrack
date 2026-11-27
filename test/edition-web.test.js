@@ -102,11 +102,11 @@ let counter = 0;
 const scan = (readerId, uid) => ingestFrame(db, encodeFrame({ readerId, counter: ++counter, uid: Buffer.from(uid, 'hex'), key: KEY }), new Date().toISOString());
 
 // Balises autorisées : celles des gabarits (formulaires compris). Toute autre serait une injection.
-const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
+const ALLOWED_TAGS = new Set(['small', 'dialog', 'html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
   'textarea', 'select', 'option', 'fieldset', 'legend', 'ul', 'li', 'details', 'summary',
   'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g', 'kbd']);
-const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form',
+const PAIRED_TAGS = ['small', 'dialog', 'div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form',
   'h1', 'h2', 'main', 'textarea', 'select', 'option', 'fieldset', 'legend', 'button', 'label', 'ul', 'li', 'details', 'summary', 'ol', 'svg', 'symbol', 'use', 'kbd'];
 
 function assertSafePage(page, what) {
@@ -123,8 +123,12 @@ function assertSafePage(page, what) {
   for (const [, url] of html.matchAll(/\b(?:src|href|action)\s*=\s*"([^"]*)"/gi)) assert.match(url, /^(?:\/(?!\/)|#[a-z][a-z-]*$)/, `${what} : URL ${url}`);
   assert.doesNotMatch(html, /https?:|\/\//i, what);
   assert.doesNotMatch(html, /<script|<style|\sstyle\s*=/i, what);
-  // Un seul bouton principal par page (plein, bleu ou rouge).
-  assert.equal(html.match(/class="bouton( bouton-danger)?"/g)?.length ?? 0, 1, `${what} : bouton principal unique`);
+  // Un seul bouton principal par page (plein, bleu ou rouge). Le panneau <dialog> de la fiche
+  // (étape U3, fermé tant qu'on ne l'ouvre pas) a le sien : il est compté à part.
+  const dialogs = html.match(/<dialog[\s\S]*?<\/dialog>/g) ?? [];
+  const outside = html.replace(/<dialog[\s\S]*?<\/dialog>/g, '');
+  assert.equal(outside.match(/class="bouton( bouton-danger)?"/g)?.length ?? 0, 1, `${what} : bouton principal unique`);
+  for (const dialog of dialogs) assert.equal(dialog.match(/class="bouton( bouton-danger)?"/g)?.length ?? 0, 1, `${what} : bouton principal unique du panneau`);
 }
 
 const nameInputs = (html, name) => html.match(new RegExp(`name="${name}"`, 'g'))?.length ?? 0;
@@ -241,10 +245,12 @@ test('liste et fiche : bouton principal « Nouvelle fiche » ; fiche : Corriger 
   assert.ok(list.body.includes('<button class="bouton bouton-secondaire" type="submit">Rechercher</button>'));
   const sheet = await page('/items/1');
   // Étape U1 (maquette B) : la correction d'emplacement devient l'action principale de la fiche.
-  assert.ok(sheet.body.includes('<a class="bouton" href="/items/1/location"><svg class="ic" aria-hidden="true"><use href="#i-deplace"></use></svg>Corriger l\'emplacement</a>'));
+  // Étape U3 : data-dialogue (app.js ouvre le panneau) ; sans script, le lien mène à la page de correction.
+  assert.ok(sheet.body.includes('<a class="bouton" href="/items/1/location" data-dialogue="corriger"><svg class="ic" aria-hidden="true"><use href="#i-deplace"></use></svg>Corriger l\'emplacement</a>'));
   assert.ok(sheet.body.includes('<a class="bouton bouton-secondaire" href="/items/1/edit"><svg class="ic" aria-hidden="true"><use href="#i-modifier"></use></svg>Modifier la fiche</a>'));
-  assert.ok(sheet.body.includes('<a class="lien-danger" href="/items/1/delete"><svg class="ic" aria-hidden="true"><use href="#i-supprimer"></use></svg>Supprimer</a>'));
-  assert.ok(sheet.body.includes('Aucune modification enregistrée.'));
+  // Étape U3 : « Supprimer la fiche… » dans le menu « … » (<details>, sans script).
+  assert.ok(sheet.body.includes('<a class="menu-item menu-item-danger" href="/items/1/delete"><svg class="ic" aria-hidden="true"><use href="#i-supprimer"></use></svg>Supprimer la fiche…</a>'));
+  assert.ok(sheet.body.includes('Aucune modification depuis la création de la fiche.'));
 });
 
 test('formulaire de création : champs nom, notes, 3 lignes de propriétés, jeton CSRF, limites indiquées', async () => {
@@ -287,8 +293,9 @@ test('création : 303 vers la fiche avec ?ok=cree, une ligne d\'audit item.creat
   assert.equal(sheet.status, 200);
   assert.ok(sheet.body.includes('<p class="succes" role="status">Fiche créée.</p>'));
   assert.ok(sheet.body.includes('<p class="notes">Salle 2\nArmoire B</p>'));
-  assert.ok(sheet.body.includes('<h2 id="titre-modifications" class="carte-titre"><svg class="ic" aria-hidden="true"><use href="#i-modifier"></use></svg>Historique des modifications</h2>'));
-  assert.match(sheet.body, /<p class="frise-lieu">Fiche créée<\/p>\n<p class="frise-detail">par alice<\/p>/);
+  // Étape U3 : la création est en bas de la frise des déplacements.
+  assert.ok(sheet.body.includes('<h2 id="titre-historique" class="carte-titre"><svg class="ic" aria-hidden="true"><use href="#i-historique"></use></svg>Historique des déplacements</h2>'));
+  assert.ok(sheet.body.includes('<p class="frise-lieu">Fiche créée par alice</p>'));
   assertSafePage(sheet.body, 'fiche créée');
   assert.ok(logs.includes(`fiche ${id} créée par alice`));
 });
@@ -484,7 +491,8 @@ test('modification : formulaire prérempli ; envoi → 303 ?ok=modifie, audit av
   assert.equal(row.created_at, NOW);
   const sheet = await page('/items/1?ok=modifie');
   assert.ok(sheet.body.includes('<p class="succes" role="status">Modifications enregistrées.</p>'));
-  assert.ok(sheet.body.includes('<p class="frise-lieu">Fiche modifiée : nom, propriétés</p>'));
+  // Étape U3 : carte « Modifications de la fiche », en langage simple.
+  assert.ok(sheet.body.includes('<p class="modification-quoi">Nom modifié · Propriété «\u00A0Série\u00A0» ajoutée</p>'));
 });
 
 test('modification sans changement : 303 ?ok=inchange, aucune ligne d\'audit, updated_at inchangé', async () => {
@@ -540,7 +548,7 @@ test('correction : postes triés par nom ; poste inexistant, vide ou forgé → 
 
 test('correction : 303 ?ok=corrige, localisation changée (liste et fiche, « correction manuelle par alice ») ; un scan ultérieur reprend la main', async () => {
   assert.equal(scan(1, UID).ok, true);
-  assert.ok((await page('/items/1')).body.includes('· scanné</p>'));
+  assert.ok((await page('/items/1')).body.includes('<span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>Scanné <time '));
 
   const auditBefore = count('audit_log');
   const res = await post('/items/1/location', { station: '3' });
@@ -554,8 +562,9 @@ test('correction : 303 ?ok=corrige, localisation changée (liste et fiche, « co
   const sheet = await page(res.headers.location);
   assert.ok(sheet.body.includes('<p class="succes" role="status">Emplacement corrigé : étuve</p>'));
   assert.ok(sheet.body.includes('<span class="etat etat-poste">étuve</span>'));
-  assert.match(sheet.body, /<p class="localisation-detail"><time [^>]*>depuis moins d&#39;une minute<\/time> — aujourd&#39;hui à \d\d:\d\d · correction manuelle par alice<\/p>/);
-  assert.ok(sheet.body.includes('<p class="frise-lieu">Emplacement corrigé : étuve</p>'));
+  assert.match(sheet.body, /<p class="localisation-detail"><span><time [^>]*>à l&#39;instant<\/time> · aujourd&#39;hui à \d\d:\d\d<\/span><span class="badge badge--main"><svg[^>]*><use href="#i-main"><\/use><\/svg>Corrigé à la main par alice<\/span><\/p>/);
+  // Étape U3 : la correction est en tête de la frise, mise en évidence (classe « nouveau »).
+  assert.match(sheet.body, /<li class="frise-etape frise-etape--actuel frise-etape--main nouveau">[\s\S]*?<p class="frise-lieu"><a class="lien-simple lien-discret" href="\/stations\/3">étuve<\/a><\/p>\n<p class="frise-detail"><svg[^>]*><use href="#i-main"><\/use><\/svg><span><strong>Corrigé à la main<\/strong> par alice<\/span>/);
   const list = await page('/');
   assert.match(list.body, /href="\/items\/1">Multimètre Fluke 87V<\/a>[\s\S]*?<span class="etat etat-poste">étuve<\/span>/);
 
@@ -563,7 +572,7 @@ test('correction : 303 ?ok=corrige, localisation changée (liste et fiche, « co
   assert.equal(scan(2, UID).ok, true);
   const after = await page('/items/1');
   assert.ok(after.body.includes('<a class="lien-etat" href="/readers/2"><span class="etat etat-inconnue">lecteur non affecté</span></a>'));
-  assert.ok(after.body.includes('· scanné</p>'));
+  assert.ok(after.body.includes('<span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>Scanné <time '));
 });
 
 // ---------------------------------------------------------------- messages de confirmation

@@ -6,8 +6,11 @@
 //   1. la palette de recherche « Où est… ? », ouverte par Ctrl K (Cmd K sur Mac), par « / »
 //      hors d'un champ de saisie, ou par la recherche compacte de la barre supérieure ; les
 //      résultats s'affichent pendant la frappe, le premier avec son emplacement en grand ;
-//   2. le filtre pendant la frappe du champ de recherche de la page Inventaire.
-// Les deux interrogent GET /api/recherche (server/web.js, searchApi), sur ce même serveur.
+//   2. le filtre pendant la frappe du champ de recherche de la page Inventaire ;
+//   3. sur la fiche d'un objet (étape U3) : le panneau « Corriger l'emplacement » (<dialog>
+//      déjà présent dans la page, même formulaire POST que la page de correction) et la
+//      fermeture du menu « … » au clic ailleurs ou sur Échap.
+// Les deux premiers interrogent GET /api/recherche (server/web.js, searchApi), sur ce même serveur.
 //
 // SÉCURITÉ (à l'attention de l'auditeur) :
 //   - chargé par <script src="/static/app.js" defer> : aucun script en ligne, aucun attribut
@@ -302,7 +305,7 @@
         main.append(name);
         if (found) main.append(found);
         const place = el('p', 'palette-lieu palette-lieu--grand');
-        place.append(el('span', 'visuellement-cache', 'Emplacement actuel : '), placeBadge(result.emplacement));
+        place.append(placeBadge(result.emplacement)); // l'étiquette visible juste au-dessus suffit (pas de doublon lu)
         main.append(el('p', 'etiquette palette-etiquette', 'Emplacement actuel'), place, sinceLine(result.arrivee, true));
         const open = el('span', 'palette-ouvrir', 'Ouvrir la fiche');
         open.setAttribute('aria-hidden', 'true');
@@ -699,5 +702,50 @@
       });
     });
     keyBlock.after(copy, done);
+  }
+
+  // ------------------------------------------------------------ fiche d'un objet (étape U3)
+
+  // « Corriger l'emplacement » : sans script, le lien mène à la page de correction ; avec lui,
+  // il ouvre le panneau <dialog> déjà présent dans la page (même formulaire POST, jeton CSRF
+  // compris). L'enregistrement recharge la fiche par la redirection habituelle du serveur, qui
+  // met la nouvelle étape de la frise en évidence. Échap ferme le panneau (natif), comme
+  // « Annuler », la croix et un clic sur le fond.
+  for (const opener of document.querySelectorAll('a[data-dialogue]')) {
+    const dialog = document.getElementById(`dialogue-${opener.dataset.dialogue}`);
+    if (!dialog || typeof dialog.showModal !== 'function') continue;
+    opener.setAttribute('aria-haspopup', 'dialog');
+    opener.addEventListener('click', (event) => {
+      event.preventDefault();
+      dialog.showModal();
+      const first = dialog.querySelector('input[type="radio"], select');
+      if (first) first.focus();
+    });
+    for (const closer of dialog.querySelectorAll('[data-fermer]')) closer.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) dialog.close(); // clic sur le fond, hors de la boîte
+    });
+  }
+
+  // Menu « … » (<details>) : refermé au clic ailleurs et sur Échap (le focus revient au bouton).
+  const menus = [...document.querySelectorAll('details.menu')];
+  if (menus.length > 0) {
+    document.addEventListener('click', (event) => {
+      for (const menu of menus) if (menu.open && !menu.contains(event.target)) menu.open = false;
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      for (const menu of menus) {
+        if (!menu.open) continue;
+        menu.open = false;
+        menu.querySelector('summary').focus();
+      }
+    });
+  }
+
+  // Après une action (?ok=… : message de confirmation, étape mise en évidence), l'adresse est
+  // ramenée à celle de la fiche : recharger la page ne rejoue ni le message ni la mise en évidence.
+  if (/^\/items\/[1-9][0-9]*$/.test(window.location.pathname) && new URLSearchParams(window.location.search).has('ok')) {
+    window.history.replaceState(null, '', window.location.pathname);
   }
 })();

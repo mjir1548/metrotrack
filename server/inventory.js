@@ -1,9 +1,8 @@
-// Inventaire en lecture : liste avec recherche, fiche d'un objet, derniers scans de sa puce.
+// Inventaire en lecture : liste avec recherche, fiche d'un objet (sa frise : server/timeline.js).
 // La localisation n'est jamais stockée : elle est lue dans la vue item_locations (D-006).
 // Toutes les requêtes sont paramétrées : aucune donnée n'est concaténée dans le SQL.
 
 export const MAX_QUERY_CHARS = 100;
-export const RECENT_SCANS = 20;
 // Nombre maximal de scans examinés par objet pour trouver son heure d'arrivée (withLocations).
 // Borne le coût d'un affichage quelle que soit la longueur de la série au même endroit : au
 // pire environ 2 × 2 000 entrées d'index par objet concerné (moins d'1 ms). 2 000 scans
@@ -456,20 +455,4 @@ export function getItem(db, id) {
 export function propertyPairs(json) {
   return Object.entries(JSON.parse(json))
     .map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]);
-}
-
-/**
- * Derniers scans d'une puce, du plus récent au plus ancien (index scans_by_uid).
- * reader_name : nom ACTUEL du lecteur (D-019, '' si sans nom), lu par clé primaire.
- */
-export function recentScans(db, uid, limit = RECENT_SCANS) {
-  return db.prepare(
-    `SELECT s.received_at, s.reader_id, r.name AS reader_name, s.station_id, st.name AS station_name
-       FROM scans s
-       JOIN readers r ON r.id = s.reader_id
-       LEFT JOIN stations st ON st.id = s.station_id
-      WHERE s.uid_nfc = ?
-      ORDER BY s.received_at DESC, s.id DESC
-      LIMIT ?`
-  ).all(uid, limit);
 }

@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { openDb } from '../server/db.js';
 import { getItem, listItems } from '../server/inventory.js';
-import { itemHistory } from '../server/items.js';
+import { itemChanges } from '../server/items.js';
 
 const MIGRATIONS = join(import.meta.dirname, '..', 'server', 'migrations');
 const NOW = '2026-11-17T10:00:00.000Z';
@@ -357,7 +357,7 @@ test('plans : fiche et liste lisent scans et corrections par leurs index, sans p
     // ne parcourt jamais les scans ni les corrections.
     assert.ok(!listPlan.some((d) => FULL_SCAN.test(d)), listPlan.join('\n'));
 
-    const [historyPlan] = plansOf(db, (spy) => itemHistory(spy, 1));
+    const [historyPlan] = plansOf(db, (spy) => itemChanges(spy, 1));
     assert.ok(historyPlan.some((d) => /INDEX audit_by_entity/.test(d)), historyPlan.join('\n'));
     assert.ok(!historyPlan.some((d) => FULL_SCAN.test(d)), historyPlan.join('\n'));
   } finally {

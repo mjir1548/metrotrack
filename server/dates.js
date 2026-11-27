@@ -108,3 +108,20 @@ export function formatDay(iso, now, timeZone = undefined) {
   if (sameDay(day, previousDay(today))) return `hier à ${time}`;
   return formatDateTime(iso, timeZone);
 }
+
+/**
+ * Jour et heure séparés, pour la colonne de gauche de la frise d'un objet (étape U3) :
+ * {day: « Aujourd'hui » | « Hier » | « 12 nov. 2026 », time: « 16:06 »}.
+ * Horodatage illisible : {day: « Date inconnue », time: ''}.
+ */
+export function formatDayParts(iso, now, timeZone = undefined) {
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) return { day: 'Date inconnue', time: '' };
+  const f = formatters(timeZone);
+  const day = calendarDay(at, timeZone);
+  const today = calendarDay(now, timeZone);
+  let label = f.date.format(at);
+  if (sameDay(day, today)) label = 'Aujourd\'hui';
+  else if (sameDay(day, previousDay(today))) label = 'Hier';
+  return { day: label, time: f.time.format(at) };
+}

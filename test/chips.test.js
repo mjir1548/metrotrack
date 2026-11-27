@@ -15,7 +15,7 @@ import { openDb } from '../server/db.js';
 import { getItem, parseUid } from '../server/inventory.js';
 import { ingestFrame } from '../server/ingest.js';
 import { encodeFrame } from '../server/protocol.js';
-import { createItem, correctLocation, itemHistory, auditLabel, validateItemInput } from '../server/items.js';
+import { createItem, correctLocation, itemChanges, changeLabels, validateItemInput } from '../server/items.js';
 import {
   listUnknownChips, getChip, chipPreviousOwner, createItemForChip, associateChip, MAX_UNKNOWN_CHIPS,
 } from '../server/chips.js';
@@ -138,7 +138,8 @@ test('créer une fiche depuis une puce : localisée immédiatement au poste du s
     at: T2, user_id: alice, action: 'item.create', entity_id: id,
     details: { name: 'Étuve', properties: { Marque: 'Memmert' }, notes: 'n', uid: NEW },
   });
-  assert.deepEqual(itemHistory(db, id).map((h) => h.label), [['Fiche créée avec la puce ', { uid: NEW }]]);
+  // La création figure dans la frise des déplacements (timeline.js), pas dans les modifications.
+  assert.deepEqual(itemChanges(db, id), []);
   assert.equal(scansDump(), scans, 'journal des scans inchangé');
 });
 
@@ -171,7 +172,7 @@ test('associer à une fiche sans puce : même résultat que la création (locali
     at: T2, user_id: alice, action: 'item.chip_associate', entity_id: 2,
     details: { uid: NEW, previous_uid: null, name: 'Oscilloscope' },
   });
-  assert.deepEqual(itemHistory(db, 2).map((h) => h.label), [['Puce associée : ', { uid: NEW }]]);
+  assert.deepEqual(itemChanges(db, 2).map((h) => h.labels), [[['Puce associée : ', { uid: NEW }]]]);
   assert.equal(scansDump(), scans);
 });
 
@@ -184,7 +185,7 @@ test('remplacer la puce d\'une fiche : ancienne puce détachée, tracée (previo
 
   assert.deepEqual(associateChip(db, alice, NEW, 1, KNOWN, T3), { id: 1, previousUid: KNOWN });
   assert.deepEqual(auditRows().at(-1).details, { uid: NEW, previous_uid: KNOWN, name: 'Multimètre' });
-  assert.deepEqual(itemHistory(db, 1).map((h) => h.label), [['Puce associée : ', { uid: NEW }, ' (remplace ', { uid: KNOWN }, ')']]);
+  assert.deepEqual(itemChanges(db, 1).map((h) => h.labels), [[['Puce remplacée : ', { uid: NEW }, ' (remplace ', { uid: KNOWN }, ')']]]);
   // La fiche est localisée par la nouvelle puce ; l'ancienne est redevenue inconnue.
   assert.deepEqual(location(1), { station_id: 2, at: T2, source: 'scan', reader_id: 2 });
   assert.deepEqual(listUnknownChips(db).chips, [
@@ -327,16 +328,15 @@ test('ancien propriétaire : détails d\'audit inattendus (nom absent, valeur no
 
 // ---------------------------------------------------------------- libellés
 
-test('auditLabel : association et création avec puce ; valeurs hors format jamais affichées', () => {
-  assert.deepEqual(auditLabel('item.chip_associate', JSON.stringify({ uid: NEW, previous_uid: null })), ['Puce associée : ', { uid: NEW }]);
-  assert.deepEqual(auditLabel('item.chip_associate', JSON.stringify({ uid: NEW, previous_uid: KNOWN })), ['Puce associée : ', { uid: NEW }, ' (remplace ', { uid: KNOWN }, ')']);
-  assert.equal(auditLabel('item.chip_associate', '{}'), 'Puce associée');
-  assert.equal(auditLabel('item.chip_associate', 'pas du json'), 'Puce associée');
-  assert.equal(auditLabel('item.chip_associate', JSON.stringify({ uid: '<b>x</b>', previous_uid: 5 })), 'Puce associée');
-  assert.deepEqual(auditLabel('item.chip_associate', JSON.stringify({ uid: NEW, previous_uid: 'texte' })), ['Puce associée : ', { uid: NEW }]);
-  assert.deepEqual(auditLabel('item.create', JSON.stringify({ uid: NEW })), ['Fiche créée avec la puce ', { uid: NEW }]);
-  assert.equal(auditLabel('item.create', JSON.stringify({ uid: 'abc' })), 'Fiche créée');
-  assert.equal(auditLabel('item.create', '{}'), 'Fiche créée');
+test('changeLabels : association, remplacement et retrait de puce ; valeurs hors format jamais affichées', () => {
+  assert.deepEqual(changeLabels('item.chip_associate', JSON.stringify({ uid: NEW, previous_uid: null })), [['Puce associée : ', { uid: NEW }]]);
+  assert.deepEqual(changeLabels('item.chip_associate', JSON.stringify({ uid: NEW, previous_uid: KNOWN })), [['Puce remplacée : ', { uid: NEW }, ' (remplace ', { uid: KNOWN }, ')']]);
+  assert.deepEqual(changeLabels('item.chip_associate', '{}'), ['Puce associée']);
+  assert.deepEqual(changeLabels('item.chip_associate', 'pas du json'), ['Puce associée']);
+  assert.deepEqual(changeLabels('item.chip_associate', JSON.stringify({ uid: '<b>x</b>', previous_uid: 5 })), ['Puce associée']);
+  assert.deepEqual(changeLabels('item.chip_associate', JSON.stringify({ uid: NEW, previous_uid: 'texte' })), [['Puce associée : ', { uid: NEW }]]);
+  assert.deepEqual(changeLabels('item.chip_detach', JSON.stringify({ previous_uid: KNOWN })), [['Puce retirée : ', { uid: KNOWN }]]);
+  assert.deepEqual(changeLabels('item.chip_detach', JSON.stringify({ previous_uid: '<i>' })), ['Puce retirée']);
 });
 
 // ---------------------------------------------------------------- plan de requête

@@ -87,11 +87,11 @@ const ids = (html) => rows(html).map((r) => r.id);
 const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<\/details>/, '');
 
 // Balises autorisées dans les pages : toute autre balise (script, img, i, b...) serait une injection.
-const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
+const ALLOWED_TAGS = new Set(['small', 'dialog', 'fieldset', 'legend', 'select', 'option', 'html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
   'ul', 'li', 'details', 'summary',
   'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g', 'kbd']); // ul, li, details, summary : aide « Comment ça marche ? »
-const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form', 'h1', 'h2', 'main',
+const PAIRED_TAGS = ['small', 'dialog', 'fieldset', 'legend', 'div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form', 'h1', 'h2', 'main',
   'ul', 'li', 'details', 'summary', 'ol', 'svg', 'symbol', 'use', 'kbd'];
 
 /** HTML bien formé au sens utile ici : seulement des balises attendues, ouvrantes et fermantes équilibrées, aucun gestionnaire d'événement. */
@@ -175,8 +175,9 @@ test('objet jamais scanné : « jamais localisé » (style atténué) dans la li
   assert.ok(rowOf(list.body, 3).includes('<span class="etat etat-jamais">jamais localisé</span>'), 'objet sans puce');
   const sheet = await page('/items/5');
   assert.ok(sheet.body.includes('<span class="etat etat-jamais">jamais localisé</span>'));
-  assert.ok(sheet.body.includes('Cette puce n&#39;a encore été scannée sur aucun poste.'));
-  assert.ok(sheet.body.includes('Aucun scan pour cette puce.'));
+  assert.ok(sheet.body.includes('Cette puce n\'a encore été scannée sur aucun poste.'));
+  // Étape U3 : frise sans déplacement, avec une phrase utile.
+  assert.ok(sheet.body.includes('Aucun déplacement pour l&#39;instant : la puce n&#39;a encore été scannée sur aucun lecteur.'));
 });
 
 test('après un scan accepté (POST /api/frames), la nouvelle localisation apparaît au rechargement de la liste et de la fiche', async () => {
@@ -194,19 +195,19 @@ test('après un scan accepté (POST /api/frames), la nouvelle localisation appar
   assert.equal(sheet.status, 200);
   assertWebHeaders(sheet, 'fiche');
   assert.ok(sheet.body.includes('<span class="etat etat-poste">Poste 1</span>'));
-  assert.ok(sheet.body.includes('· scanné</p>'));
-  assert.ok(sheet.body.includes('<p class="frise-lieu">Poste 1</p>'));
+  assert.ok(sheet.body.includes('<span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>Scanné <time '));
+  assert.ok(sheet.body.includes('<p class="frise-lieu"><a class="lien-simple lien-discret" href="/stations/1">Poste 1</a></p>'));
 
   // Second scan, ailleurs (via ingestFrame) : la localisation suit le dernier scan.
   assert.equal(scan(3, '04A1B2C3D4E5F6').ok, true);
   const moved = await page('/');
   assert.ok(rowOf(moved.body, 1).includes('<span class="etat etat-poste">Atelier &lt;b&gt;&quot;A&quot;&lt;/b&gt; &amp; Cie</span>'));
   const movedSheet = await page('/items/1');
-  assert.ok(movedSheet.body.includes('· scanné</p>'));
+  assert.ok(movedSheet.body.includes('<span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>Scanné <time '));
   // Historique : le plus récent d'abord.
   const history = /<ol class="frise">([\s\S]*?)<\/ol>/.exec(movedSheet.body)[1];
-  assert.deepEqual([...history.matchAll(/<p class="frise-lieu">([\s\S]*?)<\/p>/g)].map((m) => m[1]),
-    ['Atelier &lt;b&gt;&quot;A&quot;&lt;/b&gt; &amp; Cie', 'Poste 1']);
+  assert.deepEqual([...history.matchAll(/<p class="frise-lieu">([\s\S]*?)<\/p>/g)].map((m) => m[1].replace(/<[^>]+>/g, '')),
+    ['Atelier &lt;b&gt;&quot;A&quot;&lt;/b&gt; &amp; Cie', 'Poste 1', 'Fiche créée']); // étape U3 : création en bas (fiche insérée sans audit)
   assertWellFormed(moved.body, 'liste après déplacement');
   assertWellFormed(movedSheet.body, 'fiche après déplacement');
 });
@@ -217,7 +218,7 @@ test('scan sur un lecteur non affecté : « lecteur non affecté » dans la list
   assert.ok(rowOf(list.body, 6).includes('<a class="lien-etat" href="/readers/7"><span class="etat etat-inconnue">lecteur non affecté</span></a>'));
   const sheet = await page('/items/6');
   assert.ok(sheet.body.includes('<a class="lien-etat" href="/readers/7"><span class="etat etat-inconnue">lecteur non affecté</span></a>'));
-  assert.ok(sheet.body.includes('<p class="frise-lieu"><a class="lien-simple" href="/readers/7">Lecteur non affecté</a></p>'));
+  assert.ok(sheet.body.includes('<p class="frise-lieu"><a class="lien-simple lien-discret" href="/readers/7">Lecteur non affecté</a></p>'));
 });
 
 // ---------------------------------------------------------------- échappement
@@ -334,23 +335,26 @@ test('fiche : UID groupé en chasse fixe, propriétés en <dl>, dates, fil d\'Ar
   assert.ok(sheet.body.includes('<span class="uid">04 A1 B2 C3 D4 E5 F6</span>'));
   assert.ok(sheet.body.includes('<dl class="proprietes">\n<div><dt>Marque</dt><dd>Fluke</dd></div>'));
   assert.ok(sheet.body.includes('<nav class="fil" aria-label="Fil d\'Ariane">\n<a href="/">Inventaire</a>'));
-  assert.match(sheet.body, /<dt>Créée<\/dt><dd>17 nov\. 2026 à \d\d:\d\d<\/dd>/);
-  assert.match(sheet.body, /<dt>Modifiée<\/dt><dd>17 nov\. 2026 à \d\d:\d\d<\/dd>/);
+  // Étape U3 : carte « Identification » avec le seul numéro de puce ; la création est dans la frise.
+  assert.ok(sheet.body.includes('<p class="numero-puce"><span class="etiquette">Numéro de puce</span><span class="numero-puce-droite"><span class="uid">04 A1 B2 C3 D4 E5 F6</span> <a class="lien-simple" href="/items/1/puce">Changer</a></span></p>'));
+  assert.match(sheet.body, /<li class="frise-etape frise-etape--creation">\n<p class="frise-quand"><time datetime="2026-11-17T/);
   assert.ok(sheet.body.includes('<li><a href="/" aria-current="true">Inventaire</a></li>'), 'Inventaire courant (sous-page : aria-current="true")');
 
   const noChip = await page('/items/3');
   assert.equal(noChip.status, 200);
-  assert.ok(noChip.body.includes('<span class="texte-doux">aucune puce associée</span>'));
+  assert.ok(noChip.body.includes('<p class="texte-doux">Aucune puce. <a class="lien-simple" href="/items/3/puce">Donner une puce</a></p>'));
   assert.ok(noChip.body.includes('Aucune propriété'));
   assert.ok(noChip.body.includes('Aucune note'));
-  assert.ok(noChip.body.includes('Aucune puce associée : l&#39;objet ne peut pas être localisé par un scan.'));
+  assert.ok(noChip.body.includes('Aucune puce : l\'objet ne peut pas être localisé par un scan.'));
 });
 
-test('fiche : 20 derniers scans au plus', async () => {
+test('fiche : 25 scans de suite au même poste = un seul déplacement « rescanné 24 fois », puis la création', async () => {
   for (let i = 0; i < 25; i++) assert.equal(scan(1, '04112233445566').ok, true);
   const sheet = await page('/items/5');
   const history = /<ol class="frise">([\s\S]*?)<\/ol>/.exec(sheet.body)[1];
-  assert.equal(history.match(/<li class="frise-etape/g).length, 20);
+  assert.equal(history.match(/<li class="frise-etape/g).length, 2);
+  assert.match(history, /<p class="frise-suite">25 scans ici · le dernier <time /);
+  assert.ok(history.includes('frise-etape--creation'));
 });
 
 test('fiches invalides ou inexistantes : 404 propre dans le gabarit, sans plantage', async () => {

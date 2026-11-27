@@ -196,15 +196,16 @@ test('affichage : « Depuis » de la liste et de la fiche du poste = arrivée ; 
   const item = getItem(db, 1n);
   const sheet = itemPage(user, { item, scans: [], history: [], now }).toString();
   // Étape U2 : « depuis … » (et l'heure exacte en clair à côté), plus de numéro de lecteur affiché.
-  assert.match(sheet, new RegExp(`<p class="localisation-detail"><time datetime="${at(2 * DAY)}"[^>]*>depuis [^<]*</time>(?: — [^<·]*)? · dernier scan <time datetime="${at(3 * DAY)}"[^>]*>il y a 1 min</time></p>`));
+  // Étape U3 : « depuis … · jour » dans un <span>, puis UN badge avec l'heure du dernier scan.
+  assert.match(sheet, new RegExp(`<p class="localisation-detail"><span><time datetime="${at(2 * DAY)}"[^>]*>depuis [^<]*</time>(?: · [^<]*)?</span><span class="badge badge--ok"><svg[^>]*><use href="#i-lecteur"></use></svg>Scanné <time datetime="${at(3 * DAY)}"[^>]*>il y a 1 min</time></span></p>`));
   // Arrivée = dernier événement : ligne sans second horodatage (« depuis <heure> — <jour> · scanné »).
   scan(A, 3 * DAY + 1);
   const moved = itemPage(user, { item: getItem(db, 1n), scans: [], history: [], now }).toString();
-  assert.match(moved, new RegExp(`<p class="localisation-detail"><time datetime="${at(3 * DAY + 1)}"[^>]*>depuis moins d&#39;une minute</time>(?: — [^<·]*)? · scanné</p>`));
+  assert.match(moved, new RegExp(`<p class="localisation-detail"><span><time datetime="${at(3 * DAY + 1)}"[^>]*>à l&#39;instant</time>(?: · [^<]*)?</span><span class="badge badge--ok"><svg[^>]*><use href="#i-lecteur"></use></svg>Scanné <time [^>]*>à l&#39;instant</time></span></p>`));
   // Correction manuelle au même poste après des scans : arrivée au premier scan, puis la correction.
   correction(A, 3 * DAY + 1);
   const corrected = itemPage(user, { item: getItem(db, 1n), scans: [], history: [], now }).toString();
-  assert.match(corrected, /<p class="localisation-detail"><time [^>]*>depuis moins d&#39;une minute<\/time>(?: — [^<·]*)? · correction manuelle par alice<\/p>/);
+  assert.match(corrected, /<p class="localisation-detail"><span><time [^>]*>à l&#39;instant<\/time>(?: · [^<]*)?<\/span><span class="badge badge--main">[\s\S]*?Corrigé à la main par alice<\/span><\/p>/);
 });
 
 // ---------------------------------------------------------------- référence par force brute

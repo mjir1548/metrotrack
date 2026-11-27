@@ -31,6 +31,9 @@ const SYMBOLS = {
   reglages: html`<symbol id="i-reglages" ${S}><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></symbol>`,
   note: html`<symbol id="i-note" ${S}><path d="M6.5 3.5h8l4 4v13h-12z"></path><path d="M14.5 3.5v4h4"></path><path d="M9.5 12.5h5M9.5 16h5"></path></symbol>`,
   supprimer: html`<symbol id="i-supprimer" ${S}><path d="M4.5 7h15"></path><path d="M9.5 7V5a1.5 1.5 0 011.5-1.5h2A1.5 1.5 0 0114.5 5v2"></path><path d="M6.5 7l.8 11.6a2 2 0 002 1.9h5.4a2 2 0 002-1.9L17.5 7"></path><path d="M10 11v5.5M14 11v5.5"></path></symbol>`,
+  main: html`<symbol id="i-main" ${S}><path d="M8 12.5V6.8a1.5 1.5 0 013 0V11"></path><path d="M11 10.5V5.3a1.5 1.5 0 013 0v5.2"></path><path d="M14 10.5V7a1.5 1.5 0 013 0v6.5a6.5 6.5 0 01-6.5 6.5h-.4a6 6 0 01-4.8-2.4L3.6 14.6a1.5 1.5 0 012.2-2L8 14.5"></path></symbol>`,
+  options: html`<symbol id="i-options" ${S}><circle cx="6" cy="12" r="1.2"></circle><circle cx="12" cy="12" r="1.2"></circle><circle cx="18" cy="12" r="1.2"></circle></symbol>`,
+  fermer: html`<symbol id="i-fermer" ${S}><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></symbol>`,
   associer: html`<symbol id="i-associer" ${S}><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"></path></symbol>`,
 };
 

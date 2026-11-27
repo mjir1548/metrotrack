@@ -5,8 +5,9 @@ import { openDb } from '../server/db.js';
 import { ingestFrame } from '../server/ingest.js';
 import { encodeFrame } from '../server/protocol.js';
 import {
-  parseItemId, normalizeQuery, uidFragment, fold, listItems, getItem, recentScans, MAX_QUERY_CHARS,
+  parseItemId, normalizeQuery, uidFragment, fold, listItems, getItem, MAX_QUERY_CHARS,
 } from '../server/inventory.js';
+import { itemTimeline } from '../server/timeline.js';
 import { inventoryPage, itemPage, loginPage, BUSY_MESSAGE } from '../server/views.js';
 import { withoutAppScript } from './app-script.js';
 
@@ -169,21 +170,23 @@ test('localisation dérivée : jamais localisé, poste, lecteur non affecté ; d
   assert.equal(getItem(db, 999n), null);
   assert.equal(getItem(db, 9999999999999999n), null);
 
-  const scans = recentScans(db, '04A1B2C3D4E5F6');
-  assert.deepEqual(scans.map((s) => [s.reader_id, s.station_name]), [[2, null], [1, 'Poste 1']]);
-  assert.deepEqual(recentScans(db, 'A1B2C3D4'), []);
+  // Frise (étape U3) : un déplacement par emplacement (lecteur non affecté, puis Poste 1).
+  const moves = itemTimeline(db, item).entries.filter((e) => e.type === 'scan');
+  assert.deepEqual(moves.map((s) => [s.reader_id, s.station_name]), [[2, null], [1, 'Poste 1']]);
+  assert.deepEqual(itemTimeline(db, getItem(db, 2n)).entries.map((e) => e.type), ['creation']);
 });
 
-test('recentScans : 20 au plus, du plus récent au plus ancien', () => {
+test('frise : 25 scans au même poste donnent UN déplacement, arrivée au premier, dernier scan au plus récent', () => {
   const uid = Buffer.from('A1B2C3D4', 'hex');
   for (let i = 1; i <= 25; i++) {
     const at = `2026-11-17T11:${String(i).padStart(2, '0')}:00.000Z`;
     assert.equal(ingestFrame(db, encodeFrame({ readerId: 1, counter: 100 + i, uid, key: KEY }), at).ok, true);
   }
-  const scans = recentScans(db, 'A1B2C3D4');
-  assert.equal(scans.length, 20);
-  assert.equal(scans[0].received_at, '2026-11-17T11:25:00.000Z');
-  assert.equal(scans[19].received_at, '2026-11-17T11:06:00.000Z');
+  const [move, creation] = itemTimeline(db, getItem(db, 2n)).entries;
+  assert.equal(move.count, 25);
+  assert.equal(move.arrived_at, '2026-11-17T11:01:00.000Z');
+  assert.equal(move.last_at, '2026-11-17T11:25:00.000Z');
+  assert.equal(creation.type, 'creation');
 });
 
 // ---------------------------------------------------------------- pages (sans serveur)
@@ -210,8 +213,9 @@ test('inventoryPage : aucun résultat de recherche, saisie réaffichée échapp�
 
 test('itemPage : objet sans puce, sans propriété ni note', () => {
   const item = { ...getItem(db, 3n) };
-  const page = String(itemPage(USER, { item, scans: [], now: Date.now() }));
-  assert.ok(page.includes('aucune puce associée'));
+  const page = String(itemPage(USER, { item, now: Date.now() }));
+  assert.ok(page.includes('Aucune puce : l\'objet ne peut pas être localisé par un scan.'));
+  assert.ok(page.includes('href="/items/3/puce"')); // étape U3 : « Donner une puce »
   assert.ok(page.includes('Aucune propriété'));
   assert.ok(page.includes('Aucune note'));
   assert.ok(page.includes('jamais localisé'));

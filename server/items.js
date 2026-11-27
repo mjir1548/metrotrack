@@ -20,7 +20,7 @@ export const MAX_NOTES_CHARS = 10_000; //        notes multilignes
 export const MAX_PROPERTIES = 50; //             paires clé → valeur par fiche
 export const MAX_PROPERTY_KEY_CHARS = 100; //    clé : de 1 à 100 caractères
 export const MAX_PROPERTY_VALUE_CHARS = 1_000; // valeur : 0 à 1 000 caractères
-// Nombre de lignes de l'historique des modifications affiché sur une fiche.
+// Nombre de lignes de la carte « Modifications de la fiche » (itemChanges).
 export const HISTORY_ENTRIES = 20;
 
 export const ACTIONS = {
@@ -29,6 +29,7 @@ export const ACTIONS = {
   delete: 'item.delete',
   correctLocation: 'item.location_correct',
   chipAssociate: 'item.chip_associate', // étape 7, server/chips.js
+  chipDetach: 'item.chip_detach', // étape U3, server/chips.js
 };
 
 // Notes : exactement CONTROL_CHARS (inventory.js, voir la liste commentée), sauf le retour à
@@ -257,13 +258,23 @@ export function deleteItem(db, userId, id, now = new Date().toISOString()) {
 export function correctLocation(db, userId, itemId, stationId, now = new Date().toISOString()) {
   return inTransaction(db, () => {
     if (!db.prepare('SELECT 1 FROM items WHERE id = ?').get(itemId)) return 'no_item';
-    const station = stationId === null ? undefined : db.prepare('SELECT id, name FROM stations WHERE id = ?').get(stationId);
-    if (!station) return 'no_station';
-    db.prepare('INSERT INTO location_corrections (item_id, station_id, user_id, created_at) VALUES (?, ?, ?, ?)')
-      .run(itemId, station.id, userId, now);
-    audit(db, { at: now, userId, action: ACTIONS.correctLocation, entityId: itemId, details: { station: { id: station.id, name: station.name } } });
-    return 'ok';
+    return insertCorrection(db, userId, itemId, stationId, now) ? 'ok' : 'no_station';
   });
+}
+
+/**
+ * Enregistre une correction et sa ligne d'audit, SANS ouvrir de transaction : à appeler dans
+ * inTransaction (correctLocation ci-dessus ; retrait de puce qui garde l'emplacement,
+ * server/chips.js). La fiche doit exister (vérifié par l'appelant).
+ * @returns {boolean} faux si le poste n'existe pas (rien n'est écrit)
+ */
+export function insertCorrection(db, userId, itemId, stationId, now) {
+  const station = stationId === null ? undefined : db.prepare('SELECT id, name FROM stations WHERE id = ?').get(stationId);
+  if (!station) return false;
+  db.prepare('INSERT INTO location_corrections (item_id, station_id, user_id, created_at) VALUES (?, ?, ?, ?)')
+    .run(itemId, station.id, userId, now);
+  audit(db, { at: now, userId, action: ACTIONS.correctLocation, entityId: itemId, details: { station: { id: station.id, name: station.name } } });
+  return true;
 }
 
 /** Postes existants, triés par nom (ordre alphabétique français, comme l'inventaire). */
@@ -273,62 +284,93 @@ export function listStations(db) {
 }
 
 /**
- * Dernières modifications d'une fiche, de la plus récente à la plus ancienne :
- * [{at, username (null = ligne de commande), label}] (label : voir auditLabel).
+ * Modifications d'une fiche autres que l'emplacement (carte « Modifications de la fiche »), de
+ * la plus récente à la plus ancienne : [{at, username (null = ligne de commande), labels}]
+ * (labels : voir changeLabels). Les corrections d'emplacement et la création sont dans la frise
+ * des déplacements (server/timeline.js) ; la suppression n'a pas de fiche où s'afficher.
  * Un numéro de fiche n'est jamais réutilisé (items en AUTOINCREMENT, migration 004) : toutes
  * les lignes item.* de ce numéro appartiennent à cette fiche. Lecture par l'index audit_by_entity.
  */
-export function itemHistory(db, itemId, limit = HISTORY_ENTRIES) {
+export function itemChanges(db, itemId, limit = HISTORY_ENTRIES) {
   const rows = db.prepare(
     `SELECT a.at, a.action, a.details, u.username
        FROM audit_log a
        LEFT JOIN users u ON u.id = a.user_id
       WHERE a.entity_id = ?
-        AND a.action IN (?, ?, ?, ?, ?)
+        AND a.action IN (?, ?, ?)
       ORDER BY a.id DESC
       LIMIT ?`
-  ).all(itemId, ACTIONS.create, ACTIONS.update, ACTIONS.delete, ACTIONS.correctLocation, ACTIONS.chipAssociate, limit);
-  return rows.map((row) => ({ at: row.at, username: row.username, label: auditLabel(row.action, row.details) }));
+  ).all(itemId, ACTIONS.update, ACTIONS.chipAssociate, ACTIONS.chipDetach, limit);
+  return rows.map((row) => ({ at: row.at, username: row.username, labels: changeLabels(row.action, row.details) }));
 }
 
-const FIELD_LABELS = { name: 'nom', properties: 'propriétés', notes: 'notes' };
-
 /**
- * Libellé français d'une ligne d'audit de fiche (jamais le JSON brut) : un texte, ou, s'il
- * contient des UID de puce (création avec puce, association), une liste de segments : textes
- * et objets {uid}, que la page affiche en chasse fixe.
+ * Libellés en langage simple d'une ligne d'audit de fiche (jamais le JSON brut) : une liste de
+ * libellés, chacun un texte ou, s'il contient un numéro de puce, une liste de segments (textes et
+ * objets {uid}, que la page affiche en chasse fixe, views.js). Aucun HTML n'est produit ici.
+ * Modification : un libellé par changement (« Nom modifié », « Propriété « Marque » ajoutée »…).
  */
-export function auditLabel(action, detailsJson) {
+export function changeLabels(action, detailsJson) {
   let details;
   try {
     details = JSON.parse(detailsJson);
   } catch {
-    details = {};
+    details = null;
   }
+  if (details === null || typeof details !== 'object') details = {};
   // UID lu dans le journal : affiché seulement s'il a le format d'un UID (texte libre exclu).
-  // Il est renvoyé comme segment {uid} : la page l'affiche en chasse fixe (views.js), sans
-  // qu'aucun HTML ne soit produit ici.
   const uidOf = (value) => (typeof value === 'string' && UID_FORMAT.test(value) ? { uid: value } : null);
   switch (action) {
-    case ACTIONS.create: {
-      const uid = uidOf(details?.uid);
-      return uid === null ? 'Fiche créée' : ['Fiche créée avec la puce ', uid];
-    }
     case ACTIONS.chipAssociate: {
-      const uid = uidOf(details?.uid);
-      const previous = uidOf(details?.previous_uid);
-      if (uid === null) return 'Puce associée';
-      return previous === null ? ['Puce associée : ', uid] : ['Puce associée : ', uid, ' (remplace ', previous, ')'];
+      const uid = uidOf(details.uid);
+      const previous = uidOf(details.previous_uid);
+      if (uid === null) return ['Puce associée'];
+      return [previous === null ? ['Puce associée : ', uid] : ['Puce remplacée : ', uid, ' (remplace ', previous, ')']];
     }
-    case ACTIONS.delete: return 'Fiche supprimée';
+    case ACTIONS.chipDetach: {
+      const previous = uidOf(details.previous_uid);
+      return [previous === null ? 'Puce retirée' : ['Puce retirée : ', previous]];
+    }
     case ACTIONS.update: {
-      const fields = Object.keys(FIELD_LABELS).filter((field) => Object.hasOwn(details ?? {}, field)).map((field) => FIELD_LABELS[field]);
-      return fields.length === 0 ? 'Fiche modifiée' : `Fiche modifiée : ${fields.join(', ')}`;
+      const labels = [];
+      if (Object.hasOwn(details, 'name')) labels.push('Nom modifié');
+      if (Object.hasOwn(details, 'properties')) labels.push(...propertyLabels(details.properties));
+      if (Object.hasOwn(details, 'notes')) labels.push(notesLabel(details.notes));
+      return labels.length === 0 ? ['Fiche modifiée'] : labels;
     }
-    case ACTIONS.correctLocation: {
-      const station = details?.station?.name;
-      return typeof station === 'string' ? `Emplacement corrigé : ${station}` : 'Emplacement corrigé';
-    }
-    default: return action;
+    default: return ['Fiche modifiée'];
   }
 }
+
+/** Propriétés avant/après (objets JSON) → « Propriété « Marque » ajoutée / modifiée / retirée ». */
+function propertyLabels(change) {
+  const before = isPlainObject(change?.before) ? change.before : {};
+  const after = isPlainObject(change?.after) ? change.after : {};
+  const labels = [];
+  for (const key of Object.keys(after)) {
+    if (!Object.hasOwn(before, key)) labels.push(`Propriété ${quoted(key)} ajoutée`);
+    else if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) labels.push(`${key} : ${shortValue(before[key])} → ${shortValue(after[key])}`);
+  }
+  for (const key of Object.keys(before)) if (!Object.hasOwn(after, key)) labels.push(`Propriété ${quoted(key)} retirée`);
+  return labels.length === 0 ? ['Ordre des propriétés modifié'] : labels;
+}
+
+function notesLabel(change) {
+  if (change?.before === '') return 'Notes ajoutées';
+  if (change?.after === '') return 'Notes effacées';
+  return 'Notes modifiées';
+}
+
+// Valeur de propriété dans « N° de série : 4123 → 4124 » : texte (JSON si importée non
+// textuelle), « (vide) » si vide, coupée à SHORT_VALUE_CHARS points de code avec « … ».
+const SHORT_VALUE_CHARS = 60;
+function shortValue(value) {
+  const text = typeof value === 'string' ? value : JSON.stringify(value) ?? '';
+  if (text === '') return '(vide)';
+  const chars = [...text];
+  return chars.length > SHORT_VALUE_CHARS ? `${chars.slice(0, SHORT_VALUE_CHARS).join('')}…` : text;
+}
+
+// Guillemets français avec espaces insécables (échappement : aucun caractère invisible littéral).
+const quoted = (text) => `«\u00A0${text}\u00A0»`;
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);

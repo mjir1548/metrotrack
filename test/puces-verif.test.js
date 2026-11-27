@@ -140,7 +140,8 @@ test('parcours : puce inconnue → fiche créée, localisée tout de suite ; puc
     details: { name: 'Oscilloscope', properties: { Marque: 'Tek' }, notes: 'n', uid },
   }]);
   const item = await page(`/items/${id}?ok=cree_puce`);
-  assert.ok(item.body.includes(`Fiche créée avec la puce <span class="uid">${grouped(uid)}</span>`));
+  assert.ok(item.body.includes('Fiche créée par ')); // étape U3 : bas de la frise
+  assert.ok(item.body.includes(`<span class="etiquette">Numéro de puce</span><span class="numero-puce-droite"><span class="uid">${grouped(uid)}</span>`));
   assert.equal(chipRow((await page('/chips')).body, uid), null);
 });
 
@@ -169,7 +170,7 @@ test('parcours : remplacement de la puce d\'une fiche localisée ; la fiche suit
   }]);
   assert.deepEqual(location(1), { station_id: 2, source: 'scan', reader_id: 2 });
   const item = await page('/items/1');
-  assert.ok(item.body.includes(`Puce associée : <span class="uid">${grouped(NEW)}</span> (remplace <span class="uid">${grouped(OLD)}</span>)`));
+  assert.ok(item.body.includes(`Puce remplacée : <span class="uid">${grouped(NEW)}</span> (remplace <span class="uid">${grouped(OLD)}</span>)`));
 
   const list = (await page('/chips')).body;
   assert.equal(chipRow(list, NEW), null);

@@ -12,7 +12,7 @@ import { ingestFrame } from '../server/ingest.js';
 import { encodeFrame } from '../server/protocol.js';
 import {
   cleanLine, cleanNotes, validateItemInput, createItem, updateItem, deleteItem, correctLocation, listStations,
-  itemHistory, auditLabel,
+  itemChanges, changeLabels,
   MAX_NAME_CHARS, MAX_NOTES_CHARS, MAX_PROPERTIES, MAX_PROPERTY_KEY_CHARS, MAX_PROPERTY_VALUE_CHARS,
 } from '../server/items.js';
 
@@ -423,23 +423,32 @@ test('atomicité : si l\'écriture d\'audit échoue, la création, la modificati
 
 // ---------------------------------------------------------------- historique
 
-test('historique : du plus récent au plus ancien, libellés français, 20 lignes au plus', () => {
+test('modifications de la fiche : du plus récent au plus ancien, langage simple, sans emplacement ni création, 20 lignes au plus', () => {
   const id = createItem(db, alice, valid({ name: 'Four' }), T0);
   updateItem(db, bob, id, valid({ name: 'Four 2', notes: 'n' }), T1);
-  correctLocation(db, alice, id, 3, T2);
+  correctLocation(db, alice, id, 3, T2); // dans la frise des déplacements, pas ici
   db.prepare("INSERT INTO audit_log (at, user_id, action, entity_id, details) VALUES (?, NULL, 'item.update', ?, '{\"properties\":{}}')").run(T2, id);
   // Ligne d'une autre entité portant le même numéro : ignorée.
   db.prepare("INSERT INTO audit_log (at, user_id, action, entity_id) VALUES (?, ?, 'station.create', ?)").run(T2, alice, id);
-  assert.deepEqual(itemHistory(db, id), [
-    { at: T2, username: null, label: 'Fiche modifiée : propriétés' },
-    { at: T2, username: 'alice', label: 'Emplacement corrigé : Étuve' },
-    { at: T1, username: 'bob', label: 'Fiche modifiée : nom, notes' },
-    { at: T0, username: 'alice', label: 'Fiche créée' },
+  assert.deepEqual(itemChanges(db, id), [
+    { at: T2, username: null, labels: ['Ordre des propriétés modifié'] },
+    { at: T1, username: 'bob', labels: ['Nom modifié', 'Notes ajoutées'] },
   ]);
   for (let i = 0; i < 30; i++) updateItem(db, alice, id, valid({ name: `Four ${i + 3}` }), T2);
-  const history = itemHistory(db, id);
-  assert.equal(history.length, 20);
-  assert.equal(history[0].label, 'Fiche modifiée : nom');
+  const changes = itemChanges(db, id);
+  assert.equal(changes.length, 20);
+  assert.deepEqual(changes[0].labels, ['Nom modifié']);
+});
+
+test('modifications : propriété ajoutée, modifiée, retirée ; notes modifiées puis effacées', () => {
+  const id = createItem(db, alice, valid({ name: 'Four', keys: ['Marque', 'Couleur'], values: ['Memmert', 'gris'], notes: 'a' }), T0);
+  updateItem(db, alice, id, valid({ name: 'Four', keys: ['Marque', 'Série'], values: ['Binder', '42'], notes: 'b' }), T1);
+  updateItem(db, alice, id, valid({ name: 'Four', keys: ['Marque', 'Série'], values: ['Binder', '42'], notes: '' }), T2);
+  assert.deepEqual(itemChanges(db, id).map((c) => c.labels), [
+    ['Notes effacées'],
+    ['Marque : Memmert → Binder', // étape U3 : avant → après
+     'Propriété « Série » ajoutée', 'Propriété « Couleur » retirée', 'Notes modifiées'],
+  ]);
 });
 
 test('numéros de fiche jamais réutilisés (AUTOINCREMENT), même après suppression de la plus récente', () => {
@@ -450,7 +459,7 @@ test('numéros de fiche jamais réutilisés (AUTOINCREMENT), même après suppre
   deleteItem(db, alice, first, T1);
   const second = createItem(db, bob, valid({ name: 'Nouvelle' }), T2);
   assert.equal(second, first + 1);
-  assert.deepEqual(itemHistory(db, second), [{ at: T2, username: 'bob', label: 'Fiche créée' }]);
+  assert.deepEqual(itemChanges(db, second), [], 'aucune modification héritée');
   assert.equal(getItem(db, second).at, null, 'aucune localisation héritée');
   // Même après suppression de toutes les fiches, la numérotation continue.
   deleteItem(db, bob, second, T2);
@@ -460,11 +469,11 @@ test('numéros de fiche jamais réutilisés (AUTOINCREMENT), même après suppre
   assert.equal(db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'items'").get().seq, first + 2);
 });
 
-test('auditLabel : détails illisibles ou incomplets → libellé générique, jamais le JSON brut', () => {
-  assert.equal(auditLabel('item.update', 'pas du json'), 'Fiche modifiée');
-  assert.equal(auditLabel('item.update', 'null'), 'Fiche modifiée');
-  assert.equal(auditLabel('item.update', '{"autre":1}'), 'Fiche modifiée');
-  assert.equal(auditLabel('item.location_correct', '{}'), 'Emplacement corrigé');
-  assert.equal(auditLabel('item.location_correct', '{"station":{"name":5}}'), 'Emplacement corrigé');
-  assert.equal(auditLabel('item.delete', '{}'), 'Fiche supprimée');
+test('changeLabels : détails illisibles ou incomplets → libellé générique, jamais le JSON brut', () => {
+  assert.deepEqual(changeLabels('item.update', 'pas du json'), ['Fiche modifiée']);
+  assert.deepEqual(changeLabels('item.update', 'null'), ['Fiche modifiée']);
+  assert.deepEqual(changeLabels('item.update', '{"autre":1}'), ['Fiche modifiée']);
+  assert.deepEqual(changeLabels('item.update', '{"properties":5}'), ['Ordre des propriétés modifié']);
+  assert.deepEqual(changeLabels('item.update', '{"notes":null}'), ['Notes modifiées']);
+  assert.deepEqual(changeLabels('autre.action', '{}'), ['Fiche modifiée']);
 });

@@ -258,9 +258,11 @@ test('numéro de fiche jamais réutilisé (AUTOINCREMENT, D-014), même pour la 
   assert.equal((await page(`/items/${oldId}`)).status, 404);
   const html = (await page(`/items/${newId}`)).body;
   assert.match(html, /etat-jamais">jamais localisé</);
-  const history = html.slice(html.indexOf('titre-modifications'));
-  assert.match(history, /Fiche créée/);
-  assert.doesNotMatch(history, /renommée|Fiche modifiée|Emplacement corrigé|Fiche supprimée/);
+  // Étape U3 : frise des déplacements (création seule) et modifications (aucune).
+  assert.ok(html.indexOf('titre-historique') > 0);
+  assert.match(html, /<p class="frise-lieu">Fiche créée par [^<]+<\/p>/);
+  assert.ok(html.includes('Aucune modification depuis la création de la fiche.'));
+  assert.doesNotMatch(html, /renommée|Nom modifié|Corrigé à la main|Fiche supprimée/);
 
   // Chaque entity_id désigne une seule fiche : la vie complète de l'ancienne, la création de la nouvelle.
   assert.deepEqual(auditsFor(oldId).map((a) => a.action), ['item.create', 'item.update', 'item.location_correct', 'item.delete']);

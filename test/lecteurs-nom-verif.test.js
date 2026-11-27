@@ -130,6 +130,8 @@ test('remplacement de clé : nom repris, simulateur accepté avec la nouvelle cl
   // Frise de l'objet : nom ACTUEL de chaque lecteur.
   assert.equal((await post('/readers/1/rename', { name: 'Ancien boîtier' })).status, 303);
   const item = (await page('/items/1')).body;
-  assert.ok(item.includes('Scanné par Boîtier établi'));
+  // Étape U3 : les scans consécutifs au même poste (ancien lecteur, puis son remplaçant) forment un
+  // seul déplacement, désigné par le lecteur de l'arrivée, avec son nom actuel.
   assert.ok(item.includes('Scanné par Ancien boîtier'));
+  assert.match(item, /\d+ scans ici/);
 });

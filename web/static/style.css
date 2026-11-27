@@ -89,6 +89,18 @@
   --d-rapide: 120ms;
   --d-normale: 200ms;
   --courbe: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --d-mise-en-evidence: 5s; /* étape de frise qui vient d'être enregistrée */
+
+  /* Composants (étape U3) */
+  --hauteur-bouton: 40px;
+  --hauteur-bouton-petit: 34px;
+  --ic-xs: 14px;
+  --ic-sm: 16px;
+  --ic-md: 18px;
+  --ic-lg: 20px;
+  --trait-epais: 1.5px;
+  --largeur-menu: 240px;
+  --largeur-panneau: 520px;
 }
 
 /* Mode sombre : simple redéfinition des variables (contrastes vérifiés par le même test). */
@@ -1446,6 +1458,221 @@ details.aide-page > summary:focus-visible {
 }
 
 /* --------------------------------------------------------------------------
+   15 ter. Fiche d'un objet, étape U3 (maquette B, fiche.html) : en-tête, menu « … »,
+   frise des déplacements, modifications repliables, panneau de correction.
+   Dimensions : variables de la section 1 (espacements, icônes, durées).
+   -------------------------------------------------------------------------- */
+.fiche-actions { align-items: center; }
+.bouton-icone { width: var(--hauteur-bouton); padding: 0; }
+.bouton-icone.bouton-petit { width: var(--hauteur-bouton-petit); }
+.bouton-icone .ic { width: var(--ic-lg); height: var(--ic-lg); }
+
+/* Lien discret (emplacement, lieux de la frise, poste) : la couleur du texte, souligné finement. */
+.lien-discret {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--bordure-champ);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+.lien-discret:hover { color: var(--accent); text-decoration-color: currentColor; }
+.emplacement .lien-discret .etat { text-decoration: underline; text-decoration-color: var(--bordure); text-decoration-thickness: 2px; text-underline-offset: 0.12em; }
+.emplacement .lien-discret:hover .etat { text-decoration-color: currentColor; }
+
+/* Ligne « depuis … · date exacte » et badge de la source, sous l'emplacement en grand. */
+.localisation-detail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--e-2) var(--e-3);
+}
+.localisation-detail .badge .ic,
+.frise-detail .badge .ic { width: var(--ic-xs); height: var(--ic-xs); }
+.localisation-detail .badge time { color: inherit; font-weight: inherit; }
+
+/* Menu « … » (sans JavaScript : <details> ; app.js le referme au clic ailleurs et sur Échap). */
+.menu { position: relative; }
+.menu > summary { list-style: none; }
+.menu > summary::-webkit-details-marker { display: none; }
+.menu[open] > summary { background: var(--zone); }
+.menu-panneau {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--e-2));
+  z-index: 5;
+  display: grid;
+  min-width: var(--largeur-menu);
+  padding: var(--e-1);
+  background: var(--carte);
+  border: 1px solid var(--bordure);
+  border-radius: var(--r-md);
+  box-shadow: var(--ombre-pilule);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--e-2);
+  min-height: var(--hauteur-bouton);
+  padding: var(--e-2) var(--e-3);
+  border-radius: var(--r-sm);
+  color: var(--texte);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.menu-item .ic { width: var(--ic-md); height: var(--ic-md); color: var(--texte-doux); }
+.menu-item:hover { background: var(--zone); color: var(--texte); }
+.menu-item-danger,
+.menu-item-danger .ic,
+.menu-item-danger:hover { color: var(--danger); }
+.menu-item-danger:hover { background: var(--danger-doux); }
+.menu-item + .menu-item-danger { margin-top: var(--e-1); border-top: 1px solid var(--bordure); border-radius: 0 0 var(--r-sm) var(--r-sm); }
+
+/* Identification : numéro de puce discret, groupé par octets, en chasse fixe, et « Changer ». */
+.numero-puce {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--e-2) var(--e-4);
+}
+.numero-puce-droite { display: inline-flex; align-items: baseline; gap: var(--e-3); }
+.numero-puce .uid { color: var(--texte-doux); font-size: var(--t-sm); letter-spacing: 0.02em; }
+.numero-puce .lien-simple { font-size: var(--t-sm); font-weight: 500; }
+.entete-action { margin-top: var(--e-4); }
+
+/* Frise : jour en gras, heure en dessous ; correction à la main (encadré pointillé, icône main
+   ET texte) ; changement de puce (icône puce ET texte) ; création en bas. */
+.frise-quand { color: var(--texte); font-weight: 600; }
+.frise-quand small { display: block; color: var(--texte-doux); font-size: var(--t-xs); font-weight: 400; }
+.frise-detail .ic { width: var(--ic-sm); height: var(--ic-sm); }
+.frise-suite { margin-top: var(--e-1); color: var(--texte-doux); font-size: var(--t-xs); }
+.frise-etape--main .frise-noeud { border-style: dashed; background: var(--zone); color: var(--texte); }
+.frise-etape--main .frise-contenu {
+  margin-top: calc(-1 * var(--e-1));
+  padding: var(--e-2) var(--e-3) var(--e-3);
+  border: var(--trait-epais) dashed var(--bordure-champ);
+  border-radius: var(--r-md);
+  background: var(--zone);
+}
+.frise-etape--main .frise-detail { color: var(--texte); }
+.frise-etape--actuel.frise-etape--main .frise-noeud { border-style: solid; background: var(--accent); color: var(--sur-accent); }
+.frise-etape--puce .frise-noeud { background: var(--zone); color: var(--texte); }
+.frise-etape--puce .frise-lieu,
+.frise-etape--creation .frise-lieu {
+  color: var(--texte-doux);
+  font-family: var(--police-texte);
+  font-size: var(--t-base);
+  font-weight: 500;
+}
+.frise-etape--puce .frise-lieu .uid { font-size: var(--t-sm); }
+.frise-vide { margin-bottom: var(--e-5); }
+.frise-tout { margin-top: var(--e-5); padding-top: var(--e-4); border-top: 1px solid var(--bordure); }
+
+/* Correction qui vient d'être enregistrée : mise en évidence qui s'estompe en quelques secondes.
+   Sous prefers-reduced-motion, l'animation est coupée (section 18) et un filet fixe la remplace. */
+.frise-etape.nouveau .frise-contenu { animation: frise-nouveau var(--d-mise-en-evidence) var(--courbe) both; }
+@keyframes frise-nouveau {
+  0%, 55% { border-color: var(--accent); background: var(--accent-doux); box-shadow: 0 0 0 var(--e-1) var(--focus-halo); }
+  100% { border-color: var(--bordure-champ); background: var(--zone); box-shadow: 0 0 0 var(--e-1) transparent; }
+}
+
+/* Modifications de la fiche : carte repliable (<details>). */
+details.modifications > summary {
+  margin: 0;
+  padding: var(--e-4) var(--e-6);
+  border-radius: var(--r-lg);
+  cursor: pointer;
+  list-style: none;
+}
+details.modifications > summary::-webkit-details-marker { display: none; }
+details.modifications > summary .compte-titre { margin-left: var(--e-1); }
+details.modifications > summary > .ic:last-child {
+  width: var(--ic-md);
+  height: var(--ic-md);
+  margin-left: auto;
+  transition: transform var(--d-normale) var(--courbe);
+}
+details.modifications[open] > summary > .ic:last-child { transform: rotate(90deg); }
+details.modifications > summary:hover { background: var(--voile); }
+.modifications-corps { padding: 0 var(--e-6) var(--e-5); }
+.modifications-liste { margin: 0; padding: 0; list-style: none; }
+.modifications-liste li { padding: var(--e-3) 0; border-top: 1px solid var(--bordure); }
+.modifications-liste li:first-child { padding-top: 0; border-top: 0; }
+.modification-quoi { font-weight: 500; overflow-wrap: anywhere; }
+.modification-qui { margin-top: var(--e-1); color: var(--texte-doux); font-size: var(--t-sm); }
+
+/* Panneau « Corriger l'emplacement » (<dialog> natif, ouvert par app.js). */
+.dialogue {
+  width: min(var(--largeur-panneau), calc(100vw - 2 * var(--e-4)));
+  max-height: calc(100vh - 2 * var(--e-8));
+  margin: var(--e-16) auto auto;
+  padding: var(--e-6);
+  border: 1px solid var(--bordure);
+  border-radius: var(--r-xl);
+  background: var(--carte);
+  color: var(--texte);
+  box-shadow: var(--ombre-pilule);
+  overflow: auto;
+}
+.dialogue::backdrop { background: var(--fond-modal); }
+.dialogue[open] { animation: palette-entree var(--d-normale) var(--courbe); }
+.dialogue-entete { display: flex; align-items: center; justify-content: space-between; gap: var(--e-4); }
+.dialogue-entete h2 { font-size: var(--t-xl); letter-spacing: -0.01em; }
+.dialogue-intro { margin: var(--e-2) 0 var(--e-5); color: var(--texte-doux); overflow-wrap: anywhere; }
+.dialogue .choix-postes { margin: 0; }
+.dialogue .actions-formulaire { margin-top: var(--e-5); }
+/* Pastille « actuel » d'un bouton radio : jamais coupée ni écrasée par un nom long. */
+.choix-actuel {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 0 var(--e-2);
+  border-radius: var(--r-pilule);
+  background: var(--zone);
+  color: var(--texte-doux);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.choix-poste > span:not(.choix-actuel) { min-width: 0; overflow-wrap: anywhere; }
+/* Bouton qui se présente comme le lien « Annuler » des pages (même rendu). */
+.bouton-texte {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Retirer la puce : case « Garder … comme emplacement ». */
+.case-garder { margin: var(--e-4) 0 0; }
+.case-garder .case { display: flex; align-items: center; gap: var(--e-2); margin: 0; font-weight: 600; cursor: pointer; }
+.case-garder .case input {
+  width: var(--ic-md);
+  height: var(--ic-md);
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.case-garder .aide { margin-left: calc(var(--ic-md) + var(--e-2)); }
+
+/* Donner une puce, historique paginé. */
+.intro-action { margin-bottom: var(--e-5); color: var(--texte-doux); }
+.intro-action a { font-weight: 600; }
+.liste-puces form { margin: 0; }
+.pagination {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--e-3);
+  margin-top: var(--e-6);
+}
+.pagination .lien-annuler { margin-right: auto; }
+
+/* --------------------------------------------------------------------------
    16. Largeurs intermédiaires (fenêtre réduite)
    -------------------------------------------------------------------------- */
 @media (max-width: 1100px) {
@@ -1460,6 +1687,8 @@ details.aide-page > summary:focus-visible {
   .compte { margin-left: auto; }
   .fiche,
   .fiche--poste { grid-template-columns: minmax(0, 1fr); }
+  /* Fiche d'un objet sur une fenêtre étroite : l'historique juste après l'en-tête. */
+  .fiche > .carte-historique { order: -1; }
   .emplacement--xl { font-size: var(--t-3xl); }
 }
 
@@ -1537,4 +1766,6 @@ details.aide-page > summary:focus-visible {
     transition: none !important;
     scroll-behavior: auto !important;
   }
+  /* Correction qui vient d'être enregistrée : mise en évidence fixe, sans animation. */
+  .frise-etape.nouveau .frise-contenu { border-color: var(--accent); background: var(--accent-doux); }
 }

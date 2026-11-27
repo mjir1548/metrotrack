@@ -685,3 +685,31 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
 
   548 tests verts.
 - **D-019 et D-020 commités et poussés** (voir git log). Démo redémarrée pour appliquer la migration 007.
+
+### 2026-11-26 — Étape U2 lancée : « Où est cet objet ? »
+- Accord de l'humain → D-021 (Validée) : un seul fichier JavaScript local, `web/static/app.js`, en amélioration progressive. Pas de `innerHTML`, CSP inchangée, les pages restent utilisables sans JavaScript.
+- Contenu :
+  - recherche multi-mots (nom, propriétés, puce), insensible aux accents, avec classement ;
+  - `GET /api/recherche` (JSON, session obligatoire) ;
+  - palette `Ctrl K` avec résultats pendant la frappe ;
+  - emplacement en grand, navigation au clavier ;
+  - filtrage de l'inventaire pendant la frappe.
+- Agent `dev` lancé (aller-retour 1/3).
+- `dev` (U2) : coupé une fois par la limite d'usage, puis repris. Terminé : 574 tests verts. Palette vérifiée dans Edge sans interface (Ctrl K, frappe, flèches, Entrée, Échap, « / », filtre de l'inventaire, thème sombre, sans JavaScript), sans erreur de console ni de CSP. Recherche à 25-38 ms pour 5 000 objets.
+  - Points à valider :
+    - classement alphabétique à rang égal ;
+    - recherche par morceaux de mots ;
+    - 403 si `Sec-Fetch-Site` est cross-site ;
+    - pas de surlignage du mot trouvé.
+- Orchestrateur : 574/574, capture de la palette relue. Testeur et revue lancés en parallèle.
+- Revue sécurité (U2) : **OK pour commit**. Point important : `&tout=1` (filtre de l'inventaire) prend environ 150 ms et 1,4 Mo à 5 000 objets. À alléger.
+- **Nouvelle consigne de l'humain (2026-11-27)** : priorité à l'UX ; la sécurité « on verra dans un second temps ». → D-022 :
+  - boucle `dev`, puis `testeur`, puis `revue-ux` ;
+  - agent `revue-ux` ajouté dans `.claude/agents/`, depuis la proposition de la phase 0 ;
+  - revue de sécurité différée jusqu'avant une livraison ;
+  - les garde-fous existants restent dans le code et dans les tests.
+- Testeur (U2) : aucun bug, 581 tests (ajout de `recherche-verif`). Points à arbitrer : coût de l'effacement du filtre de l'inventaire, rang « début de mot », pas de « Créer la fiche » sans JavaScript.
+- **Première revue UX** (agent `revue-ux`, 37 captures) : verdict « À corriger (mineur) ». La palette tient la promesse du parcours 2. Elle a produit 12 points importants et la liste des 10 améliorations les plus rentables.
+- Retour à `dev` (U2, aller-retour 2/3) : 14 améliorations UX (création depuis une recherche vide, Ctrl K découvrable, « depuis » harmonisé, fiche poste, libellé des lecteurs, bouton « Copier la clé », 404 utiles, confirmations en une phrase, correction d'emplacement par boutons radio, etc.). La frise unique « Déplacé vers… » est réservée à l'étape U3.
+- `dev` (U2, aller-retour 2) : les 14 améliorations UX sont faites, 589 tests verts, captures avant/après. Orchestrateur : 589/589, captures relues (correction d'emplacement par boutons radio, page de clé avec « Copiée ✓ »).
+- **U2 commitée et poussée** (voir git log). Selon D-022, la vérification par le testeur et `revue-ux` de ces dernières retouches sera faite avec l'étape U3.

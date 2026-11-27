@@ -193,7 +193,10 @@ export function listStationSummaries(db) {
  */
 export function stationReaders(db, id) {
   return db.prepare(
-    `SELECT r.id, r.name, r.station_id, st.name AS station_name, r.active, r.created_at
+    // last_scan_at : dernier scan accepté, celui de plus grand compteur (D-005), lu dans
+    // l'index de UNIQUE (reader_id, counter), comme dans readers.js (READER_SELECT).
+    `SELECT r.id, r.name, r.station_id, st.name AS station_name, r.active, r.created_at,
+            (SELECT s.received_at FROM scans s WHERE s.reader_id = r.id ORDER BY s.counter DESC LIMIT 1) AS last_scan_at
        FROM readers r JOIN stations st ON st.id = r.station_id
       WHERE r.station_id = ?
       ORDER BY r.active DESC, r.id`

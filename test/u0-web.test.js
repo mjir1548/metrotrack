@@ -17,6 +17,7 @@ import { hashPassword, argon2Stats } from '../server/password.js';
 import { createSession, csrfTokenFor } from '../server/sessions.js';
 import { LOGIN_EXPIRED_MESSAGE, SESSION_EXPIRED_MESSAGE } from '../server/views.js';
 import { makeTestCerts } from './tls-fixture.js';
+import { withoutAppScript } from './app-script.js';
 
 const NOW = '2026-11-25T10:00:00.000Z';
 const READER_KEY = Buffer.alloc(32, 0x5a);
@@ -99,7 +100,7 @@ function assertErrorPage(res, { status, title, connected }) {
     assert.ok(res.body.includes('<a class="bouton" href="/login">Se connecter</a>'), what);
     assert.ok(!res.body.includes('inventaire'), what);
   }
-  assert.doesNotMatch(res.body, /<script|\sstyle\s*=|https?:/i, what);
+  assert.doesNotMatch(withoutAppScript(res.body), /<script|\sstyle\s*=|https?:/i, what);
 }
 
 /** POST /login sans cookie de connexion (le navigateur l'a supprimé après 10 min). */

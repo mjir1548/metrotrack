@@ -252,17 +252,149 @@ const NO_LOCATION = {
   at: null, arrived_at: null, arrived_at_bounded: null, arrival_source: null, source: null, reader_id: null, station_id: null, station_name: null,
 };
 
+// ---------------------------------------------------------------- recherche (étape U2)
+//
+// Règle : la saisie est découpée en mots. Un objet correspond si CHAQUE mot se retrouve (casse
+// et accents ignorés, fold) dans son nom, OU dans la valeur d'une de ses propriétés libres, OU
+// (mot hexadécimal, règle uidFragment) dans le numéro de sa puce. La saisie ENTIÈRE reste aussi
+// cherchée comme numéro de puce, comme avant U2 : « 04 a1 b2 » (numéro recopié groupé par 2,
+// comme à l'écran) trouve la puce 04A1B2..., alors qu'aucun de ses mots n'a 4 caractères.
+// Les clés des propriétés ne sont pas cherchées (« Marque » trouverait toutes les fiches qui ont
+// une marque) ; seules leurs valeurs le sont.
+//
+// Classement (RANK_*, détail ci-dessous) : mots entiers du nom, puis débuts de mots, puis
+// morceaux de mots (à chaque fois, nom commençant par le premier mot d'abord), puis le reste (un mot trouvé dans une
+// propriété ou dans la puce) ; à rang égal, ordre alphabétique (collator), puis numéro de fiche.
+//
+// SÉCURITÉ et coût : la comparaison est faite en JS sur les lignes lues (id, nom, puce,
+// propriétés), sans aucun motif LIKE construit à partir de la saisie (ni joker à échapper, ni
+// motif tronqué au caractère NUL). node:sqlite est synchrone : la recherche bloque le serveur le
+// temps de son calcul. Elle est donc faite AVANT le calcul des emplacements, qui n'est fait que
+// pour les fiches retenues (et, pour la palette, seulement pour les MAX_SEARCH_RESULTS premières).
+// Mesure (test/recherche-charge.test.js) : voir le rapport de l'étape U2 et ce test.
+
+// Nombre de résultats renvoyés à la palette de recherche (GET /api/recherche).
+export const MAX_SEARCH_RESULTS = 8;
+// Rangs, du meilleur au moins bon (tous les mots dans le nom, sauf RANK_OTHER) :
+const RANK_WORDS_PREFIX = 0; // mots entiers, et le nom commence par le premier mot
+const RANK_WORDS = 1; //        mots entiers
+const RANK_STARTS_PREFIX = 2; // débuts de mots, et le nom commence par le premier mot
+const RANK_STARTS = 3; //       débuts de mots (« 87 » dans « 870 »)
+const RANK_PARTS = 4; //        morceaux de mots (« ultim » dans « multimètre »)
+const RANK_OTHER = 5; //        au moins un mot trouvé dans une propriété ou dans la puce
+// Séparateurs de mots d'un nom : tout ce qui n'est ni lettre ni chiffre (« n° 7 » donne « n »
+// et « 7 »). Un mot est aussi coupé entre lettres et chiffres (« 87V » donne « 87v », « 87 » et
+// « v ») : « fluke 87 » trouve alors « 87 » en mot entier dans « Fluke 87V », et seulement en
+// début de mot dans « Fluke 870 ».
+const NAME_WORD_SEPARATORS = /[^\p{L}\p{N}]+/u;
+const LETTER_DIGIT_BOUNDARY = /(?<=\p{L})(?=\p{N})|(?<=\p{N})(?=\p{L})/u;
+
+/** Mots d'un nom en forme de comparaison, coupés aussi entre lettres et chiffres. */
+function nameWords(foldedName) {
+  const words = new Set();
+  for (const word of foldedName.split(NAME_WORD_SEPARATORS)) {
+    if (word === '') continue;
+    words.add(word);
+    for (const part of word.split(LETTER_DIGIT_BOUNDARY)) words.add(part);
+  }
+  return words;
+}
+
 /**
- * Objets dont le nom contient la saisie (casse et accents ignorés) ou dont l'UID contient le
- * fragment d'UID. Saisie vide : tout l'inventaire. Trié par nom.
+ * Saisie (déjà passée par normalizeQuery) → mots en forme de comparaison, et fragment d'UID de la
+ * saisie entière (ou null). Saisie vide : aucun mot.
+ */
+export function searchTerms(query) {
+  return { words: fold(query).split(' ').filter((word) => word !== ''), wholeUid: uidFragment(query) };
+}
+
+/**
+ * Une ligne {name, uid_nfc, properties (texte JSON)} correspond-elle aux mots ? null si non ;
+ * sinon {rank, found}, où found dit où la saisie a été trouvée, pour l'affichage :
+ *   {type: 'nom'} ; {type: 'propriete', key, value} (première propriété qui a servi) ;
+ *   {type: 'puce'} (au moins un mot, ou la saisie entière, trouvé dans le numéro de puce).
+ * Les propriétés ne sont lues (JSON.parse) que si un mot manque dans le nom.
+ */
+export function matchItem(row, { words, wholeUid }) {
+  const name = fold(row.name);
+  let values = null; // [clé, valeur, valeur en forme de comparaison], lues à la demande
+  let property = null;
+  let chip = false;
+  let allWords = words.length > 0;
+  for (const word of words) {
+    if (name.includes(word)) continue;
+    values ??= propertyPairs(row.properties).map(([key, value]) => [key, value, fold(value)]);
+    const hit = values.find(([, , folded]) => folded.includes(word));
+    if (hit) {
+      property ??= hit;
+      continue;
+    }
+    const fragment = uidFragment(word);
+    if (fragment !== null && row.uid_nfc !== null && row.uid_nfc.includes(fragment)) {
+      chip = true;
+      continue;
+    }
+    allWords = false;
+    break;
+  }
+  if (!allWords) {
+    if (wholeUid !== null && row.uid_nfc !== null && row.uid_nfc.includes(wholeUid)) return { rank: RANK_OTHER, found: { type: 'puce' } };
+    return null;
+  }
+  if (chip) return { rank: RANK_OTHER, found: { type: 'puce' } };
+  if (property) return { rank: RANK_OTHER, found: { type: 'propriete', key: property[0], value: property[1] } };
+  const tokens = nameWords(name);
+  const prefix = name.startsWith(words[0]);
+  let rank = RANK_PARTS;
+  if (words.every((word) => tokens.has(word))) rank = prefix ? RANK_WORDS_PREFIX : RANK_WORDS;
+  else if (words.every((word) => [...tokens].some((token) => token.startsWith(word)))) rank = prefix ? RANK_STARTS_PREFIX : RANK_STARTS;
+  return { rank, found: { type: 'nom' } };
+}
+
+/**
+ * Fiches qui correspondent à la saisie (non vide), classées : [{id, name, rank, found}].
+ * Une seule requête, sans emplacement (calculé ensuite, pour les fiches retenues seulement).
+ */
+function rankedMatches(db, query) {
+  const terms = searchTerms(query);
+  const matches = [];
+  for (const row of db.prepare('SELECT id, name, uid_nfc, properties FROM items').all()) {
+    const match = matchItem(row, terms);
+    if (match) matches.push({ id: row.id, name: row.name, ...match });
+  }
+  return matches.sort((a, b) => a.rank - b.rank || collator.compare(a.name, b.name) || a.id - b.id);
+}
+
+/**
+ * Lignes de liste (id, name, uid_nfc et colonnes de localisation) des fiches dont les numéros
+ * sont donnés, dans l'ordre donné. Le filtre de withLocations est une condition CONSTANTE : la
+ * liste des numéros est liée en paramètre, sous forme de tableau JSON lu par json_each (aucune
+ * concaténation dans le SQL). Une fiche supprimée entre-temps (autre processus) est omise.
+ */
+function listRowsFor(db, ids) {
+  if (ids.length === 0) return [];
+  const json = JSON.stringify(ids);
+  const rows = db.prepare(
+    `${withLocations('l.item_id IN (SELECT value FROM json_each(?))')}
+     SELECT i.id, i.name, i.uid_nfc, ${LOCATION_COLUMNS}
+       FROM items i
+       LEFT JOIN locations l ON l.item_id = i.id
+       LEFT JOIN stations st ON st.id = l.station_id
+      WHERE i.id IN (SELECT value FROM json_each(?))`
+  ).all(json, json);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return ids.map((id) => byId.get(id)).filter((row) => row !== undefined);
+}
+
+/**
+ * Inventaire : saisie vide, tout l'inventaire trié par nom ; sinon les fiches qui correspondent
+ * à la saisie (règle et classement ci-dessus).
  *
- * Une seule requête, sans requête par ligne. La localisation y est calculée une fois pour tous
- * les objets, par lectures d'index (migration 003, withLocations). Le filtre est appliqué en JS sur
- * les lignes chargées : la liste est de toute façon chargée en entier (pas de pagination), la
- * comparaison sans accents est simple à écrire en JS, et aucun motif LIKE n'est construit
- * (ni joker à échapper, ni motif tronqué au caractère NUL).
+ * Saisie vide : une seule requête, sans requête par ligne ; la localisation y est calculée une
+ * fois pour tous les objets, par lectures d'index (migration 003, withLocations).
  */
 export function listItems(db, query) {
+  if (query !== '') return listRowsFor(db, rankedMatches(db, query).map((match) => match.id));
   const rows = db.prepare(
     `${withLocations('1')}
      SELECT i.id, i.name, i.uid_nfc, ${LOCATION_COLUMNS}
@@ -270,14 +402,21 @@ export function listItems(db, query) {
        LEFT JOIN locations l ON l.item_id = i.id
        LEFT JOIN stations st ON st.id = l.station_id`
   ).all();
-  let matches = rows;
-  if (query !== '') {
-    const needle = fold(query);
-    const uid = uidFragment(query);
-    matches = rows.filter((row) => fold(row.name).includes(needle)
-      || (uid !== null && row.uid_nfc !== null && row.uid_nfc.includes(uid)));
-  }
-  return matches.sort((a, b) => collator.compare(a.name, b.name) || a.id - b.id);
+  return rows.sort((a, b) => collator.compare(a.name, b.name) || a.id - b.id);
+}
+
+/**
+ * Recherche pour la palette (GET /api/recherche) : {total, items}, où items sont les `limit`
+ * premières fiches (lignes de liste, plus found : où la saisie a été trouvée). Saisie vide :
+ * aucun résultat. L'emplacement n'est calculé que pour ces `limit` fiches.
+ */
+export function searchItems(db, query, limit = MAX_SEARCH_RESULTS) {
+  if (query === '') return { total: 0, items: [] };
+  const matches = rankedMatches(db, query);
+  const shown = matches.slice(0, limit);
+  const found = new Map(shown.map((match) => [match.id, match.found]));
+  const items = listRowsFor(db, shown.map((match) => match.id)).map((row) => ({ ...row, found: found.get(row.id) }));
+  return { total: matches.length, items };
 }
 
 /**

@@ -223,7 +223,7 @@ test('texte d\'aide : balises simples, sans URL externe, sans style ni script, s
     assert.ok(text.trimEnd().endsWith('</div>\n</details>'), key);
     assert.equal(helpCount(text), 1, key);
     for (const [, tag] of text.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)) {
-      assert.ok(['details', 'summary', 'div', 'p', 'ul', 'li', 'span', 'a', 'strong'].includes(tag), `${key} : <${tag}>`);
+      assert.ok(['details', 'summary', 'div', 'p', 'ul', 'li', 'span', 'a', 'strong', 'kbd'].includes(tag), `${key} : <${tag}>`);
     }
     assert.doesNotMatch(text, /https?:|\/\/|<script|<style|\sstyle\s*=|\son[a-z]+\s*=|\sopen[\s>=]/i, key);
     // Aucune donnée variable : ni caractère de gabarit oublié, ni « undefined » / « null ».

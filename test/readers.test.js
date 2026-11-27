@@ -278,13 +278,17 @@ test('nom : CHECK de la table (migration 007) — au plus 100 caractères, jamai
   assert.throws(() => db.prepare('UPDATE readers SET name = NULL WHERE id = 5').run(), /NOT NULL constraint failed/);
 });
 
-test('readerLabel : nom, sinon « Lecteur du poste … » si affecté, sinon « Lecteur n° … »', () => {
+test('readerLabel : nom, sinon « Lecteur · … » si affecté, sinon « Lecteur n° … »', () => {
   assert.equal(readerLabel({ id: 7, name: 'Boîtier établi gauche', station_id: 1, station_name: 'Banc 1' }), 'Boîtier établi gauche');
   assert.equal(readerLabel({ id: 7, name: 'Boîtier établi gauche', station_id: null, station_name: null }), 'Boîtier établi gauche');
-  assert.equal(readerLabel({ id: 7, name: '', station_id: 1, station_name: 'Banc 1' }), 'Lecteur du poste Banc 1');
+  assert.equal(readerLabel({ id: 7, name: '', station_id: 1, station_name: 'Banc 1' }), 'Lecteur · Banc 1');
   assert.equal(readerLabel({ id: 7, name: '', station_id: null, station_name: null }), 'Lecteur n° 7');
+  // Nom de poste qui commence déjà par « Poste » : « Lecteur du Poste 2 » (et non « Lecteur · Poste 2 »).
+  assert.equal(readerLabel({ id: 7, name: '', station_id: 2, station_name: 'Poste 2' }), 'Lecteur du Poste 2');
+  assert.equal(readerLabel({ id: 7, name: '', station_id: 2, station_name: 'poste B · banc' }), 'Lecteur du poste B · banc');
+  assert.equal(readerLabel({ id: 7, name: '', station_id: 2, station_name: 'Postes réunis' }), 'Lecteur · Postes réunis');
   // Les lectures fournissent les colonnes attendues.
   createReader(db, alice, 1n, T0);
   createReader(db, alice, null, T0, 'Mobile');
-  assert.deepEqual(listReaders(db).map(readerLabel), ['Lecteur du poste Banc 1', 'Mobile']);
+  assert.deepEqual(listReaders(db).map(readerLabel), ['Lecteur · Banc 1', 'Mobile']);
 });

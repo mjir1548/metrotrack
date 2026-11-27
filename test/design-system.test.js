@@ -4,8 +4,8 @@
 // - focus clavier visible, rubrique courante signalée autrement que par la couleur, liens
 //   soulignés, animations coupées si l'utilisateur les réduit ;
 // - polices et feuilles de style servies localement, en liste blanche, avec les bons en-têtes ;
-// - gabarit : lien « Aller au contenu », sprite d'icônes conforme à la CSP, pas de raccourci
-//   clavier annoncé tant qu'il n'existe pas.
+// - gabarit : lien « Aller au contenu », sprite d'icônes conforme à la CSP, raccourci Ctrl K
+//   annoncé seulement sur les pages qui chargent le script qui le met en œuvre (étape U2).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
@@ -222,6 +222,7 @@ const STATIC_FILES = [
   ['/static/style.css', 'style.css', 'text/css; charset=utf-8', 'no-cache'],
   ['/static/fonts.css', 'fonts.css', 'text/css; charset=utf-8', 'no-cache'],
   ['/static/logo.svg', 'logo.svg', 'image/svg+xml', 'no-cache'],
+  ['/static/app.js', 'app.js', 'text/javascript; charset=utf-8', 'no-cache'], // seul script (D-021)
   ['/static/fonts/Inter-Variable.ttf', 'fonts/Inter-Variable.ttf', 'font/ttf', 'max-age=604800'],
   ['/static/fonts/SpaceGrotesk-Variable.ttf', 'fonts/SpaceGrotesk-Variable.ttf', 'font/ttf', 'max-age=604800'],
   ['/static/fonts/JetBrainsMono-Variable.ttf', 'fonts/JetBrainsMono-Variable.ttf', 'font/ttf', 'max-age=604800'],
@@ -250,7 +251,7 @@ test('hors liste blanche : 404, sans accès au disque par l\'URL (licences, vari
   assert.equal(post.headers.allow, 'GET');
 });
 
-test('gabarit : « Aller au contenu » vers <main id="contenu">, polices et style locaux, sprite, sans raccourci annoncé', async () => {
+test('gabarit : « Aller au contenu » vers <main id="contenu">, polices et style locaux, sprite ; script et Ctrl K seulement dans l\'application', async () => {
   for (const [path, session] of [['/', token], ['/stations', token], ['/login', null], ['/inconnu', token]]) {
     const html = (await send({ path, session })).body.toString('utf8');
     assert.ok(html.includes('<a class="lien-evitement" href="#contenu">Aller au contenu</a>'), path);
@@ -262,9 +263,21 @@ test('gabarit : « Aller au contenu » vers <main id="contenu">, polices et styl
     assert.ok(html.includes('<link rel="icon" href="/static/logo.svg" type="image/svg+xml">'), path);
     assert.ok(html.includes('<svg class="logo-image" viewBox="0 0 900 900" aria-hidden="true">'), path);
     for (const [, name] of html.matchAll(/<use href="#i-([a-z]+)">/g)) assert.ok(html.includes(`<symbol id="i-${name}" `), `${path} : ${name}`);
-    // Ctrl K n'existe pas encore (U2) : rien ne doit l'annoncer.
-    assert.doesNotMatch(html, /<kbd|Ctrl|aria-keyshortcuts/i, path);
+    // Script de l'application (D-021) : chargé une fois, dans <head>, par les pages connectées
+    // seulement ; aucune autre balise <script>. L'indice Ctrl K n'apparaît qu'avec lui (et la
+    // feuille de style ne l'affiche que si le script est actif : classe « js »).
+    // Pages d'erreur (404) et de connexion : carte centrée, sans script ni raccourci.
+    const app = path === '/' || path === '/stations';
+    const scripts = html.match(/<script[^>]*>/g) ?? [];
+    assert.deepEqual(scripts, app ? ['<script src="/static/app.js" defer>'] : [], path);
+    if (app) assert.ok(html.includes('<link rel="icon" href="/static/logo.svg" type="image/svg+xml">\n<script src="/static/app.js" defer></script>\n</head>'), path);
+    if (!app) assert.doesNotMatch(html, /<kbd|Ctrl|aria-keyshortcuts/i, path);
   }
+  // Indice dans la recherche compacte de la barre (absente de l'inventaire, qui a la sienne).
+  const stations = (await send({ path: '/stations', session: token })).body.toString('utf8');
+  assert.ok(stations.includes('<kbd class="raccourci" aria-hidden="true"><kbd>Ctrl</kbd><kbd>K</kbd></kbd>\n</form>'));
+  assert.match(rule('.recherche-barre .raccourci'), /display:\s*none/);
+  assert.match(rule('.js .recherche-barre .raccourci'), /display:\s*inline-flex/);
 });
 
 test('bandeau : rubrique courante en aria-current="page" sur la liste, "true" sur une sous-page ; recherche compacte vers /?q=', async () => {

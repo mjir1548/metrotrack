@@ -68,3 +68,43 @@ export function formatAge(iso, now, timeZone) {
   if (sameDay(day, previousDay(today))) return `hier à ${formatters(timeZone).time.format(at)}`;
   return formatDateTime(iso, timeZone);
 }
+
+/**
+ * « Depuis » en toutes lettres, pour un emplacement (palette de recherche, étape U2) :
+ *   moins d'1 min           → « depuis moins d'une minute »
+ *   moins d'1 h             → « depuis N min »
+ *   même jour calendaire    → « depuis N h »
+ *   veille                  → « depuis hier à HH:MM »
+ *   avant (ou futur > 1 min) → « depuis le 12 nov. 2026 à 09:48 »
+ * atLeast : la remontée de l'heure d'arrivée a été bornée (inventory.js, MAX_RUN_SCANS) ;
+ * « au moins » est alors inséré (« depuis au moins 4 min »). Horodatage illisible : « date inconnue ».
+ */
+export function formatSince(iso, now, atLeast = false, timeZone = undefined) {
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) return 'date inconnue';
+  const lead = atLeast ? 'depuis au moins' : 'depuis';
+  const elapsed = now - at;
+  if (elapsed < -MINUTE_MS) return `${lead} le ${formatDateTime(iso, timeZone)}`;
+  if (elapsed < MINUTE_MS) return `${lead} moins d'une minute`;
+  if (elapsed < HOUR_MS) return `${lead} ${Math.floor(elapsed / MINUTE_MS)} min`;
+  const day = calendarDay(at, timeZone);
+  const today = calendarDay(now, timeZone);
+  if (sameDay(day, today)) return `${lead} ${Math.floor(elapsed / HOUR_MS)} h`;
+  if (sameDay(day, previousDay(today))) return `${lead} hier à ${formatters(timeZone).time.format(at)}`;
+  return `${lead} le ${formatDateTime(iso, timeZone)}`;
+}
+
+/**
+ * Heure exacte en clair, pour l'afficher à côté de « depuis … » (fiche d'un objet) :
+ * « aujourd'hui à 16:06 », « hier à 17:40 », sinon « 12 nov. 2026 à 09:48 ».
+ */
+export function formatDay(iso, now, timeZone = undefined) {
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) return 'date inconnue';
+  const day = calendarDay(at, timeZone);
+  const today = calendarDay(now, timeZone);
+  const time = formatters(timeZone).time.format(at);
+  if (sameDay(day, today)) return `aujourd'hui à ${time}`;
+  if (sameDay(day, previousDay(today))) return `hier à ${time}`;
+  return formatDateTime(iso, timeZone);
+}

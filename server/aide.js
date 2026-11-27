@@ -42,9 +42,10 @@ const inventaire = encadre(html`<p>La liste montre tous les objets suivis, par o
 </ul>
 <p>Pour rechercher :</p>
 <ul>
-<li>tapez un bout du nom, sans vous soucier des accents ni des majuscules ;</li>
+<li>tapez un ou plusieurs mots, ou des morceaux de mots, du nom ou d'une propriété (numéro de série, marque…), sans vous soucier des accents ni des majuscules : «&nbsp;fluke 7&nbsp;» trouve «&nbsp;Multimètre Fluke 87V n° 7&nbsp;» ;</li>
 <li>ou au moins 4 caractères du numéro de puce, dont un chiffre (ou le numéro complet), avec ou sans séparateurs («&nbsp;04:A1&nbsp;» comme «&nbsp;04a1&nbsp;») ;</li>
-<li>«&nbsp;Effacer&nbsp;» revient à la liste complète.</li>
+<li>la liste se met à jour pendant la frappe ; «&nbsp;Effacer&nbsp;» revient à la liste complète ;</li>
+<li>depuis n'importe quel écran, <kbd><kbd>Ctrl</kbd><kbd>K</kbd></kbd> ou <kbd><kbd>/</kbd></kbd> ouvre la recherche «&nbsp;Où est…&nbsp;?&nbsp;».</li>
 </ul>
 <p>Le bouton «&nbsp;Nouvelle fiche&nbsp;» ajoute un objet à l'inventaire.</p>`);
 
@@ -230,7 +231,7 @@ const puces = encadre(html`<p>Pour chaque puce, deux possibilités :</p>
 
 const associerRecherche = encadre(html`<p>Cherchez la fiche de l'objet qui porte cette puce, puis cliquez sur «&nbsp;Associer&nbsp;».</p>
 <ul>
-<li>Recherchez par un bout du nom, ou par au moins 4 caractères du numéro de la puce actuelle de la fiche, dont un chiffre (ou le numéro complet).</li>
+<li>Recherchez par des mots du nom ou d'une propriété (numéro de série, marque…), ou par au moins 4 caractères du numéro de la puce actuelle de la fiche, dont un chiffre (ou le numéro complet).</li>
 <li>${MAX_ASSOCIATE_RESULTS} fiches au plus sont affichées : précisez la recherche si besoin.</li>
 <li>Rien n'est modifié avant la page de confirmation.</li>
 <li>L'objet n'a pas encore de fiche ? Créez-la plutôt pour cette puce, avec le lien en bas de page.</li>

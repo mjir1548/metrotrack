@@ -88,7 +88,11 @@ test('recherche sur la base chargée : résultats corrects, en moins de la borne
   const res = await page('/?q=Objet%2099');
   t.diagnostic(`GET /?q=Objet 99 : ${Math.round(res.ms)} ms`);
   assert.equal(res.status, 200);
-  assert.ok(res.body.includes('11 résultats pour «&nbsp;Objet 99&nbsp;»')); // 99 et 990 à 999
+  // Recherche par mots (étape U2) : « objet » ET « 99 », chacun n'importe où dans le nom (ou une
+  // propriété) : 99, 199, 299... 899 (9) et 990 à 999 (10).
+  assert.ok(res.body.includes('19 résultats pour «&nbsp;Objet 99&nbsp;»'));
+  // Classement : nom commençant par le premier mot, puis ordre alphabétique (nombres naturels).
+  assert.ok(res.body.indexOf('>Objet 99<') < res.body.indexOf('>Objet 199<'));
   assert.ok(res.ms < MAX_MS);
 });
 

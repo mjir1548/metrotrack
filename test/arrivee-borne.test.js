@@ -71,11 +71,11 @@ test(`puce rescannée ${3 * MAX_RUN_SCANS} fois au même poste : indicateur lev�
   const now = T0 + (3 * MAX_RUN_SCANS + 100) * 1000;
   const title = formatDateTime(oldestExamined);
   const list = inventoryPage(USER, { query: '', items: listItems(db, ''), now }).toString();
-  assert.ok(list.includes(`<td data-label="Depuis">au moins <time datetime="${oldestExamined}" title="${title}">`), 'liste');
+  assert.ok(list.includes(`<td data-label="Depuis"><time datetime="${oldestExamined}" title="${title}">depuis au moins `), 'liste');
   const post = stationPage(USER, { station: { id: B, name: 'Poste B', description: '', created_at: at(0) }, readers: [], items: stationItems(db, B), deletable: false, now }).toString();
-  assert.ok(post.includes(`<td data-label="Depuis">au moins <time datetime="${oldestExamined}" title="${title}">`), 'fiche du poste');
+  assert.ok(post.includes(`<td data-label="Depuis"><time datetime="${oldestExamined}" title="${title}">depuis au moins `), 'fiche du poste');
   const sheet = itemPage(USER, { item, scans: [], history: [], now }).toString();
-  assert.ok(sheet.includes(`<p class="localisation-detail">Depuis : au moins <time datetime="${oldestExamined}" title="${title}">`), 'fiche objet');
+  assert.ok(sheet.includes(`<p class="localisation-detail"><time datetime="${oldestExamined}" title="${title}">depuis au moins `), 'fiche objet');
   assert.ok(sheet.includes(' · dernier scan <time'), 'fiche objet : dernier scan');
 });
 

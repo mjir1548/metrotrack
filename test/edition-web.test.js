@@ -19,6 +19,7 @@ import { createSession, csrfTokenFor } from '../server/sessions.js';
 import { MAX_EDIT_FORM_BYTES, MAX_FORM_ROWS } from '../server/web.js';
 import { makeTestCerts } from './tls-fixture.js';
 import { statusOrCut, CUT } from './coupure.js';
+import { withoutAppScript } from './app-script.js';
 
 const NOW = '2026-11-17T10:00:00.000Z';
 const KEY = Buffer.alloc(32, 0x66);
@@ -104,11 +105,12 @@ const scan = (readerId, uid) => ingestFrame(db, encodeFrame({ readerId, counter:
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
   'textarea', 'select', 'option', 'fieldset', 'legend', 'ul', 'li', 'details', 'summary',
-  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g']);
+  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g', 'kbd']);
 const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form',
-  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'fieldset', 'legend', 'button', 'label', 'ul', 'li', 'details', 'summary', 'ol', 'svg', 'symbol', 'use'];
+  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'fieldset', 'legend', 'button', 'label', 'ul', 'li', 'details', 'summary', 'ol', 'svg', 'symbol', 'use', 'kbd'];
 
-function assertSafePage(html, what) {
+function assertSafePage(page, what) {
+  const html = withoutAppScript(page); // seul script autorisé (D-021)
   for (const [, tag] of html.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)) assert.ok(ALLOWED_TAGS.has(tag.toLowerCase()), `${what} : balise <${tag}>`);
   for (const tag of PAIRED_TAGS) {
     const open = html.match(new RegExp(`<${tag}[\\s>]`, 'g'))?.length ?? 0;
@@ -255,7 +257,9 @@ test('formulaire de création : champs nom, notes, 3 lignes de propriétés, jet
   assert.equal(nameInputs(res.body, 'prop_value'), 3);
   assert.match(res.body, /<input id="name" name="name" value="" maxlength="200" required/);
   assert.match(res.body, /<textarea id="notes" name="notes" rows="5" maxlength="10000"[^>]*><\/textarea>/);
-  assert.ok(res.body.includes('200 caractères au plus.'));
+  // Étape U2 : les limites ne sont plus écrites dans l'aide (maxlength, et message d'erreur si besoin).
+  assert.ok(!res.body.includes('caractères au plus'));
+  assert.match(res.body, /<input id="name" name="name" value="" maxlength="200" required [^>]* autofocus>/);
   assert.ok(res.body.includes('<button class="bouton bouton-secondaire" type="submit" name="action" value="lignes" formnovalidate>Ajouter des lignes</button>'));
   // Le bouton d'enregistrement précède « Ajouter des lignes » : c'est lui qu'active la touche Entrée.
   assert.ok(res.body.indexOf('Créer la fiche</button>') < res.body.indexOf('Ajouter des lignes</button>'));
@@ -298,11 +302,11 @@ test('création invalide : 400, saisie réaffichée échappée (y compris <scrip
   assert.equal(res.status, 400);
   assert.equal(snapshot(), before);
   const escaped = '&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;';
-  assert.ok(!res.body.includes('<script'));
+  assert.ok(!withoutAppScript(res.body).includes('<script'));
   assert.ok(!res.body.includes('<b>'));
   assert.ok(res.body.includes(`<p class="erreur" role="alert">La fiche n'a pas été enregistrée.`));
   assert.ok(res.body.includes('<p class="erreur-champ" id="name-erreur">Le nom est obligatoire.</p>'));
-  assert.match(res.body, /<input id="name" name="name" value="" [^>]*aria-describedby="name-aide name-erreur" aria-invalid="true">/);
+  assert.match(res.body, /<input id="name" name="name" value="" [^>]*aria-describedby="name-aide name-erreur" aria-invalid="true" autofocus>/);
   assert.ok(res.body.includes(`>Notes ${escaped}\nligne 2</textarea>`));
   assert.ok(res.body.includes(`value="&lt;b&gt;clé&lt;/b&gt;"`));
   assert.ok(res.body.includes(`value="${escaped}"`));
@@ -513,8 +517,10 @@ test('correction : postes triés par nom ; poste inexistant, vide ou forgé → 
   db.prepare('INSERT INTO readers (id, station_id, aead_key, created_at) VALUES (1, 1, ?, ?), (2, NULL, ?, ?)').run(KEY, NOW, KEY, NOW);
   const form = await page('/items/1/location');
   assert.equal(form.status, 200);
-  const options = [...form.body.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map((m) => [m[1], m[2]]);
-  assert.deepEqual(options, [['', 'Choisir un poste…'], ['2', 'Atelier &lt;b&gt;&quot;A&quot;&lt;/b&gt;'], ['3', 'étuve'], ['1', 'Zone B']]);
+  // Étape U2 : 12 postes au plus → un bouton radio par poste, triés par nom.
+  const options = [...form.body.matchAll(/<input type="radio" name="station" value="([^"]*)"[^>]*><span>([^<]*)<\/span>/g)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(options, [['2', 'Atelier &lt;b&gt;&quot;A&quot;&lt;/b&gt;'], ['3', 'étuve'], ['1', 'Zone B']]);
+  assert.ok(!form.body.includes('<select'));
   assert.ok(form.body.includes('<span class="etat etat-jamais">jamais localisé</span>'));
   assertSafePage(form.body, 'correction');
 
@@ -546,9 +552,9 @@ test('correction : 303 ?ok=corrige, localisation changée (liste et fiche, « co
   assert.deepEqual({ ...db.prepare('SELECT item_id, station_id, user_id FROM location_corrections').get() }, { item_id: 1, station_id: 3, user_id: aliceId });
 
   const sheet = await page(res.headers.location);
-  assert.ok(sheet.body.includes('<p class="succes" role="status">Emplacement corrigé.</p>'));
+  assert.ok(sheet.body.includes('<p class="succes" role="status">Emplacement corrigé : étuve</p>'));
   assert.ok(sheet.body.includes('<span class="etat etat-poste">étuve</span>'));
-  assert.match(sheet.body, /<p class="localisation-detail">Depuis : <time [^>]*>à l&#39;instant<\/time> · correction manuelle par alice<\/p>/);
+  assert.match(sheet.body, /<p class="localisation-detail"><time [^>]*>depuis moins d&#39;une minute<\/time> — aujourd&#39;hui à \d\d:\d\d · correction manuelle par alice<\/p>/);
   assert.ok(sheet.body.includes('<p class="frise-lieu">Emplacement corrigé : étuve</p>'));
   const list = await page('/');
   assert.match(list.body, /href="\/items\/1">Multimètre Fluke 87V<\/a>[\s\S]*?<span class="etat etat-poste">étuve<\/span>/);
@@ -567,7 +573,7 @@ test('?ok= : seul un code connu affiche un message constant ; code inconnu ou ho
     const sheet = await page(`/items/1?ok=${encodeURIComponent(ok)}`);
     assert.equal(sheet.status, 200, ok);
     assert.ok(!sheet.body.includes('class="succes"'), ok);
-    assert.ok(!sheet.body.includes('<script'), ok);
+    assert.ok(!withoutAppScript(sheet.body).includes('<script'), ok);
   }
   for (const ok of ['cree', 'modifie', 'xyz', '__proto__']) {
     const list = await page(`/?ok=${ok}`);
@@ -602,8 +608,8 @@ test('suppression : confirmation rappelant le nom et ce qui part ; envoi → 303
   const confirm = await page('/items/1/delete');
   assert.equal(confirm.status, 200);
   assert.ok(confirm.body.includes('<strong class="nom-confirme">Multi &lt;script&gt;&quot;x&quot;&lt;/script&gt;</strong>'));
-  assert.ok(confirm.body.includes("l'historique de ses corrections manuelles d'emplacement seront supprimés avec elle"));
-  assert.ok(confirm.body.includes("Les scans de sa puce et l'historique des modifications sont conservés."));
+  // Étape U2 : une seule phrase.
+  assert.ok(confirm.body.includes("&nbsp;» sera supprimée ; ses déplacements restent dans l'historique.</p>"));
   assert.ok(confirm.body.includes('<form method="post" action="/items/1/delete">'));
   assert.ok(confirm.body.includes('<button class="bouton bouton-danger" type="submit">Supprimer définitivement</button>'));
   assertSafePage(confirm.body, 'confirmation de suppression');

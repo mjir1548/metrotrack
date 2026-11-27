@@ -1,7 +1,9 @@
 // Interface web : connexion, déconnexion, inventaire (liste et fiche), édition des fiches
 // (création, modification, suppression, correction de localisation), postes et lecteurs
 // (étape 6), puces inconnues et association (étape 7), fichiers statiques (feuilles de style et polices, en liste blanche).
-// HTML rendu côté serveur, sans JavaScript côté client, sans ressource externe.
+// HTML rendu côté serveur, sans ressource externe. Un seul fichier JavaScript local
+// (web/static/app.js, D-021) améliore les pages (recherche Ctrl K, résultats pendant la frappe,
+// via GET /api/recherche) ; chaque page reste utilisable sans lui.
 //
 // ÉCHAPPEMENT : toutes les pages sont produites par les gabarits de server/views.js, écrits
 // avec html`...` (server/html.js), qui échappe automatiquement chaque valeur interpolée.
@@ -24,9 +26,10 @@ import {
   SESSION_COOKIE, createSession, findSession, deleteSession, csrfTokenFor, newToken, isTokenFormat, safeEqual,
 } from './sessions.js';
 import { isSafeHtml } from './html.js';
-import { listItems, getItem, recentScans, parseItemId, parseUid, normalizeQuery } from './inventory.js';
+import { listItems, searchItems, getItem, recentScans, parseItemId, parseUid, normalizeQuery } from './inventory.js';
 import {
   validateItemInput, createItem, updateItem, deleteItem, correctLocation, listStations, itemHistory, MAX_PROPERTIES,
+  cleanLine, MAX_NAME_CHARS,
 } from './items.js';
 import {
   validateStationInput, createStation, updateStation, deleteStation, stationHistory, stationHasHistory, getStation,
@@ -45,7 +48,7 @@ import {
   stationsPage, stationPage as stationView, stationFormPage, deleteStationPage as deleteStationView, stationNotFoundPage,
   readersPage, readerPage as readerView, readerFormPage, readerStationPage, deactivateReaderPage as deactivateView,
   replaceReaderPage as replaceView, readerRenamePage, readerKeyPage, readerNotFoundPage, readerInactivePage, readerIdsExhaustedPage,
-  chipsPage, associateSearchPage, associateConfirmPage, chipNotFoundPage, chipKnownPage,
+  chipsPage, associateSearchPage, associateConfirmPage, chipNotFoundPage, chipKnownPage, searchResult,
 } from './views.js';
 
 // Délai avant la réponse à un échec de connexion (ralentit les essais successifs ; la
@@ -109,16 +112,19 @@ const closingConnections = new WeakSet();
 // Type MIME fixé par fichier (le navigateur ne devine rien : X-Content-Type-Options nosniff).
 // Cache : les polices ne changent pas (nouveau nom de fichier si elles changent un jour) et
 // peuvent être gardées une semaine ; les feuilles de style sont revalidées à chaque page
-// (no-cache), pour qu'une mise à jour du serveur soit vue tout de suite.
+// (no-cache), pour qu'une mise à jour du serveur soit vue tout de suite. Même règle pour
+// app.js, le seul script (D-021) : le navigateur le revalide à chaque page.
 // Polices : SIL Open Font License 1.1, licences dans web/static/fonts/OFL-*.txt.
 const STATIC_DIR = join(import.meta.dirname, '..', 'web', 'static');
 const CSS_TYPE = 'text/css; charset=utf-8';
 const FONT_TYPE = 'font/ttf';
 const STYLE_CACHE = 'no-cache';
+const SCRIPT_TYPE = 'text/javascript; charset=utf-8';
 const FONT_CACHE = 'max-age=604800';
 const STATIC_FILES = new Map([
   ['/static/style.css', ['style.css', CSS_TYPE, STYLE_CACHE]],
   ['/static/fonts.css', ['fonts.css', CSS_TYPE, STYLE_CACHE]],
+  ['/static/app.js', ['app.js', SCRIPT_TYPE, STYLE_CACHE]],
   // Logo (icône de la fenêtre et des onglets) : SVG autonome, sans script ni ressource externe.
   ['/static/logo.svg', ['logo.svg', 'image/svg+xml', STYLE_CACHE]],
   ['/static/fonts/Inter-Variable.ttf', ['fonts/Inter-Variable.ttf', FONT_TYPE, FONT_CACHE]],
@@ -152,6 +158,7 @@ const clearCookie = (name) => `${name}=; ${COOKIE_ATTRIBUTES}; Max-Age=0`;
 // Table des routes : chemin exact → méthode → gestionnaire.
 const ROUTES = {
   '/': { GET: inventory },
+  '/api/recherche': { GET: searchApi },
   '/login': { GET: loginPage, POST: login },
   '/logout': { POST: logout },
   ...Object.fromEntries([...STATIC_FILES].map(([path, file]) => [path, { GET: (ctx, req, res) => sendStatic(res, file) }])),
@@ -267,6 +274,55 @@ function itemPage(ctx, req, res, idText) {
   sendHtml(res, 200, itemView(user, { item, scans, history, now: Date.now(), notice: queryParam(req, 'ok') }));
 }
 
+// ---------------------------------------------------------------- recherche pendant la frappe
+
+// Longueur maximale du paramètre q de GET /api/recherche (en caractères) : au-delà, 400. Nos
+// champs sont limités à MAX_QUERY_CHARS (normalizeQuery tronque à cette longueur) ; ce plafond
+// plus large ne refuse que des requêtes qui ne viennent pas de nos pages.
+export const MAX_API_QUERY_CHARS = 200;
+
+/**
+ * GET /api/recherche?q=... : résultats de la palette Ctrl K (au plus MAX_SEARCH_RESULTS, et le
+ * nombre total) ; avec &tout=1, toutes les fiches qui correspondent (filtre pendant la frappe
+ * de la page Inventaire ; q vide : tout l'inventaire, comme GET /).
+ *
+ * SÉCURITÉ :
+ * - session obligatoire ; sans session, 401 JSON minimal (pas de redirection : l'appelant est
+ *   un script, qui affiche « session expirée ») ;
+ * - même origine : aucun en-tête CORS, donc une page d'un autre site ne peut pas lire la
+ *   réponse ; le cookie SameSite=Strict n'est de toute façon pas envoyé depuis un autre site.
+ *   En plus, si le navigateur annonce l'origine de la requête (Sec-Fetch-Site), seule
+ *   « same-origin » est acceptée (403 sinon) : la réponse n'est même pas calculée pour une
+ *   requête venue d'ailleurs ou tapée dans la barre d'adresse ;
+ * - lecture seule (GET), aucune écriture : pas de jeton CSRF nécessaire ;
+ * - contenu minimal (views.js, searchResult), JSON échappé (sendJson), jamais mis en cache.
+ * Ce n'est pas la route des boîtiers (POST /api/frames, http.js), qui n'est pas concernée.
+ */
+function searchApi(ctx, req, res) {
+  const site = req.headers['sec-fetch-site'];
+  if (site !== undefined && site !== 'same-origin') return sendJson(res, 403, { erreur: 'origine' });
+  const session = currentSession(ctx, req);
+  if (!session) return sendJson(res, 401, { erreur: 'session' });
+  const raw = queryParam(req, 'q') ?? '';
+  if ([...raw].length > MAX_API_QUERY_CHARS) return sendJson(res, 400, { erreur: 'requete' });
+  const query = normalizeQuery(raw);
+  const now = Date.now();
+  if (queryParam(req, 'pour') === 'association') {
+    // Page « Associer la puce » : fiches sans puce d'abord, au plus MAX_ASSOCIATE_RESULTS, avec
+    // leur puce actuelle (affichée sur cette page).
+    const items = associationCandidates(ctx.db, query);
+    const shown = items.slice(0, MAX_ASSOCIATE_RESULTS).map((row) => searchResult(row, now, { compact: true, withChip: true }));
+    return sendJson(res, 200, { total: items.length, resultats: shown });
+  }
+  if (queryParam(req, 'tout') === '1') {
+    // Page Inventaire : toutes les fiches, lignes allégées (ce qu'affiche une ligne du tableau).
+    const items = listItems(ctx.db, query);
+    return sendJson(res, 200, { total: items.length, resultats: items.map((row) => searchResult(row, now, { compact: true })) });
+  }
+  const { total, items } = searchItems(ctx.db, query);
+  sendJson(res, 200, { total, resultats: items.map((row) => searchResult(row, now)) });
+}
+
 // ---------------------------------------------------------------- édition des fiches
 // Pages GET : session obligatoire. Envois POST : voir postForm (session, Origin, jeton CSRF).
 // Une saisie invalide réaffiche le formulaire, avec les valeurs saisies et les erreurs, en 400.
@@ -275,7 +331,10 @@ function itemPage(ctx, req, res, idText) {
 function newItemPage(ctx, req, res) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const form = { name: '', notes: '', rows: [], blankRows: BLANK_ROWS };
+  // ?nom= : nom pré-rempli (bouton « Créer la fiche » de la recherche sans résultat). Nettoyé
+  // comme un nom saisi (cleanLine) et borné ; échappé par le gabarit ; rien n'est enregistré.
+  const name = [...cleanLine(queryParam(req, 'nom'))].slice(0, MAX_NAME_CHARS).join('');
+  const form = { name, notes: '', rows: [], blankRows: BLANK_ROWS };
   sendHtml(res, 200, itemFormPage(pageUser(session), { item: null, form, errors: {} }));
 }
 
@@ -787,6 +846,15 @@ function createChipItemAction(ctx, req, res, uidText) {
   });
 }
 
+/**
+ * Fiches proposées pour recevoir une puce inconnue : même recherche que l'inventaire, mais les
+ * fiches SANS puce d'abord (ce sont elles qui attendent une puce), dans l'ordre de la recherche
+ * (tri stable). Page HTML et GET /api/recherche?pour=association.
+ */
+function associationCandidates(db, query) {
+  return listItems(db, query).sort((a, b) => (a.uid_nfc === null ? 0 : 1) - (b.uid_nfc === null ? 0 : 1));
+}
+
 // « Associer à une fiche existante » : recherche (même logique que l'inventaire), limitée à
 // MAX_ASSOCIATE_RESULTS fiches affichées.
 function associateSearch(ctx, req, res, uidText) {
@@ -796,7 +864,7 @@ function associateSearch(ctx, req, res, uidText) {
   const chip = findUnknownChip(ctx, res, user, uidText);
   if (!chip) return;
   const query = normalizeQuery(queryParam(req, 'q'));
-  const found = listItems(ctx.db, query);
+  const found = associationCandidates(ctx.db, query);
   sendHtml(res, 200, associateSearchPage(user, {
     chip, query, items: found.slice(0, MAX_ASSOCIATE_RESULTS), total: found.length, now: Date.now(),
   }));
@@ -1064,6 +1132,22 @@ function sendHtml(res, status, page, cookies = []) {
   if (cookies.length > 0) res.setHeader('Set-Cookie', cookies);
   res.writeHead(status);
   res.end(page.toString());
+}
+
+// Caractères échappés en \uXXXX dans le JSON envoyé : < > & (défense en profondeur : même
+// ouverte comme une page par erreur, la réponse ne contient aucune balise ; nosniff interdit déjà
+// au navigateur de la prendre pour du HTML), et les séparateurs de ligne U+2028 et U+2029.
+// L'expression est construite à partir des points de code : aucun caractère invisible littéral
+// dans ce fichier (test/sources-invisibles.test.js).
+const JSON_ESCAPED = new RegExp(`[<>&${String.fromCodePoint(0x2028, 0x2029)}]`, 'g');
+
+/** Réponse JSON (GET /api/recherche) : jamais en cache, échappée (JSON_ESCAPED). */
+function sendJson(res, status, value) {
+  const body = JSON.stringify(value).replace(JSON_ESCAPED, (c) => `\\u${c.codePointAt(0).toString(16).padStart(4, '0')}`);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.writeHead(status);
+  res.end(body);
 }
 
 // Redirections vers des chemins fixes du site uniquement : aucune cible fournie par le

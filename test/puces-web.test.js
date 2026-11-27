@@ -24,6 +24,7 @@ import { encodeFrame } from '../server/protocol.js';
 import { DUMMY_HASH } from '../server/password.js';
 import { createSession, csrfTokenFor } from '../server/sessions.js';
 import { makeTestCerts } from './tls-fixture.js';
+import { withoutAppScript } from './app-script.js';
 
 const NOW = '2026-11-19T08:00:00.000Z';
 const KEY = Buffer.alloc(32, 0x5a);
@@ -124,11 +125,12 @@ const grouped = (uid) => uid.match(/../g).join(' ');
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
   'textarea', 'select', 'option', 'ul', 'li', 'fieldset', 'legend', 'details', 'summary',
-  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g']);
+  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g', 'kbd']);
 const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form',
-  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'button', 'label', 'ul', 'li', 'nav', 'fieldset', 'legend', 'details', 'summary', 'ol', 'svg', 'symbol', 'use'];
+  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'button', 'label', 'ul', 'li', 'nav', 'fieldset', 'legend', 'details', 'summary', 'ol', 'svg', 'symbol', 'use', 'kbd'];
 
-function assertSafePage(html, what) {
+function assertSafePage(page, what) {
+  const html = withoutAppScript(page); // seul script autorisé (D-021)
   for (const [, tag] of html.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)) assert.ok(ALLOWED_TAGS.has(tag.toLowerCase()), `${what} : balise <${tag}>`);
   for (const tag of PAIRED_TAGS) {
     const open = html.match(new RegExp(`<${tag}[\\s>]`, 'g'))?.length ?? 0;
@@ -349,7 +351,8 @@ test('recherche d\'association : toutes les fiches (puce actuelle, localisation)
   const res = await page(`/chips/${LOOSE}/associate`);
   assert.equal(res.status, 200);
   assert.ok(res.body.includes('<h1>Associer la puce à une fiche</h1>'));
-  assert.ok(res.body.includes(`<form class="recherche" method="get" action="/chips/${LOOSE}/associate" role="search">`));
+  assert.ok(res.body.includes(`<form class="recherche recherche--direct" method="get" action="/chips/${LOOSE}/associate" role="search">`));
+  assert.ok(res.body.includes('aria-controls="association-resultats"'));
   assert.ok(res.body.includes('4 fiches'));
   assert.ok(res.body.includes(`<a class="bouton bouton-secondaire bouton-petit" href="/chips/${LOOSE}/associate/2"><svg class="ic" aria-hidden="true"><use href="#i-associer"></use></svg>Associer</a>`));
   assert.ok(res.body.includes('<td data-label="Puce actuelle"><span class="texte-doux">aucune puce</span></td>'));
@@ -474,7 +477,9 @@ test('recherche : au plus 50 fiches affichées, avec une invitation à préciser
   const lots = await page('/chips/ABCDEF01/associate?q=lot');
   assert.ok(lots.body.includes('60 résultats pour «&nbsp;lot&nbsp;» · les 50 premières sont affichées : précisez la recherche.'));
   const few = await page('/chips/ABCDEF01/associate?q=lot%205');
-  assert.ok(few.body.includes('10 résultats'));
+  // Recherche par mots (étape U2) : « lot » ET « 5 », chacun n'importe où dans le nom :
+  // Lot 05, 15, 25, 35, 45 et Lot 50 à 59.
+  assert.ok(few.body.includes('15 résultats'));
   assert.ok(!withoutHelp(few.body).includes('précisez la recherche'));
 });
 
@@ -521,9 +526,9 @@ test('suppression d\'une fiche avec puce : la confirmation annonce le retour de 
   const created = await post('/chips/B0B0B0B0/new', { name: 'Fiche éphémère' });
   const id = Number(/^\/items\/(\d+)/.exec(created.headers.location)[1]);
   const confirm = await page(`/items/${id}/delete`);
-  assert.ok(confirm.body.includes('<p>Sa puce sera détachée : si elle a déjà été scannée, elle réapparaîtra dans «&nbsp;Puces inconnues&nbsp;» avec ses scans.</p>'));
-  const withoutChip = db.prepare('SELECT id FROM items WHERE uid_nfc IS NULL LIMIT 1').get().id;
-  assert.ok(!withoutHelp((await page(`/items/${withoutChip}/delete`)).body).includes('Sa puce'));
+  // Étape U2 : confirmation en une phrase ; le retour de la puce est expliqué par l'aide de la page.
+  assert.ok(confirm.body.includes('Fiche éphémère</strong>&nbsp;» sera supprimée ; ses déplacements restent dans l\'historique.</p>'));
+  assert.ok(confirm.body.includes('Puces inconnues'));
   assert.equal((await post(`/items/${id}/delete`)).status, 303);
 });
 

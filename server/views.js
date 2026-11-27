@@ -7,7 +7,7 @@
 // Aide « Comment ça marche ? » sous le titre des pages : texte constant, dans server/aide.js.
 
 import { html } from './html.js';
-import { formatAge, formatDateTime } from './dates.js';
+import { formatAge, formatDateTime, formatSince, formatDay } from './dates.js';
 import { MAX_QUERY_CHARS } from './inventory.js';
 import {
   MAX_NAME_CHARS, MAX_NOTES_CHARS, MAX_PROPERTIES, MAX_PROPERTY_KEY_CHARS, MAX_PROPERTY_VALUE_CHARS,
@@ -56,7 +56,9 @@ const READER_NOTICES = {
 const LOGO = html`<svg class="logo-image" viewBox="0 0 900 900" aria-hidden="true"><defs><clipPath id="mt-losange"><rect x="167" y="172" width="566" height="566" rx="96" transform="rotate(45 450 455)"></rect></clipPath></defs><g clip-path="url(#mt-losange)"><rect x="0" y="0" width="900" height="900" fill="#0E95A4"></rect><rect x="238" y="455" width="426" height="460" fill="#03245A"></rect></g><circle cx="451" cy="455" r="213" fill="#FFFFFF"></circle><circle cx="451" cy="455" r="114" fill="#03245A"></circle></svg>`;
 const BRAND_CONTENT = html`${LOGO}<span>MetroTrack</span>`;
 
-function documentPage(title, bodyClass, content) {
+// script : charge web/static/app.js (pages de l'application seulement, D-021). Fichier local,
+// différé (defer), sans aucun script en ligne : la CSP default-src 'self' est inchangée.
+function documentPage(title, bodyClass, content, script = false) {
   const body = html`<a class="lien-evitement" href="#contenu">Aller au contenu</a>
 ${content}`;
   return html`<!doctype html>
@@ -68,7 +70,8 @@ ${content}`;
 <link rel="stylesheet" href="/static/fonts.css">
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
-</head>
+${script ? html`<script src="/static/app.js" defer></script>
+` : null}</head>
 <body class="${bodyClass}">
 ${spriteFor(body)}
 ${body}
@@ -203,6 +206,7 @@ function appLayout(user, title, content, { section = SECTION_ITEMS, exact = fals
     ? html`<form class="recherche-barre" method="get" action="/" role="search">
 ${icon('recherche')}
 <input name="q" type="search" maxlength="${MAX_QUERY_CHARS}" aria-label="Rechercher un objet dans l'inventaire" placeholder="Où est… ?" autocomplete="off" spellcheck="false">
+${SHORTCUT_HINT}
 </form>`
     : null;
   return documentPage(title, 'page-app', html`<header class="barre">
@@ -228,7 +232,7 @@ ${searchForm}
 </header>
 <main id="contenu" class="page">
 ${content}
-</main>`);
+</main>`, true);
 }
 
 /**
@@ -285,8 +289,52 @@ function timeTag(iso, now) {
  * bounded : texte placé devant l'heure dans ce cas (« au moins » sous l'en-tête « Depuis »).
  * arrived_at manquant (ne devrait pas arriver) : heure du dernier événement.
  */
-function arrivalTag(row, now, bounded = 'au moins') {
-  return html`${row.arrived_at_bounded === 1 ? html`${bounded} ` : null}${timeTag(row.arrived_at ?? row.at, now)}`;
+function arrivalTag(row, now) {
+  const iso = row.arrived_at ?? row.at;
+  return html`<time datetime="${iso}" title="${formatDateTime(iso)}">${formatSince(iso, now, row.arrived_at_bounded === 1)}</time>`;
+}
+
+/**
+ * « depuis 4 min — aujourd'hui à 16:06 » (fiche d'un objet) : l'heure exacte est écrite à côté
+ * quand « depuis » ne la donne pas déjà (« depuis hier à 17:40 », « depuis le 12 nov. … »).
+ */
+function arrivalWithDay(row, now) {
+  const iso = row.arrived_at ?? row.at;
+  const since = formatSince(iso, now, row.arrived_at_bounded === 1);
+  const day = formatDay(iso, now);
+  return html`${arrivalTag(row, now)}${since.endsWith(day) ? null : html` — ${day}`}`;
+}
+
+/**
+ * Résultat de recherche pour GET /api/recherche (objet sérialisé en JSON par web.js, puis
+ * affiché par web/static/app.js avec textContent : jamais interprété comme du HTML).
+ * Minimisation : ni clé, ni compteur, ni numéro de puce, SAUF quand c'est la puce qui
+ * correspond à la saisie (trouve.type = 'puce') ; il est alors groupé par 2, comme à l'écran.
+ * Le numéro de lecteur n'est donné que pour « lecteur non affecté » : la pastille mène à sa
+ * fiche, comme dans la liste. Les textes de date sont calculés ici, comme dans les pages.
+ * @param {object} row ligne de inventory.js (listItems, searchItems), found facultatif
+ */
+export function searchResult(row, now, { compact = false, withChip = false } = {}) {
+  const { label, state } = locationOf(row);
+  const place = { etat: state, libelle: label };
+  if (state === 'inconnue') place.lecteur = row.reader_id;
+  let arrival = null;
+  if (row.at !== null) {
+    const iso = row.arrived_at ?? row.at;
+    const atLeast = row.arrived_at_bounded === 1;
+    // « depuis 4 min », « depuis au moins hier à 17:40 » ; exacte : date complète, au survol.
+    arrival = { iso, texte: formatSince(iso, now, atLeast), exacte: formatDateTime(iso), auMoins: atLeast };
+    // compact (lignes de tableau, &tout=1) : seulement ce qu'affiche une ligne.
+    if (!compact) arrival.par = row.arrival_source === 'manual' ? 'correction' : 'scan';
+  }
+  const result = { id: row.id, nom: row.name, emplacement: place, arrivee: arrival };
+  // withChip : page « Associer la puce », qui affiche la puce actuelle de chaque fiche (groupée).
+  if (withChip) result.puce = row.uid_nfc === null ? null : chipNumber(row.uid_nfc);
+  if (compact) return result;
+  if (row.found?.type === 'nom') result.trouve = { type: 'nom' };
+  else if (row.found?.type === 'propriete') result.trouve = { type: 'propriete', cle: row.found.key, valeur: row.found.value };
+  else if (row.found?.type === 'puce') result.trouve = { type: 'puce', puce: chipNumber(row.uid_nfc) };
+  return result;
 }
 
 const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
@@ -298,6 +346,21 @@ function emptyState(iconName, content) {
 <span class="vide-icone">${icon(iconName)}</span>
 ${content}
 </div>`;
+}
+
+// Indice du raccourci de la palette (affiché par la feuille de style seulement si app.js est
+// actif : sans script, le raccourci n'existe pas).
+const SHORTCUT_HINT = html`<kbd class="raccourci" aria-hidden="true"><kbd>Ctrl</kbd><kbd>K</kbd></kbd>`;
+
+/**
+ * Bouton « Créer la fiche « … » » d'une recherche sans résultat : nouvelle fiche avec ce nom
+ * pré-rempli (web.js, newItemPage, ?nom=). SÉCURITÉ : l'adresse est un chemin FIXE du site ; la
+ * saisie n'y figure que comme valeur de paramètre, encodée par encodeURIComponent (aucun « & »,
+ * « ? », « # » ni schéma possible), puis échappée par le gabarit dans l'attribut.
+ * Bouton secondaire : la page a déjà son bouton principal (« Nouvelle fiche »).
+ */
+function createItemLink(query) {
+  return html`<a class="bouton bouton-secondaire" href="/items/new?nom=${encodeURIComponent(query)}">${icon('ajouter')}Créer la fiche «&nbsp;${query}&nbsp;»</a>`;
 }
 
 /**
@@ -317,7 +380,8 @@ export function inventoryPage(user, { query, items, now, notice = null }) {
 <p class="texte-doux">Créez la première fiche avec le bouton «&nbsp;Nouvelle fiche&nbsp;».</p>`);
   } else if (items.length === 0) {
     body = emptyState('recherche', html`<p>Aucun objet ne correspond à «&nbsp;${query}&nbsp;».</p>
-<p class="texte-doux">Essayez une partie du nom, ou quelques caractères du numéro de sa puce.</p>`);
+<p class="texte-doux">Essayez un autre mot du nom ou d'une propriété, ou quelques caractères du numéro de sa puce.</p>
+${createItemLink(query)}`);
   } else {
     body = html`<div class="panneau-tableau">
 <table class="tableau tableau-inventaire">
@@ -339,14 +403,17 @@ ${items.map((item) => html`<tr>
 <a class="bouton" href="/items/new">${icon('ajouter')}Nouvelle fiche</a>
 </div>
 </div>
-${AIDE.inventaire}<form class="recherche" method="get" action="/" role="search">
+${AIDE.inventaire}<form class="recherche recherche--direct" method="get" action="/" role="search">
 ${icon('recherche')}
-<label class="visuellement-cache" for="q">Rechercher un objet par nom ou numéro de puce</label>
-<input id="q" name="q" type="search" value="${query}" maxlength="${MAX_QUERY_CHARS}" placeholder="Nom ou numéro de puce" autocomplete="off" spellcheck="false">
+<label class="visuellement-cache" for="q">Rechercher un objet par nom, propriété ou numéro de puce</label>
+<input id="q" name="q" type="search" value="${query}" maxlength="${MAX_QUERY_CHARS}" placeholder="Nom, n° de série, numéro de puce…" autocomplete="off" spellcheck="false" aria-controls="inventaire-resultats">
+${SHORTCUT_HINT}
 <button class="bouton bouton-secondaire" type="submit">Rechercher</button>
 </form>
+<div id="inventaire-resultats">
 ${summary}
-${body}`, { exact: true, search: false });
+${body}
+</div>`, { exact: true, search: false });
 }
 
 /**
@@ -370,7 +437,7 @@ function currentPlace(item, now) {
     ? html`<p class="emplacement emplacement--attention">${icon('attention')}${locationBadge(item)}</p>`
     : html`<p class="emplacement emplacement--xl">${icon('poste')}${locationBadge(item)}</p>`;
   return html`${place}
-<p class="localisation-detail">Depuis : ${arrivalTag(item, now)} · ${last}</p>
+<p class="localisation-detail">${arrivalWithDay(item, now)} · ${last}</p>
 ${unassigned ? html`<p class="note-emplacement">Le lecteur qui a scanné l'objet n'est rattaché à aucun poste. <a href="/readers/${item.reader_id}">Rattacher ce lecteur à un poste</a></p>\n` : null}`;
 }
 
@@ -426,8 +493,13 @@ ${history.map((entry) => html`<li class="frise-etape">
 </li>
 `)}</ol>`;
 
+  // Correction réussie : le message nomme le poste, lu en base (emplacement actuel de la fiche,
+  // que la correction vient de fixer) ; le code ?ok= reste un code constant.
+  const noticeHtml = notice === 'corrige' && item.source === 'manual' && item.station_name
+    ? html`<p class="succes" role="status">Emplacement corrigé : ${item.station_name}</p>\n`
+    : noticeFor(ITEM_NOTICES, notice);
   return appLayout(user, item.name, html`${trail([['/', 'Inventaire']], item.name)}
-${noticeFor(ITEM_NOTICES, notice)}<div class="carte fiche-entete">
+${noticeHtml}<div class="carte fiche-entete">
 <div class="fiche-entete-haut">
 <div class="fiche-titre">${icon('objet')}<h1>${item.name}</h1></div>
 <div class="actions-page">
@@ -480,10 +552,25 @@ function historyLabel(label) {
   return label.map((part) => (typeof part === 'string' ? part : chipCode(part.uid)));
 }
 
+/**
+ * Page « introuvable » d'une fiche, d'un poste ou d'un lecteur : une phrase, et deux issues.
+ * « Chercher un objet » ouvre la palette si app.js est actif (data-palette), sinon l'inventaire
+ * et sa recherche.
+ */
+function notFoundPage(user, { title, text, parents, layout, iconName }) {
+  return appLayout(user, title, html`${trail(parents, title)}
+${emptyState(iconName, html`<h1>${title}</h1>
+<p>${text}</p>
+<div class="groupe-boutons">
+<a class="bouton" href="/" data-palette="ouvrir">${icon('recherche')}Chercher un objet</a>
+<a class="bouton bouton-secondaire" href="/">Retour à l'inventaire</a>
+</div>`)}`, layout);
+}
+
 export function itemNotFoundPage(user) {
-  return appLayout(user, 'Fiche introuvable', html`${trail([['/', 'Inventaire']], 'Fiche introuvable')}
-${emptyState('objet', html`<h1>Fiche introuvable</h1>
-<p class="texte-doux">Aucun objet ne correspond à cette adresse.</p>`)}`);
+  return notFoundPage(user, {
+    title: 'Fiche introuvable', text: 'Cette fiche n\'existe pas ou a été supprimée.', parents: [['/', 'Inventaire']], layout: undefined, iconName: 'objet',
+  });
 }
 
 // ---------------------------------------------------------------- édition
@@ -546,17 +633,17 @@ ${help}${failed ? html`<p class="erreur" role="alert">La fiche n'a pas été enr
 <input type="hidden" name="csrf" value="${user.csrf}">
 ${chipField}<div class="champ">
 <label for="name">Nom <span class="obligatoire">(obligatoire)</span></label>
-<input id="name" name="name" value="${form.name}" maxlength="${MAX_NAME_CHARS}" required autocomplete="off" aria-describedby="${describedBy('name-aide', 'name-erreur', errors.name)}"${invalid(errors.name)}>
-<p class="aide" id="name-aide">Par exemple «&nbsp;Multimètre Fluke 87V&nbsp;». ${MAX_NAME_CHARS} caractères au plus.</p>
+<input id="name" name="name" value="${form.name}" maxlength="${MAX_NAME_CHARS}" required autocomplete="off" aria-describedby="${describedBy('name-aide', 'name-erreur', errors.name)}"${invalid(errors.name)}${editing ? null : html` autofocus`}>
+<p class="aide" id="name-aide">Par exemple «&nbsp;Multimètre Fluke 87V&nbsp;».</p>
 ${fieldError('name-erreur', errors.name)}</div>
 <div class="champ">
 <label for="notes">Notes</label>
 <textarea id="notes" name="notes" rows="5" maxlength="${MAX_NOTES_CHARS}" aria-describedby="${describedBy('notes-aide', 'notes-erreur', errors.notes)}"${invalid(errors.notes)}>${form.notes}</textarea>
-<p class="aide" id="notes-aide">Texte libre sur plusieurs lignes. ${thousands(MAX_NOTES_CHARS)} caractères au plus.</p>
+<p class="aide" id="notes-aide">Texte libre, sur plusieurs lignes si besoin.</p>
 ${fieldError('notes-erreur', errors.notes)}</div>
 <fieldset class="champ-proprietes" aria-describedby="${describedBy('proprietes-aide', 'proprietes-erreur', errors.properties)}">
 <legend>Propriétés</legend>
-<p class="aide" id="proprietes-aide">Paires libres, par exemple «&nbsp;Marque&nbsp;» et «&nbsp;Fluke&nbsp;». ${MAX_PROPERTIES} au plus ; nom de ${MAX_PROPERTY_KEY_CHARS} caractères au plus, valeur de ${thousands(MAX_PROPERTY_VALUE_CHARS)}. Une ligne laissée vide est ignorée. Plus de lignes : bouton «&nbsp;Ajouter des lignes&nbsp;» en bas du formulaire.</p>
+<p class="aide" id="proprietes-aide">Par exemple «&nbsp;N° de série&nbsp;» et «&nbsp;4410278&nbsp;». Une ligne laissée vide est ignorée.</p>
 ${fieldError('proprietes-erreur', errors.properties)}<div class="proprietes-saisie">
 <div class="propriete-entete" aria-hidden="true"><span>Nom</span><span>Valeur</span></div>
 ${rows.map((row, i) => propertyRow(row, i + 1))}</div>
@@ -591,9 +678,7 @@ export function deleteItemPage(user, { item }) {
 <h1>Supprimer la fiche</h1>
 </div>
 ${AIDE.supprimerFiche}<div class="panneau panneau-danger">
-<p>Vous allez supprimer la fiche «&nbsp;<strong class="nom-confirme">${item.name}</strong>&nbsp;».</p>
-<p>Ses propriétés, ses notes et l'historique de ses corrections manuelles d'emplacement seront supprimés avec elle.</p>
-${item.uid_nfc === null ? null : html`<p>Sa puce sera détachée : si elle a déjà été scannée, elle réapparaîtra dans «&nbsp;Puces inconnues&nbsp;» avec ses scans.</p>\n`}<p class="texte-doux">Les scans de sa puce et l'historique des modifications sont conservés.</p>
+<p>La fiche «&nbsp;<strong class="nom-confirme">${item.name}</strong>&nbsp;» sera supprimée ; ses déplacements restent dans l'historique.</p>
 <form method="post" action="/items/${item.id}/delete">
 <input type="hidden" name="csrf" value="${user.csrf}">
 <div class="actions-formulaire">
@@ -603,6 +688,9 @@ ${item.uid_nfc === null ? null : html`<p>Sa puce sera détachée : si elle a dé
 </form>
 </div>`);
 }
+
+// Correction d'emplacement : boutons radio jusqu'à ce nombre de postes, liste déroulante au-delà.
+const MAX_RADIO_STATIONS = 12;
 
 /**
  * Correction manuelle de l'emplacement.
@@ -617,16 +705,27 @@ export function locationPage(user, { item, stations, selected = null, error = nu
 <p class="texte-doux">Il faut d'abord créer un poste pour pouvoir y localiser un objet.</p>
 <a class="bouton" href="/stations/new">Créer un poste</a>`);
   } else {
-    body = html`<form class="formulaire-page" method="post" action="/items/${item.id}/location">
-<input type="hidden" name="csrf" value="${user.csrf}">
-<div class="champ">
+    // Peu de postes (MAX_RADIO_STATIONS au plus) : un bouton radio par poste, tous visibles,
+    // un seul clic. Au-delà : liste déroulante. Même champ « station » dans les deux cas.
+    const choice = stations.length <= MAX_RADIO_STATIONS
+      ? html`<fieldset class="champ choix-postes" aria-describedby="${describedBy('station-aide', 'station-erreur', error)}">
+<legend>Poste où se trouve l'objet</legend>
+<div class="choix-liste">
+${stations.map((station) => html`<label class="choix-poste" for="station-${station.id}"><input type="radio" name="station" value="${station.id}" required${String(station.id) === selected ? html` checked` : null}${invalid(error)} id="station-${station.id}"><span>${station.name}</span></label>
+`)}</div>
+<p class="aide" id="station-aide">La correction s'applique tout de suite. Le prochain scan de l'objet la remplacera.</p>
+${fieldError('station-erreur', error)}</fieldset>`
+      : html`<div class="champ">
 <label for="station">Poste où se trouve l'objet</label>
 <select id="station" name="station" required aria-describedby="${describedBy('station-aide', 'station-erreur', error)}"${invalid(error)}>
 <option value="">Choisir un poste…</option>
 ${stations.map((station) => html`<option value="${station.id}"${String(station.id) === selected ? html` selected` : null}>${station.name}</option>
 `)}</select>
-<p class="aide" id="station-aide">La correction s'applique tout de suite, à l'heure actuelle. Le prochain scan de l'objet la remplacera.</p>
-${fieldError('station-erreur', error)}</div>
+<p class="aide" id="station-aide">La correction s'applique tout de suite. Le prochain scan de l'objet la remplacera.</p>
+${fieldError('station-erreur', error)}</div>`;
+    body = html`<form class="formulaire-page" method="post" action="/items/${item.id}/location">
+<input type="hidden" name="csrf" value="${user.csrf}">
+${choice}
 <div class="actions-formulaire">
 <button class="bouton" type="submit">Enregistrer la correction</button>
 <a class="lien-annuler" href="/items/${item.id}">Annuler</a>
@@ -652,7 +751,8 @@ const READERS_TRAIL = ['/readers', 'Lecteurs'];
 /**
  * Désignation d'un lecteur à l'écran (D-019), SEULE fonction qui la construit :
  *   1. son nom, s'il en a un ;
- *   2. sinon « Lecteur du poste <nom du poste> », s'il est affecté ;
+ *   2. sinon, s'il est affecté, « Lecteur du Poste 2 » (nom de poste commençant par « Poste »)
+ *      ou « Lecteur · Atelier » ;
  *   3. sinon « Lecteur n° <numéro> ».
  * Texte brut : échappé par le gabarit html`...` là où il est inséré.
  * Deux lecteurs peuvent porter la même désignation (remplaçant qui reprend le nom, deux
@@ -663,7 +763,11 @@ const READERS_TRAIL = ['/readers', 'Lecteurs'];
  */
 export function readerLabel(reader) {
   if (reader.name) return reader.name;
-  if (reader.station_id !== null && reader.station_name) return `Lecteur du poste ${reader.station_name}`;
+  if (reader.station_id !== null && reader.station_name) {
+    // « Lecteur du Poste 2 » si le nom du poste commence déjà par « Poste », sinon « Lecteur · Atelier »
+    // (et non « Lecteur du poste Atelier » ni « Lecteur du Atelier »).
+    return /^poste\b/i.test(reader.station_name) ? `Lecteur du ${reader.station_name}` : `Lecteur · ${reader.station_name}`;
+  }
   return `Lecteur n° ${reader.id}`;
 }
 
@@ -689,14 +793,14 @@ ${hint === null ? null : html`<p class="texte-doux">${hint}</p>\n`}${action === 
 }
 
 export function stationNotFoundPage(user) {
-  return messagePage(user, {
-    title: 'Poste introuvable', text: 'Aucun poste ne correspond à cette adresse.', parents: [STATIONS_TRAIL], layout: stationsSection, iconName: 'poste',
+  return notFoundPage(user, {
+    title: 'Poste introuvable', text: 'Ce poste n\'existe pas ou a été supprimé.', parents: [STATIONS_TRAIL], layout: stationsSection, iconName: 'poste',
   });
 }
 
 export function readerNotFoundPage(user) {
-  return messagePage(user, {
-    title: 'Lecteur introuvable', text: 'Aucun lecteur ne correspond à cette adresse.', parents: [READERS_TRAIL], layout: readersSection, iconName: 'lecteur',
+  return notFoundPage(user, {
+    title: 'Lecteur introuvable', text: 'Ce lecteur n\'existe pas ou a été supprimé.', parents: [READERS_TRAIL], layout: readersSection, iconName: 'lecteur',
   });
 }
 
@@ -772,21 +876,18 @@ ${body}`, { ...stationsSection, exact: true });
  * @param {{station: object, readers: object[], items: object[], deletable: boolean, now: number, notice?: string|null}} data
  */
 export function stationPage(user, { station, readers, items, deletable, now, notice = null }) {
-  const description = station.description === ''
-    ? html`<p class="texte-doux">Aucune description</p>`
-    : html`<p class="notes">${station.description}</p>`;
   const activeCount = readers.filter((reader) => reader.active === 1).length;
 
   const readerList = readers.length === 0
     ? html`<p class="texte-doux">Aucun lecteur n'est affecté à ce poste. On affecte un lecteur depuis sa fiche («&nbsp;Changer de poste&nbsp;»), ou à sa création.</p>`
     : html`<table class="tableau tableau-lecteurs-poste">
-<thead><tr><th scope="col">Lecteur</th><th scope="col">N° boîtier</th><th scope="col">État</th><th scope="col">Créé</th></tr></thead>
+<thead><tr><th scope="col">Lecteur</th><th scope="col">N° boîtier</th><th scope="col">État</th><th scope="col">Dernier scan</th></tr></thead>
 <tbody>
 ${readers.map((reader) => html`<tr>
 <td><a class="lien-objet" href="/readers/${reader.id}">${readerLabel(reader)}</a></td>
 <td data-label="N° boîtier"><span class="numero-boitier">${reader.id}</span></td>
 <td data-label="État">${readerBadge(reader)}</td>
-<td data-label="Créé">${formatDateTime(reader.created_at)}</td>
+<td data-label="Dernier scan">${reader.last_scan_at === null ? html`<span class="texte-doux">aucun</span>` : timeTag(reader.last_scan_at, now)}</td>
 </tr>
 `)}</tbody>
 </table>`;
@@ -811,6 +912,7 @@ ${noticeFor(STATION_NOTICES, notice)}<div class="entete-page entete-actions">
 ${deletable ? html`<a class="lien-danger" href="/stations/${station.id}/delete">${icon('supprimer')}Supprimer</a>` : null}
 </div>
 </div>
+${station.description === '' ? null : html`<p class="description-page">${station.description}</p>\n`}
 ${AIDE.poste}<div class="fiche fiche--poste">
 <section class="carte carte-corps fiche-large" aria-labelledby="titre-objets">
 <h2 id="titre-objets" class="carte-titre">${icon('objet')}Objets présents <span class="compte-titre">${items.length}</span></h2>
@@ -822,7 +924,6 @@ ${readerList}
 </section>
 <section class="carte carte-corps" aria-labelledby="titre-informations">
 <h2 id="titre-informations" class="carte-titre">${icon('note')}Informations</h2>
-${description}
 <dl class="proprietes">
 <div><dt>Créé</dt><dd>${formatDateTime(station.created_at)}</dd></div>
 <div><dt>Lecteurs actifs</dt><dd>${activeCount}</dd></div>
@@ -853,12 +954,12 @@ ${editing ? AIDE.modifierPoste : AIDE.nouveauPoste}${failed ? html`<p class="err
 <div class="champ">
 <label for="name">Nom <span class="obligatoire">(obligatoire)</span></label>
 <input id="name" name="name" value="${form.name}" maxlength="${MAX_STATION_NAME_CHARS}" required autocomplete="off" aria-describedby="${describedBy('name-aide', 'name-erreur', errors.name)}"${invalid(errors.name)}>
-<p class="aide" id="name-aide">Par exemple «&nbsp;Banc de mesure 2&nbsp;». Deux postes ne peuvent pas porter le même nom (majuscules et minuscules confondues). ${MAX_STATION_NAME_CHARS} caractères au plus.</p>
+<p class="aide" id="name-aide">Par exemple «&nbsp;Banc de mesure 2&nbsp;». Chaque poste a un nom différent.</p>
 ${fieldError('name-erreur', errors.name)}</div>
 <div class="champ">
 <label for="description">Description</label>
 <textarea id="description" name="description" rows="4" maxlength="${MAX_STATION_DESCRIPTION_CHARS}" aria-describedby="${describedBy('description-aide', 'description-erreur', errors.description)}"${invalid(errors.description)}>${form.description}</textarea>
-<p class="aide" id="description-aide">Facultative : emplacement, usage… ${thousands(MAX_STATION_DESCRIPTION_CHARS)} caractères au plus.</p>
+<p class="aide" id="description-aide">Facultative : emplacement, usage…</p>
 ${fieldError('description-erreur', errors.description)}</div>
 <div class="actions-formulaire">
 <button class="bouton" type="submit">${editing ? 'Enregistrer' : 'Créer le poste'}</button>
@@ -1028,7 +1129,7 @@ function readerNameField({ value, error }) {
   return html`<div class="champ">
 <label for="name">Nom <span class="obligatoire">(facultatif)</span></label>
 <input id="name" name="name" value="${value}" maxlength="${MAX_READER_NAME_CHARS}" autocomplete="off" aria-describedby="${describedBy('name-aide', 'name-erreur', error)}"${invalid(error)}>
-<p class="aide" id="name-aide">Pour reconnaître le boîtier, par exemple «&nbsp;Boîtier établi gauche&nbsp;». Sans nom, le lecteur est désigné par son poste. ${MAX_READER_NAME_CHARS} caractères au plus.</p>
+<p class="aide" id="name-aide">Pour reconnaître le boîtier, par exemple «&nbsp;Boîtier établi gauche&nbsp;». Sans nom, le lecteur est désigné par son poste.</p>
 ${fieldError('name-erreur', error)}</div>`;
 }
 
@@ -1161,10 +1262,8 @@ export function readerKeyPage(user, { id, name, station, keyHex, oldId = null })
 <h1>Clé du lecteur</h1>
 <p class="sous-titre-page">${readerSubtitle(reader)}</p>
 </div>
-<div class="panneau panneau-alerte" role="alert">
-<p><strong>Cette clé ne sera plus jamais affichée.</strong> Installez-la maintenant dans le boîtier, avec son numéro de lecteur. Si elle est perdue, remplacez la clé depuis la fiche du lecteur.</p>
-<p>Ne rechargez pas cette page : le navigateur proposerait de renvoyer le formulaire, ce qui créerait un autre lecteur.</p>
-<p>Fermez cet onglet une fois la clé installée dans le boîtier.</p>
+<div class="panneau panneau-alerte" role="note">
+<p>Copiez cette clé dans le boîtier maintenant : elle ne sera plus affichée. Si vous la perdez, vous pourrez en créer une nouvelle.</p>
 </div>
 <section class="carte carte-corps carte-cle" aria-labelledby="titre-numero">
 <h2 id="titre-numero" class="etiquette">Numéro à configurer dans le boîtier</h2>
@@ -1299,14 +1398,16 @@ ${items.map((item) => html`<tr>
 <h1>Associer la puce à une fiche</h1>
 <p class="sous-titre-page">Puce ${chipCode(chip.uid)} · dernier scan : ${chipPlace(chip)}, ${timeTag(chip.received_at, now)}</p>
 </div>
-${AIDE.associerRecherche}<form class="recherche" method="get" action="${base}" role="search">
+${AIDE.associerRecherche}<form class="recherche recherche--direct" method="get" action="${base}" role="search">
 ${icon('recherche')}
-<label class="visuellement-cache" for="q">Rechercher une fiche par nom ou numéro de puce</label>
-<input id="q" name="q" type="search" value="${query}" maxlength="${MAX_QUERY_CHARS}" placeholder="Nom ou numéro de puce" autocomplete="off" spellcheck="false">
+<label class="visuellement-cache" for="q">Rechercher une fiche par nom, propriété ou numéro de puce</label>
+<input id="q" name="q" type="search" value="${query}" maxlength="${MAX_QUERY_CHARS}" placeholder="Nom, n° de série, numéro de puce…" autocomplete="off" spellcheck="false" aria-controls="association-resultats">
 <button class="bouton bouton-secondaire" type="submit">Rechercher</button>
 </form>
+<div id="association-resultats">
 ${summary}
 ${body}
+</div>
 ${total === 0 && !searching ? null : html`<p class="alternative">L'objet n'a pas encore de fiche ? <a href="/chips/${chip.uid}/new">Créer une fiche pour cette puce</a></p>\n`}`, chipsSection);
 }
 

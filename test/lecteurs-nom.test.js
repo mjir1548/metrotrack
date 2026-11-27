@@ -181,7 +181,7 @@ test('renommer : 303 ?ok=renomme et audit avant/après ; même nom → ?ok=nom_i
 test('nom vidé : le lecteur est de nouveau désigné par son poste ; remplacement : le nouveau lecteur reprend le nom', async () => {
   assert.equal((await post('/readers/1/rename', { name: '   ' })).headers.location, '/readers/1?ok=renomme');
   assert.deepEqual(lastAudit().details, { name: { before: XSS, after: '' } });
-  assert.ok((await page('/readers')).body.includes('<a class="lien-objet" href="/readers/1">Lecteur du poste Atelier</a>'));
+  assert.ok((await page('/readers')).body.includes('<a class="lien-objet" href="/readers/1">Lecteur · Atelier</a>'));
   // Frise de l'objet : sans nom, pas de « Scanné par ».
   assert.ok(!(await page('/items/1')).body.includes('Scanné par'));
 

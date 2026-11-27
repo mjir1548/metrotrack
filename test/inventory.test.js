@@ -8,6 +8,7 @@ import {
   parseItemId, normalizeQuery, uidFragment, fold, listItems, getItem, recentScans, MAX_QUERY_CHARS,
 } from '../server/inventory.js';
 import { inventoryPage, itemPage, loginPage, BUSY_MESSAGE } from '../server/views.js';
+import { withoutAppScript } from './app-script.js';
 
 const NOW = '2026-11-17T10:00:00.000Z';
 const KEY = Buffer.alloc(32, 0x44);
@@ -204,7 +205,7 @@ test('inventoryPage : aucun résultat de recherche, saisie réaffichée échapp�
   assert.ok(page.includes(`Aucun objet ne correspond à «&nbsp;${escaped}&nbsp;».`));
   assert.ok(page.includes('0 résultat pour'));
   assert.ok(page.includes('<a href="/">Effacer</a>'));
-  assert.ok(!page.includes('<script'));
+  assert.ok(!withoutAppScript(page).includes('<script'));
 });
 
 test('itemPage : objet sans puce, sans propriété ni note', () => {

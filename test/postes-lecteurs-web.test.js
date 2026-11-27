@@ -25,6 +25,7 @@ import { DUMMY_HASH } from '../server/password.js';
 import { createSession, csrfTokenFor } from '../server/sessions.js';
 import { MAX_READER_ID } from '../server/readers.js';
 import { makeTestCerts } from './tls-fixture.js';
+import { withoutAppScript } from './app-script.js';
 
 const ROOT = join(import.meta.dirname, '..');
 const NOW = '2026-11-18T10:00:00.000Z';
@@ -136,11 +137,12 @@ function keyFrom(res) {
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
   'textarea', 'select', 'option', 'ul', 'li', 'pre', 'details', 'summary',
-  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g']);
+  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g', 'kbd']);
 const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form',
-  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'button', 'label', 'ul', 'li', 'pre', 'nav', 'details', 'summary', 'ol', 'svg', 'symbol', 'use'];
+  'h1', 'h2', 'main', 'textarea', 'select', 'option', 'button', 'label', 'ul', 'li', 'pre', 'nav', 'details', 'summary', 'ol', 'svg', 'symbol', 'use', 'kbd'];
 
-function assertSafePage(html, what) {
+function assertSafePage(page, what) {
+  const html = withoutAppScript(page); // seul script autorisé (D-021)
   for (const [, tag] of html.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)) assert.ok(ALLOWED_TAGS.has(tag.toLowerCase()), `${what} : balise <${tag}>`);
   for (const tag of PAIRED_TAGS) {
     const open = html.match(new RegExp(`<${tag}[\\s>]`, 'g'))?.length ?? 0;
@@ -298,7 +300,8 @@ test('création d\'un poste : 303 vers sa fiche avec ?ok=cree, audit station.cre
   assert.equal(sheet.status, 200);
   assert.ok(sheet.body.includes('<p class="succes" role="status">Poste créé.</p>'));
   assert.ok(sheet.body.includes('<h1>Banc 2</h1>'));
-  assert.ok(sheet.body.includes('<p class="notes">Mesures\nélectriques</p>'));
+  // Étape U2 : description en paragraphe sous le titre.
+  assert.ok(sheet.body.includes('<p class="description-page">Mesures\nélectriques</p>'));
   assert.ok(sheet.body.includes(`<a class="lien-danger" href="/stations/${id}/delete"><svg class="ic" aria-hidden="true"><use href="#i-supprimer"></use></svg>Supprimer</a>`), 'sans historique : supprimable');
   const list = await page('/stations');
   assert.match(list.body, new RegExp(`href="/stations/${id}">Banc 2</a><span class="description-courte">Mesures\nélectriques</span>`));
@@ -311,7 +314,7 @@ test('création d\'un poste invalide : 400, saisie réaffichée échappée, aucu
   assert.equal(empty.status, 400);
   assert.ok(empty.body.includes('<p class="erreur-champ" id="name-erreur">Le nom est obligatoire.</p>'));
   assert.ok(empty.body.includes('>&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;</textarea>'));
-  assert.ok(!empty.body.includes('<script'));
+  assert.ok(!withoutAppScript(empty.body).includes('<script'));
   for (const encoded of ['%E2%80%8B', '%EF%BB%BF%C2%AD', '%E3%85%A4', '%E2%A0%80']) {
     const res = await postRaw('/stations/new', `name=${encoded}&description=`);
     assert.equal(res.status, 400, encoded);
@@ -398,14 +401,12 @@ test('création d\'un lecteur : page de clé unique (200, no-store, sans redirec
   shownKeys.push({ id: reader2, hex: key2, page: res.body });
   assert.ok(Buffer.from(db.prepare('SELECT aead_key FROM readers WHERE id = 2').get().aead_key).equals(Buffer.from(key2, 'hex')));
   // D-019 : lecteur sans nom, affecté → désigné par son poste ; le numéro reste affiché.
-  assert.ok(res.body.includes('<p class="succes" role="status">Lecteur créé : Lecteur du poste Banc 2.</p>'));
-  assert.ok(res.body.includes('<h1>Clé du lecteur</h1>\n<p class="sous-titre-page">Lecteur du poste Banc 2</p>'));
+  assert.ok(res.body.includes('<p class="succes" role="status">Lecteur créé : Lecteur · Banc 2.</p>'));
+  assert.ok(res.body.includes('<h1>Clé du lecteur</h1>\n<p class="sous-titre-page">Lecteur · Banc 2</p>'));
   assert.ok(res.body.includes('<p class="numero-lecteur">2</p>'));
-  assert.ok(res.body.includes('Cette clé ne sera plus jamais affichée.'));
-  assert.ok(res.body.includes('Installez-la maintenant dans le boîtier'));
-  assert.ok(res.body.includes('Si elle est perdue, remplacez la clé'));
-  assert.ok(res.body.includes('Ne rechargez pas cette page : le navigateur proposerait de renvoyer le formulaire, ce qui créerait un autre lecteur.'));
-  assert.ok(res.body.includes('<p>Fermez cet onglet une fois la clé installée dans le boîtier.</p>'));
+  assert.ok(res.body.includes('Copiez cette clé dans le boîtier maintenant : elle ne sera plus affichée. Si vous la perdez, vous pourrez en créer une nouvelle.'));
+  // Étape U2 : avertissement réduit à cette seule phrase (le bouton « Copier la clé » est ajouté par app.js).
+  assert.ok(!res.body.includes('Ne rechargez pas cette page'));
   assert.ok(res.body.includes('<section class="carte carte-corps carte-cle" aria-labelledby="titre-numero">\n<h2 id="titre-numero" class="etiquette">Numéro à configurer dans le boîtier</h2>'));
   // Étape U1 : libellé sans jargon (« AES-256 », « hexadécimaux »).
   assert.ok(res.body.includes('<h2 id="titre-cle" class="etiquette">Clé secrète</h2>'));
@@ -439,13 +440,13 @@ test('bout en bout : le simulateur, avec la clé affichée, est accepté (204) ;
 test('liste et fiche du lecteur : poste, état, dernier scan, derniers scans avec l\'objet ; ni compteur ni clé', async () => {
   const list = await page('/readers');
   // Étape U1 : la colonne « Dernier compteur » n'est plus affichée (terme technique).
-  assert.match(list.body, /<a class="lien-objet" href="\/readers\/2">Lecteur du poste Banc 2<\/a><\/td>\n<td data-label="N° boîtier"><span class="numero-boitier">2<\/span><\/td>\n<td data-label="Poste"><a class="lien-simple" href="\/stations\/\d+">Banc 2<\/a><\/td>\n<td data-label="État"><span class="etat etat-actif">actif<\/span><\/td>\n<td data-label="Dernier scan"><time [^>]*>à l&#39;instant<\/time><\/td>\n<td data-label="Créé">/);
+  assert.match(list.body, /<a class="lien-objet" href="\/readers\/2">Lecteur · Banc 2<\/a><\/td>\n<td data-label="N° boîtier"><span class="numero-boitier">2<\/span><\/td>\n<td data-label="Poste"><a class="lien-simple" href="\/stations\/\d+">Banc 2<\/a><\/td>\n<td data-label="État"><span class="etat etat-actif">actif<\/span><\/td>\n<td data-label="Dernier scan"><time [^>]*>à l&#39;instant<\/time><\/td>\n<td data-label="Créé">/);
   assert.ok(!list.body.includes('ompteur'));
-  assert.match(list.body, /href="\/readers\/1">Lecteur du poste Atelier<\/a>[\s\S]*?<td data-label="Dernier scan"><span class="texte-doux">aucun<\/span>/);
+  assert.match(list.body, /href="\/readers\/1">Lecteur · Atelier<\/a>[\s\S]*?<td data-label="Dernier scan"><span class="texte-doux">aucun<\/span>/);
   assertSafePage(list.body, 'liste des lecteurs');
   const sheet = await page('/readers/2');
   assert.equal(sheet.status, 200);
-  assert.ok(sheet.body.includes('<h1>Lecteur du poste Banc 2</h1>'));
+  assert.ok(sheet.body.includes('<h1>Lecteur · Banc 2</h1>'));
   assert.ok(sheet.body.includes('<div><dt>Numéro à configurer dans le boîtier</dt><dd><span class="numero-boitier">2</span></dd></div>'));
   assert.ok(sheet.body.includes('<div><dt>Nom</dt><dd><span class="texte-doux">aucun</span></dd></div>'));
   assert.ok(sheet.body.includes('<a class="bouton" href="/readers/2/station">Changer de poste</a>'));
@@ -455,7 +456,7 @@ test('liste et fiche du lecteur : poste, état, dernier scan, derniers scans ave
   assert.ok(!sheet.body.includes('ompteur') && !sheet.body.includes('trame'));
   assertSafePage(sheet.body, 'fiche du lecteur');
   const station = await page(`/stations/${stationId('Banc 2')}`);
-  assert.ok(station.body.includes('<a class="lien-objet" href="/readers/2">Lecteur du poste Banc 2</a>'));
+  assert.ok(station.body.includes('<a class="lien-objet" href="/readers/2">Lecteur · Banc 2</a>'));
   assert.ok(station.body.includes('<a class="lien-objet" href="/items/1">Multimètre</a>'), 'objet présent au poste');
   assert.ok(!station.body.includes('class="lien-danger"'), 'poste avec historique : pas de lien Supprimer');
   assert.ok(station.body.includes('Ce poste a un historique'));
@@ -516,7 +517,7 @@ test('remplacement de clé : confirmation, puis page de la nouvelle clé ; ancie
   shownKeys.push({ id: reader3, hex: key3, page: res.body });
   assert.notEqual(key3, key2);
   assert.ok(res.body.includes('Clé remplacée : nouveau numéro 3. L&#39;ancien numéro (2) est désactivé.'));
-  assert.ok(res.body.includes('<p class="sous-titre-page">Lecteur du poste Atelier</p>'));
+  assert.ok(res.body.includes('<p class="sous-titre-page">Lecteur · Atelier</p>'));
   assert.ok(res.body.includes('<p class="numero-lecteur">3</p>'));
   assert.ok(!res.body.includes('simulateur'), 'aucune procédure de développement sur la page de clé');
   assertSafePage(res.body, 'page de clé (remplacement)');
@@ -663,7 +664,7 @@ test('?ok= : seul un code connu affiche un message constant', async () => {
     const sheet = await page(`/stations/1?ok=${encodeURIComponent(ok)}`);
     assert.equal(sheet.status, 200, ok);
     assert.ok(!sheet.body.includes('class="succes"'), ok);
-    assert.ok(!sheet.body.includes('<script'), ok);
+    assert.ok(!withoutAppScript(sheet.body).includes('<script'), ok);
   }
   for (const ok of ['cree', 'affecte', '__proto__']) assert.ok(!(await page(`/stations?ok=${ok}`)).body.includes('class="succes"'), ok);
   for (const ok of ['cree', 'supprime', 'toString']) assert.ok(!(await page(`/readers/1?ok=${ok}`)).body.includes('class="succes"'), ok);

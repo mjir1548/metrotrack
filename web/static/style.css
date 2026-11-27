@@ -40,6 +40,7 @@
   --focus: #17756C;
   --focus-halo: #DCEDEA;
   --voile: rgba(15, 27, 45, 0.04);
+  --fond-modal: rgba(15, 27, 45, 0.45); /* fond assombri derrière la palette de recherche */
   --ombre-douce: 0 1px 2px rgba(15, 27, 45, 0.05);
   --ombre-pilule: 0 1px 2px rgba(15, 27, 45, 0.04), 0 8px 24px rgba(15, 27, 45, 0.06);
 
@@ -115,6 +116,7 @@
     --focus: #5CC4B6;
     --focus-halo: #173733;
     --voile: rgba(255, 255, 255, 0.03);
+    --fond-modal: rgba(0, 0, 0, 0.6);
     --ombre-douce: 0 1px 2px rgba(0, 0, 0, 0.3);
     --ombre-pilule: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
   }
@@ -231,6 +233,28 @@ time { white-space: nowrap; }
   white-space: nowrap;
 }
 
+/* Touches du clavier (raccourcis, aide de la palette) : <kbd><kbd>Ctrl</kbd><kbd>K</kbd></kbd>. */
+kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--police-texte);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  line-height: 1;
+  color: var(--texte-doux);
+}
+kbd kbd {
+  min-width: 22px;
+  justify-content: center;
+  padding: 4px 6px;
+  background: var(--zone);
+  border: 1px solid var(--bordure);
+  border-bottom-width: 2px;
+  border-radius: var(--r-sm);
+  color: var(--texte);
+}
+
 /* Numéro d'un lecteur (à configurer dans le boîtier) : chasse fixe, information secondaire. */
 .numero-boitier {
   font-family: var(--police-mono);
@@ -335,6 +359,20 @@ a.logo:focus-visible { border-radius: var(--r-md); }
 .recherche-barre input::placeholder { color: var(--texte-doux); opacity: 1; }
 /* Le contour du champ porte déjà le focus (focus-within). */
 .recherche-barre input:focus-visible { outline: none; box-shadow: none; }
+/* Indice du raccourci : affiché seulement quand app.js est actif (sans script, le raccourci
+   n'existe pas), et tant que le champ est vide. */
+.recherche-barre .raccourci { display: none; flex-shrink: 0; }
+.js .recherche-barre .raccourci { display: inline-flex; }
+.js .recherche-barre input:not(:placeholder-shown) + .raccourci { display: none; }
+/* Même indice dans le champ de la page Inventaire (Ctrl K ouvre la palette depuis partout). */
+.recherche .raccourci { display: none; flex-shrink: 0; }
+.js .recherche .raccourci { display: inline-flex; margin-right: var(--e-3); }
+.js .recherche input:not(:placeholder-shown) + .raccourci { display: none; }
+/* Champs filtrés pendant la frappe (app.js) : ni bouton « Rechercher » ni croix native, inutiles
+   avec le script ; sans script, le bouton reste et le formulaire s'envoie normalement. */
+.js .recherche--direct > .bouton { display: none; }
+.js .recherche--direct { padding-right: var(--e-3); }
+.js .recherche--direct input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
 
 .compte {
   display: flex;
@@ -404,6 +442,15 @@ a.logo:focus-visible { border-radius: var(--r-md); }
   overflow-wrap: anywhere;
 }
 .intro { margin-top: var(--e-3); max-width: 70ch; color: var(--texte-doux); }
+/* Description d'un poste : paragraphe sous le titre de sa fiche. */
+.description-page {
+  margin: calc(-1 * var(--e-3)) 0 var(--e-6);
+  max-width: 70ch;
+  color: var(--texte-doux);
+  font-size: var(--t-md);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 .resultats { margin: var(--e-5) 0 var(--e-3); color: var(--texte-doux); font-size: var(--t-sm); }
 
@@ -546,6 +593,16 @@ a.logo:focus-visible { border-radius: var(--r-md); }
   overflow-wrap: anywhere;
 }
 .lien-objet:hover { color: var(--texte); text-decoration: underline; }
+/* Dans les tableaux, le nom d'un objet se voit cliquable : soulignement discret, et la ligne
+   survolée le met en évidence (soulignement plein, couleur des liens). */
+.tableau .lien-objet {
+  text-decoration: underline;
+  text-decoration-color: var(--bordure);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+.tableau tbody tr:hover .lien-objet,
+.tableau .lien-objet:hover { color: var(--accent); text-decoration-color: currentColor; }
 
 .groupe-boutons { display: flex; flex-wrap: wrap; gap: var(--e-2); }
 
@@ -613,6 +670,9 @@ a.logo:focus-visible { border-radius: var(--r-md); }
   padding: 3px 10px 3px 8px;
   border-radius: var(--r-pilule);
   font-size: var(--t-sm);
+  /* Une pastille ne se coupe jamais en deux lignes (les noms de poste, eux, peuvent revenir à la ligne). */
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 .etat-inconnue { background: var(--attention-doux); color: var(--attention-texte); }
 .etat-inconnue::before {
@@ -665,6 +725,7 @@ a.logo:focus-visible { border-radius: var(--r-md); }
   white-space: nowrap;
 }
 .badge--ok { background: var(--accent-doux); color: var(--accent); }
+.badge--main { background: var(--attention-doux); color: var(--attention-texte); }
 
 /* --------------------------------------------------------------------------
    9. Tableaux
@@ -706,6 +767,9 @@ a.logo:focus-visible { border-radius: var(--r-md); }
 .cellule-actions { text-align: right; white-space: nowrap; }
 .tableau-inventaire th:nth-child(1) { width: 46%; }
 .tableau-inventaire th:nth-child(2) { width: 34%; }
+/* Fiche poste : la désignation du lecteur ne se coupe pas mot par mot dans une colonne étroite. */
+.tableau-lecteurs-poste td:first-child { min-width: 8.5rem; }
+.tableau-lecteurs-poste th { white-space: normal; }
 .tableau-postes th:nth-child(n+2),
 .tableau-postes td:nth-child(n+2) { width: 11rem; }
 /* Tableau à l'intérieur d'une carte : aligné sur le texte de la carte. */
@@ -867,6 +931,43 @@ select:focus-visible {
 .puce-lecture .uid { font-size: var(--t-md); }
 .puce-lecture .ic { color: var(--texte-doux); }
 .localisation-actuelle { display: flex; align-items: center; flex-wrap: wrap; gap: var(--e-2); margin-bottom: var(--e-5); }
+/* Correction d'emplacement : un bouton radio par poste (peu de postes), en cartes cliquables. */
+.choix-postes { min-width: 0; margin: 0; padding: 0; border: 0; }
+.choix-postes legend { display: block; margin-bottom: var(--e-2); padding: 0; font-weight: 600; }
+.choix-liste {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--e-2);
+}
+.choix-postes .choix-poste {
+  display: flex;
+  align-items: center;
+  gap: var(--e-3);
+  min-height: 48px;
+  margin: 0;
+  padding: var(--e-2) var(--e-4);
+  border: 1px solid var(--bordure-champ);
+  border-radius: var(--r-md);
+  background: var(--carte);
+  cursor: pointer;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  transition: border-color var(--d-rapide), background-color var(--d-rapide);
+}
+.choix-postes .choix-poste:hover { border-color: var(--texte-doux); background: var(--voile); }
+.choix-poste input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+/* Poste choisi : filet épais et fond doux, en plus du bouton coché (pas la couleur seule). */
+.choix-postes .choix-poste:has(input:checked) { border: 2px solid var(--accent); background: var(--accent-doux); font-weight: 600; }
+.choix-poste:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.choix-poste input:focus-visible { outline: none; box-shadow: none; }
 .alternative { margin-top: var(--e-6); color: var(--texte-doux); }
 
 /* --------------------------------------------------------------------------
@@ -1053,6 +1154,8 @@ select:focus-visible {
   -webkit-user-select: all;
   user-select: all;
 }
+/* Bouton « Copier la clé » (ajouté par app.js ; absent sans script). */
+.copier-cle { margin-top: var(--e-3); }
 
 /* --------------------------------------------------------------------------
    13. Puces inconnues
@@ -1180,6 +1283,169 @@ details.aide-page > summary:focus-visible {
 .formulaire .bouton { margin-top: var(--e-6); }
 
 /* --------------------------------------------------------------------------
+   15 bis. Palette de recherche « Où est… ? » (Ctrl K, web/static/app.js)
+   Fenêtre modale native (<dialog>) ; le premier résultat montre l'emplacement en grand
+   (maquette direction B, recherche.html), les suivants en lignes.
+   -------------------------------------------------------------------------- */
+.palette {
+  width: min(680px, calc(100vw - 2 * var(--e-4)));
+  max-width: none;
+  max-height: calc(100vh - 2 * var(--e-10));
+  margin: var(--e-16) auto auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--texte);
+  overflow: visible;
+}
+.palette::backdrop { background: var(--fond-modal); }
+.palette[open] { animation: palette-entree var(--d-normale) var(--courbe); }
+@keyframes palette-entree {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+.palette-boite {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 2 * var(--e-16));
+  background: var(--carte);
+  border: 1px solid var(--bordure);
+  border-radius: var(--r-xl);
+  box-shadow: var(--ombre-pilule);
+  overflow: hidden;
+}
+.palette-champ {
+  display: flex;
+  align-items: center;
+  gap: var(--e-3);
+  padding: 0 var(--e-4) 0 var(--e-5);
+  border-bottom: 1px solid var(--bordure);
+  color: var(--texte);
+}
+.palette-champ > .ic { width: 22px; height: 22px; }
+.palette-saisie,
+.palette-saisie:hover {
+  flex: 1;
+  min-width: 0;
+  height: 60px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--t-lg);
+}
+/* Le focus du champ est porté par le filet du bas de la zone de saisie (focus-within). */
+.palette-saisie:focus-visible { outline: none; box-shadow: none; }
+.palette-champ:focus-within { box-shadow: inset 0 -2px 0 var(--focus); }
+.palette-saisie::placeholder { color: var(--texte-doux); opacity: 1; }
+.palette-fermer {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 var(--e-1);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  cursor: pointer;
+}
+.palette-fermer:hover kbd kbd { border-color: var(--bordure-champ); }
+.palette-corps {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.palette-liste { margin: 0; padding: var(--e-2); list-style: none; }
+.palette-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--e-4);
+  padding: var(--e-3) var(--e-4);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background-color var(--d-rapide), border-color var(--d-rapide);
+}
+/* Résultat choisi (clavier ou survol) : fond, filet et repère à gauche, pas la couleur seule. */
+.palette-option[aria-selected="true"] {
+  background: var(--zone);
+  border-color: var(--bordure-champ);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.palette-option + .palette-option { margin-top: var(--e-1); }
+.palette-nom { font-weight: 600; overflow-wrap: anywhere; }
+.palette-trouve {
+  margin-top: 2px;
+  color: var(--texte-doux);
+  font-size: var(--t-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-trouve-cle { font-weight: 600; }
+.palette-lieu { display: flex; align-items: center; min-width: 0; }
+.palette-lieu .etat-poste { font-size: var(--t-base); }
+.palette-depuis {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--e-2);
+  margin-top: 2px;
+  color: var(--texte-doux);
+  font-size: var(--t-sm);
+}
+.palette-depuis time { color: var(--texte); font-weight: 500; }
+/* Meilleur résultat : l'emplacement en grand, la réponse se lit sans ouvrir la fiche. */
+.palette-option--vedette {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  padding: var(--e-5) var(--e-6);
+  border-radius: var(--r-lg);
+}
+.palette-option--vedette .palette-nom { font-size: var(--t-md); }
+.palette-etiquette { margin-top: var(--e-4); }
+.palette-lieu--grand { margin-top: var(--e-1); }
+.palette-lieu--grand .etat-poste {
+  font-size: var(--t-2xl);
+  letter-spacing: -0.02em;
+  line-height: var(--interligne-serre);
+}
+.palette-lieu--grand .etat-poste::before { width: 16px; height: 16px; border-width: 3px; margin-right: var(--e-2); }
+.palette-option--vedette .palette-depuis { margin-top: var(--e-2); font-size: var(--t-base); }
+.palette-option--vedette .palette-depuis time { font-weight: 600; }
+.palette-ouvrir {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e-2);
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.palette-message { padding: 0 var(--e-6); }
+.palette-message:empty { display: none; }
+.palette-message > :first-child { margin-top: var(--e-5); }
+.palette-message > :last-child { margin-bottom: var(--e-5); }
+.palette-message .bouton { margin-top: var(--e-3); }
+.palette-liste:not([hidden]) + .palette-message > :first-child { margin-top: var(--e-1); }
+.palette-invite,
+.palette-attente { color: var(--texte-doux); }
+.palette-vide { font-weight: 500; overflow-wrap: anywhere; }
+.palette-tout { display: inline-block; font-size: var(--t-sm); font-weight: 500; }
+.palette-astuce {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--e-1);
+  padding: var(--e-3) var(--e-5);
+  border-top: 1px solid var(--bordure);
+  background: var(--fond);
+  color: var(--texte-doux);
+  font-size: var(--t-xs);
+}
+
+/* --------------------------------------------------------------------------
    16. Largeurs intermédiaires (fenêtre réduite)
    -------------------------------------------------------------------------- */
 @media (max-width: 1100px) {
@@ -1247,6 +1513,12 @@ details.aide-page > summary:focus-visible {
   .emplacement--xl > .ic { width: 32px; height: 32px; }
   .recherche { height: auto; flex-wrap: wrap; padding: var(--e-2) var(--e-2) var(--e-2) var(--e-4); border-radius: var(--r-lg); }
   .recherche input { min-height: 40px; }
+  .palette { margin-top: var(--e-4); }
+  .palette-option,
+  .palette-option--vedette { grid-template-columns: minmax(0, 1fr); gap: var(--e-1); }
+  .palette-option--vedette { padding: var(--e-4); }
+  .palette-ouvrir { display: none; }
+  .palette-lieu--grand .etat-poste { font-size: var(--t-xl); }
 }
 
 @media (max-width: 30rem) {

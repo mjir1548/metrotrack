@@ -16,6 +16,7 @@ import { encodeFrame } from '../server/protocol.js';
 import { DUMMY_HASH } from '../server/password.js';
 import { createSession, csrfTokenFor } from '../server/sessions.js';
 import { makeTestCerts } from './tls-fixture.js';
+import { withoutAppScript } from './app-script.js';
 
 const NOW = '2026-11-17T10:00:00.000Z';
 const KEY = Buffer.alloc(32, 0x55);
@@ -89,12 +90,13 @@ const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
   'ul', 'li', 'details', 'summary',
-  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g']); // ul, li, details, summary : aide « Comment ça marche ? »
+  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g', 'kbd']); // ul, li, details, summary : aide « Comment ça marche ? »
 const PAIRED_TAGS = ['div', 'span', 'a', 'p', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'section', 'dl', 'dt', 'dd', 'time', 'form', 'h1', 'h2', 'main',
-  'ul', 'li', 'details', 'summary', 'ol', 'svg', 'symbol', 'use'];
+  'ul', 'li', 'details', 'summary', 'ol', 'svg', 'symbol', 'use', 'kbd'];
 
 /** HTML bien formé au sens utile ici : seulement des balises attendues, ouvrantes et fermantes équilibrées, aucun gestionnaire d'événement. */
-function assertWellFormed(html, what) {
+function assertWellFormed(page, what) {
+  const html = withoutAppScript(page); // seul script autorisé (D-021)
   for (const [, tag] of html.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)) assert.ok(ALLOWED_TAGS.has(tag.toLowerCase()), `${what} : balise <${tag}>`);
   for (const tag of PAIRED_TAGS) {
     const open = html.match(new RegExp(`<${tag}[\\s>]`, 'g'))?.length ?? 0;
@@ -107,7 +109,8 @@ function assertWellFormed(html, what) {
   assert.equal((html.match(/"/g)?.length ?? 0) % 2, 0, `${what} : guillemets déséquilibrés`);
 }
 
-function assertNoExternalResource(html, what) {
+function assertNoExternalResource(page, what) {
+  const html = withoutAppScript(page); // seul script autorisé (D-021)
   for (const [, url] of html.matchAll(/\b(?:src|href|action)\s*=\s*"([^"]*)"/gi)) {
     assert.match(url, /^(?:\/(?!\/)|#[a-z][a-z-]*$)/, `${what} : URL non locale ${url}`);
   }
@@ -152,7 +155,7 @@ test('liste : en-têtes de sécurité, bandeau (Inventaire actif, compte, décon
   assert.match(res.body, /<span class="visuellement-cache">Connecté en tant que <\/span><strong>alice<\/strong>/);
   assert.ok(res.body.includes(`<input type="hidden" name="csrf" value="${csrfTokenFor(token)}">`));
   assert.ok(res.body.includes('<form method="post" action="/logout">'));
-  assert.ok(res.body.includes('<form class="recherche" method="get" action="/" role="search">'));
+  assert.ok(res.body.includes('<form class="recherche recherche--direct" method="get" action="/" role="search">'));
   assert.ok(res.body.includes('6 objets'));
 });
 
@@ -186,7 +189,7 @@ test('après un scan accepté (POST /api/frames), la nouvelle localisation appar
   const list = await page('/');
   const row = rowOf(list.body, 1);
   assert.ok(row.includes('<span class="etat etat-poste">Poste 1</span>'), row);
-  assert.match(row, /<time datetime="\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z" title="[^"]+">à l&#39;instant<\/time>/);
+  assert.match(row, /<time datetime="\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z" title="[^"]+">depuis moins d&#39;une minute<\/time>/);
   const sheet = await page('/items/1');
   assert.equal(sheet.status, 200);
   assertWebHeaders(sheet, 'fiche');
@@ -224,7 +227,7 @@ test('nom, propriétés, notes et nom de poste hostiles : affichés échappés, 
   const list = await page('/');
   const escapedName = '&lt;script&gt;alert(&quot;nom&quot;)&lt;/script&gt; &amp; &#39;co&#39;';
   assert.ok(rowOf(list.body, 2).includes(`<a class="lien-objet" href="/items/2">${escapedName}</a>`));
-  assert.ok(!list.body.includes('<script'));
+  assert.ok(!withoutAppScript(list.body).includes('<script'));
   assertWellFormed(list.body, 'liste');
 
   const sheet = await page('/items/2');
@@ -236,7 +239,7 @@ test('nom, propriétés, notes et nom de poste hostiles : affichés échappés, 
   // Notes : retours à la ligne conservés tels quels (mis en forme par CSS, pre-wrap).
   assert.ok(sheet.body.includes('<p class="notes">ligne 1\n&lt;script&gt;alert(&quot;note&quot;)&lt;/script&gt;\n&quot;ligne&quot; 3 &amp; fin</p>'));
   assert.ok(sheet.body.includes('<span class="etat etat-poste">Atelier &lt;b&gt;&quot;A&quot;&lt;/b&gt; &amp; Cie</span>'));
-  assert.ok(!sheet.body.includes('<script') && !sheet.body.includes('<img') && !sheet.body.includes('<b>') && !sheet.body.includes('<i>'));
+  assert.ok(!withoutAppScript(sheet.body).includes('<script') && !sheet.body.includes('<img') && !sheet.body.includes('<b>') && !sheet.body.includes('<i>'));
   assertWellFormed(sheet.body, 'fiche');
 });
 
@@ -247,7 +250,7 @@ test('recherche : la valeur de q est réaffichée échappée (champ et résumé)
   const escaped = '&quot;&gt;&lt;script&gt;alert(&#39;q&#39;)&lt;/script&gt;&amp;amp;';
   assert.ok(res.body.includes(`value="${escaped}"`));
   assert.ok(res.body.includes(`Aucun objet ne correspond à «&nbsp;${escaped}&nbsp;».`));
-  assert.ok(!res.body.includes('<script'));
+  assert.ok(!withoutAppScript(res.body).includes('<script'));
   assertWellFormed(res.body, 'recherche hostile');
 });
 

@@ -21,6 +21,7 @@ import { encodeFrame } from '../server/protocol.js';
 import { DUMMY_HASH } from '../server/password.js';
 import { createSession } from '../server/sessions.js';
 import { makeTestCerts } from './tls-fixture.js';
+import { withoutAppScript } from './app-script.js';
 
 const NOW = '2026-11-17T10:00:00.000Z';
 const KEY = Buffer.alloc(32, 0x66);
@@ -118,14 +119,15 @@ const withoutIcons = (html) => html.replace(SPRITE_BLOCK, '').replace(ICON_TAG, 
 const ALLOWED_TAGS = new Set(['html', 'head', 'meta', 'title', 'link', 'body', 'header', 'div', 'span', 'nav', 'a', 'strong', 'form',
   'input', 'button', 'main', 'h1', 'h2', 'p', 'label', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'time', 'section', 'dl', 'dt', 'dd',
   'ul', 'li', 'details', 'summary',
-  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g']); // ul, li, details, summary : aide « Comment ça marche ? »
+  'ol', 'svg', 'symbol', 'use', 'path', 'circle', 'rect', 'defs', 'clippath', 'g', 'kbd']); // ul, li, details, summary : aide « Comment ça marche ? »
 
 /**
  * Aucune balise ni aucun attribut injecté. Les valeurs d'attribut (toutes entre guillemets
  * doubles, un « " » échappé n'y figurant jamais) sont d'abord vidées : un texte comme
  * « onerror= » correctement échappé DANS une valeur n'est pas un attribut.
  */
-function assertNoInjection(html, what) {
+function assertNoInjection(page, what) {
+  const html = withoutAppScript(page); // seul script autorisé (D-021)
   assert.equal((html.match(/"/g)?.length ?? 0) % 2, 0, `${what} : guillemets déséquilibrés`);
   const skeleton = html.replace(/"[^"]*"/g, '""');
   for (const [, tag] of skeleton.matchAll(/<\/?([a-zA-Z][a-zA-Z0-9]*)/g)) assert.ok(ALLOWED_TAGS.has(tag.toLowerCase()), `${what} : balise <${tag}>`);
@@ -159,7 +161,7 @@ test('recette XSS : chaque charge est affichée échappée dans la liste (nom) e
     assert.ok(sheet.body.includes(`<p class="notes">ligne 1 ${esc(p)}\nligne 2 ${esc(p)}\n\n  ligne 4</p>`), `notes ${i}`);
   }
   // Rien d'exécutable n'apparaît en clair, quelle que soit la page.
-  assert.doesNotMatch(withoutIcons(list.body), /<script|<img|<svg|<\/textarea|href="javascript/i);
+  assert.doesNotMatch(withoutIcons(withoutAppScript(list.body)), /<script|<img|<svg|<\/textarea|href="javascript/i);
 });
 
 test('recette XSS : « &amp; » est ré-échappé (&amp;amp;), jamais interprété ; « \' » devient &#39;', async () => {

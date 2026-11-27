@@ -21,6 +21,7 @@ import { DUMMY_HASH } from '../server/password.js';
 import { createSession, csrfTokenFor } from '../server/sessions.js';
 import { encodeFrame } from '../server/protocol.js';
 import { makeTestCerts } from './tls-fixture.js';
+import { withoutAppScript } from './app-script.js';
 
 const ROOT = join(import.meta.dirname, '..');
 const CSS = readFileSync(join(ROOT, 'web', 'static', 'style.css'), 'utf8');
@@ -155,7 +156,7 @@ test('aucune ressource externe : href, src, action ne visent que ce serveur (che
     for (const [, attr, value] of body.matchAll(/\s(href|src|srcset|action|formaction|poster|data|xlink:href)="([^"]*)"/g)) {
       assert.ok(value.startsWith('#') || (value.startsWith('/') && !value.startsWith('//')), `${name} : ${attr}="${value}"`);
     }
-    assert.doesNotMatch(body, /<script|<iframe|<object|<embed|\son[a-z]+\s*=|\sstyle\s*=|@import/i, name);
+    assert.doesNotMatch(withoutAppScript(body), /<script|<iframe|<object|<embed|\son[a-z]+\s*=|\sstyle\s*=|@import/i, name);
     // Seule adresse tolérée : aucune (le logo est intégré sans xmlns, comme le sprite).
     assert.doesNotMatch(body, /https?:\/\//i, name);
     assert.doesNotMatch(body.replace(/url\(#[a-z-]+\)/g, ''), /url\(/i, name);

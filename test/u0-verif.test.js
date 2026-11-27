@@ -112,7 +112,7 @@ async function shown() {
   const sheet = (await send({ path: '/items/1', headers: withSession() })).body;
   const stationA = (await send({ path: '/stations/1', headers: withSession() })).body;
   const stationB = (await send({ path: '/stations/2', headers: withSession() })).body;
-  const detail = /<p class="localisation-detail">(.*?)<\/p>/s.exec(sheet)?.[1].replace(/ title="[^"]*"/g, '').replace(/^Depuis : /, '') ?? null; // « Depuis : » : étape U1
+  const detail = /<p class="localisation-detail">(.*?)<\/p>/s.exec(sheet)?.[1].replace(/ title="[^"]*"/g, '').replace(/^Depuis : /, '').replace(/<\/time> — [^<·]*?(?= · |$)/, '</time>') ?? null; // « Depuis : » : étape U1 ; « — aujourd'hui à … » : étape U2
   return { list: depuisIn(list, 'Oscilloscope'), A: depuisIn(stationA, 'Oscilloscope'), B: depuisIn(stationB, 'Oscilloscope'), detail };
 }
 const t = (iso) => `<time datetime="${iso}">`;
@@ -294,12 +294,13 @@ test('puce rescannée plus de MAX_RUN_SCANS fois au même poste : « au moins »
     post: cell((await send({ path: '/stations/1', headers: withSession() })).body),
     sheet: /<p class="localisation-detail">(.*?)<\/p>/s.exec((await send({ path: '/items/100', headers: withSession() })).body)?.[1] ?? null,
   });
-  const bounded = (prefix) => new RegExp(`^${prefix} <time datetime="${oldestExamined}" title="[^"]+">`);
+  // Étape U2 : « depuis au moins … » dans la balise <time>.
+  const bounded = () => new RegExp(`^<time datetime="${oldestExamined}" title="[^"]+">depuis au moins `);
   let p = await pages();
   assert.match(p.list, bounded('au moins'), p.list);
   assert.match(p.post, bounded('au moins'), p.post);
   assert.ok(!p.post.includes('(correction)'), p.post);
-  assert.match(p.sheet, bounded('Depuis : au moins'), p.sheet);
+  assert.match(p.sheet, bounded(), p.sheet);
   assert.ok(p.sheet.includes(' · dernier scan <time'), p.sheet);
   // Correction vers le poste où l'objet est déjà : toujours « au moins », sans « (correction) ».
   assert.equal((await postForm('/items/100/location', { station: '1' })).status, 303);
@@ -319,5 +320,5 @@ test('puce rescannée plus de MAX_RUN_SCANS fois au même poste : « au moins »
   await scan(1, uid);
   p = await pages();
   assert.match(p.list, new RegExp(`^<time datetime="${back}"`), p.list);
-  assert.match(p.sheet, new RegExp(`^Depuis : <time datetime="${back}"[^>]*>[^<]*</time> · dernier scan `), p.sheet);
+  assert.match(p.sheet, new RegExp(`^<time datetime="${back}"[^>]*>depuis [^<]*</time>(?: — [^<·]*)? · dernier scan `), p.sheet);
 });

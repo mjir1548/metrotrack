@@ -17,6 +17,7 @@ import { hashPassword } from '../server/password.js';
 import { csrfTokenFor } from '../server/sessions.js';
 import { makeTestCerts } from './tls-fixture.js';
 import { statusOrCut, CUT } from './coupure.js';
+import { withoutAppScript } from './app-script.js';
 
 const NOW = '2026-11-17T10:00:00.000Z';
 const READER_KEY = Buffer.alloc(32, 0x33);
@@ -159,7 +160,7 @@ test('pages sans aucune ressource externe ni script ou style inline', async () =
       assert.match(url, /^(?:\/(?!\/)|#[a-z][a-z-]*$)/, `${name} : URL non locale ${url}`);
     }
     assert.doesNotMatch(html, /https?:|\/\//i, name);
-    assert.doesNotMatch(html, /<script|<style|\sstyle\s*=|\son[a-z]+\s*=/i, name);
+    assert.doesNotMatch(withoutAppScript(html), /<script|<style|\sstyle\s*=|\son[a-z]+\s*=/i, name);
   }
 });
 

@@ -195,16 +195,16 @@ test('affichage : « Depuis » de la liste et de la fiche du poste = arrivée ; 
   assert.match(post, new RegExp(`<td data-label="Depuis"><time datetime="${at(2 * DAY)}"`));
   const item = getItem(db, 1n);
   const sheet = itemPage(user, { item, scans: [], history: [], now }).toString();
-  // Étape U1 : « Depuis : » devant l'heure, et plus de numéro de lecteur affiché.
-  assert.match(sheet, new RegExp(`<p class="localisation-detail">Depuis : <time datetime="${at(2 * DAY)}"[^>]*>[^<]*</time> · dernier scan <time datetime="${at(3 * DAY)}"[^>]*>il y a 1 min</time></p>`));
-  // Arrivée = dernier événement : ligne sans second horodatage (« Depuis : <heure> · scanné »).
+  // Étape U2 : « depuis … » (et l'heure exacte en clair à côté), plus de numéro de lecteur affiché.
+  assert.match(sheet, new RegExp(`<p class="localisation-detail"><time datetime="${at(2 * DAY)}"[^>]*>depuis [^<]*</time>(?: — [^<·]*)? · dernier scan <time datetime="${at(3 * DAY)}"[^>]*>il y a 1 min</time></p>`));
+  // Arrivée = dernier événement : ligne sans second horodatage (« depuis <heure> — <jour> · scanné »).
   scan(A, 3 * DAY + 1);
   const moved = itemPage(user, { item: getItem(db, 1n), scans: [], history: [], now }).toString();
-  assert.match(moved, new RegExp(`<p class="localisation-detail">Depuis : <time datetime="${at(3 * DAY + 1)}"[^>]*>à l&#39;instant</time> · scanné</p>`));
+  assert.match(moved, new RegExp(`<p class="localisation-detail"><time datetime="${at(3 * DAY + 1)}"[^>]*>depuis moins d&#39;une minute</time>(?: — [^<·]*)? · scanné</p>`));
   // Correction manuelle au même poste après des scans : arrivée au premier scan, puis la correction.
   correction(A, 3 * DAY + 1);
   const corrected = itemPage(user, { item: getItem(db, 1n), scans: [], history: [], now }).toString();
-  assert.match(corrected, /<p class="localisation-detail">Depuis : <time [^>]*>à l&#39;instant<\/time> · correction manuelle par alice<\/p>/);
+  assert.match(corrected, /<p class="localisation-detail"><time [^>]*>depuis moins d&#39;une minute<\/time>(?: — [^<·]*)? · correction manuelle par alice<\/p>/);
 });
 
 // ---------------------------------------------------------------- référence par force brute

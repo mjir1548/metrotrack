@@ -297,3 +297,46 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
   - `user_version` est relu sous `BEGIN IMMEDIATE`, ce qui rend toute double migration impossible.
 - **Raison** : sur une base neuve, deux processus qui l'ouvraient en même temps pouvaient échouer tous les deux (« database is locked »). Cas constaté avec le lanceur.
 - **Alternative écartée** : un verrou de fichier externe, plus complexe.
+
+## D-021 — Un fichier JavaScript local, en amélioration progressive
+
+- **Date** : 2026-11-26 · **Statut** : Validée (2026-11-26, accord de l'humain pour lancer U2 avec du JavaScript local)
+- **Décision** :
+  - fin de la règle « aucun JavaScript client » : un seul fichier `web/static/app.js`, écrit à la main, sans dépendance, servi par la route statique en liste blanche ;
+  - aucun script en ligne, aucun gestionnaire `on…=`, CSP `default-src 'self'` inchangée ;
+  - le DOM est construit uniquement avec `textContent` et `createElement`, jamais avec `innerHTML` ;
+  - chaque page reste utilisable sans JavaScript (formulaires classiques) ;
+  - premiers usages (U2) : recherche `Ctrl K`, résultats pendant la frappe.
+- **Raison** : parcours « Où est cet objet ? » (docs/ux/carte-et-parcours.md §3), audit UX.
+- **Alternative écartée** : un framework (dépendances, D-002).
+- **Mise en œuvre (étape U2, 2026-11-27)** :
+  - recherche par mots (`server/inventory.js`) : chaque mot doit se trouver dans le nom, dans une valeur de propriété, ou (mot hexadécimal) dans le numéro de puce. La saisie entière reste cherchée comme numéro de puce. Classement : nom qui commence par le premier mot, puis mots entiers, puis morceaux de mots, puis propriétés et puce, puis ordre alphabétique. Les emplacements ne sont calculés que pour les fiches retenues ;
+  - `GET /api/recherche?q=` (et `&tout=1` pour la page Inventaire) :
+    - session obligatoire (401 JSON sinon) ; refus 403 si `Sec-Fetch-Site` est présent et différent de `same-origin` ; q de plus de 200 caractères refusé (400) ;
+    - réponse JSON en `no-store`, avec `<`, `>`, `&`, U+2028 et U+2029 échappés ;
+    - au plus 8 résultats et le total. Le numéro de puce n'est renvoyé que s'il correspond à la saisie ;
+  - `app.js` est servi en `no-cache` et chargé avec `defer` sur les pages connectées seulement ; `/items/new?nom=` pré-remplit le nom ;
+  - mesure (5 000 objets, 5 propriétés chacun, 100 000 scans) : de 25 à 38 ms côté serveur, et de 27 à 32 ms en requête HTTPS complète.
+
+## D-022 — Méthode pendant la phase UX : priorité à l'expérience, audit de sécurité différé
+
+- **Date** : 2026-11-27 · **Statut** : Validée (2026-11-27, demande de l'humain : « tout ce qui est sécurité, on verra dans un second temps ; il faut que ça marche, que ce soit beau et adapté à un utilisateur lambda »)
+- **Décision** :
+  - la boucle par étape devient `dev`, puis `testeur`, puis **`revue-ux`** (nouvel agent, `.claude/agents/revue-ux.md`, en lecture seule) ;
+  - la `revue-securite` n'est plus lancée à chaque étape : un audit de sécurité complet sera fait avant toute livraison à un client ;
+  - les garde-fous déjà en place restent dans le code et dans les tests : HTTPS, CSRF, échappement, CSP, zéro dépendance, aucune ressource externe. Les étapes ne doivent pas les retirer. Les tests existants le vérifient.
+- **Raison** : priorité de l'humain sur l'expérience utilisateur.
+
+### Compléments (étape U2, aller-retour 2, 2026-11-27)
+- **D-019** : désignation d'un lecteur sans nom.
+  - Si le nom du poste commence déjà par « Poste » : « Lecteur du Poste 2 ».
+  - Sinon : « Lecteur · Atelier ».
+- **D-021** : classement de la recherche en 6 rangs.
+  1. Mots entiers, en commençant par les noms qui débutent par le premier mot.
+  2. Débuts de mots, dans le même ordre (les noms sont aussi coupés entre lettres et chiffres : « fluke 87 » met 87V en tête).
+  3. Morceaux de mots.
+  4. Correspondance dans une propriété ou dans le numéro de puce.
+  5. À rang égal, ordre alphabétique.
+- **D-021, page Inventaire** : quand le champ est vidé, la liste de départ est réaffichée sans appel au serveur. La réponse `&tout=1` est allégée.
+- **D-021, association d'une puce** : la recherche s'y fait aussi pendant la frappe, avec les fiches sans puce en tête.
+- **D-021, page de clé** : bouton « Copier la clé » (`navigator.clipboard.writeText`, écriture seule). Le texte de la page est réduit à une phrase. L'avertissement « ne rechargez pas » a été retiré de la page ; le risque reste décrit dans les limites de l'étape 6.

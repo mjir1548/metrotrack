@@ -21,6 +21,7 @@ import { encodeFrame } from '../server/protocol.js';
 import { DUMMY_HASH } from '../server/password.js';
 import { createSession, csrfTokenFor } from '../server/sessions.js';
 import { makeTestCerts } from './tls-fixture.js';
+import { withoutAppScript } from './app-script.js';
 
 const NOW = '2026-11-18T10:00:00.000Z';
 const UID = '04A1B2C3D4E5F6';
@@ -130,7 +131,7 @@ test('poste au nom et à la description piégés : réaffiché échappé sur tou
     assert.ok(res.body.includes(escapedName), `${where} : nom affiché échappé`);
     // Icônes du gabarit retirées d'abord (sprite et <svg><use> décoratifs, étape U1) : tout autre
     // <svg> serait une injection.
-    const body = res.body
+    const body = withoutAppScript(res.body)
       .replace(/^<svg class="sprite" aria-hidden="true">\n(?:<symbol id="i-[a-z]+" [^\n]*<\/symbol>\n)*<\/svg>$/m, '')
       .replace(/<svg class="ic" aria-hidden="true"><use href="#i-[a-z]+"><\/use><\/svg>/g, '')
       .replace(/<svg class="logo-image" viewBox="0 0 900 900" aria-hidden="true">[\s\S]*?<\/svg>/g, '');
@@ -145,7 +146,10 @@ test('poste au nom et à la description piégés : réaffiché échappé sur tou
     assert.ok(res.body.includes('&lt;img src=x onerror=alert(2)&gt;'), `${res.path} : description échappée`);
   }
   // Listes déroulantes : l'option du poste porte son numéro et son nom échappé.
-  for (const path of ['/items/1/location', '/readers/new', `/readers/${reader}/station`]) {
+  // Correction d'emplacement (12 postes au plus, étape U2) : bouton radio, même échappement.
+  const location = pages.slice(1).find((r) => r.path === '/items/1/location');
+  assert.match(location.body, new RegExp(`<input type="radio" name="station" value="${st}"[^>]*><span>${escapedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</span>`));
+  for (const path of ['/readers/new', `/readers/${reader}/station`]) {
     const res = pages.slice(1).find((r) => r.path === path); // pages[0] : page de clé (POST /readers/new)
     assert.match(res.body, new RegExp(`<option value="${st}"[^>]*>${escapedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</option>`), path);
   }

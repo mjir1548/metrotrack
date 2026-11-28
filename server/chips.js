@@ -93,8 +93,9 @@ export function listUnknownChips(db, limit = MAX_UNKNOWN_CHIPS) {
  * Aperçu des puces inconnues pour l'écran d'accueil et le direct (étape U4) : les `limit` plus
  * récemment vues, et leur nombre total, en UN parcours de l'index (même parcours par sauts que
  * listUnknownChips : le total est compté par une fonction de fenêtre, avant la limite).
- * Le nombre de scans de chaque puce n'est pas compté (inutile ici).
- * @returns {{chips: {uid, received_at, reader_id, station_id, station_name}[], total: number}}
+ * Le nombre de scans n'est compté que pour les puces retenues (étape U5 : « 3 scans · dernier il y
+ * a … » sur la page « Puces inconnues » mise à jour en direct), comme dans listUnknownChips.
+ * @returns {{chips: {uid, scan_count, received_at, reader_id, station_id, station_name}[], total: number}}
  */
 export function unknownChipsOverview(db, limit) {
   const rows = db.prepare(
@@ -105,14 +106,15 @@ export function unknownChipsOverview(db, limit) {
         ORDER BY s.received_at DESC, s.id DESC
         LIMIT ?
      )
-     SELECT r.uid, r.total, s.received_at, s.reader_id, s.station_id, st.name AS station_name
+     SELECT r.uid, r.total, (SELECT count(*) FROM scans c WHERE c.uid_nfc = r.uid) AS scan_count,
+            s.received_at, s.reader_id, s.station_id, st.name AS station_name
        FROM recent r
        JOIN scans s ON s.id = r.scan_id
        LEFT JOIN stations st ON st.id = s.station_id
       ORDER BY s.received_at DESC, s.id DESC`
   ).all(Math.max(1, limit));
   const total = rows.length === 0 ? 0 : rows[0].total;
-  const chips = rows.slice(0, limit).map(({ total: _total, ...chip }) => chip);
+  const chips = rows.slice(0, limit).map(({ total: _total, ...chip }) => ({ ...chip }));
   return { chips, total };
 }
 

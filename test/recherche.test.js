@@ -161,8 +161,9 @@ test('searchResult : emplacement, arrivée en texte humain, sans numéro de puce
     id: 7, nom: 'Fluke <b>', emplacement: { etat: 'poste', libelle: 'Poste B' },
     arrivee: { iso: '2026-11-26T09:56:00.000Z', texte: 'depuis 4 min', exacte: located.arrivee.exacte, auMoins: false },
   });
-  assert.equal(searchResult(row, now, { compact: true, withChip: true }).puce, '04 A1 B2 C3 D4 E5 F6');
-  assert.equal(searchResult({ ...row, uid_nfc: null }, now, { compact: true, withChip: true }).puce, null);
+  // Étape U5 : l'association dit seulement si la fiche a déjà une puce (sans son numéro).
+  assert.equal(searchResult(row, now, { compact: true, withChip: true }).puce, true);
+  assert.equal(searchResult({ ...row, uid_nfc: null }, now, { compact: true, withChip: true }).puce, false);
 });
 
 test('formatSince : « depuis … », « au moins » si borné', () => {

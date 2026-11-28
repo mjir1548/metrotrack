@@ -45,7 +45,9 @@ const encode = (value) => JSON.stringify(value).replace(JSON_ESCAPED, (c) => `\\
 
 /**
  * Événement d'un scan accepté (server/http.js, après le COMMIT et la réponse au boîtier), ou null.
- * {type: 'scan', itemId, nom, poste, posteId, lecteur, iso, inconnu, deplacement, par, puces}
+ * {type: 'scan', itemId, nom, poste, posteId, de, lecteur, iso, inconnu, deplacement, par, puces}
+ *   de (étape U6) : poste où se trouvait l'objet avant l'événement (null : aucun, lecteur non
+ *   affecté ou puce inconnue). La page des postes s'en sert pour tenir ses nombres à jour.
  *   puces : nombre de puces inconnues (compteur de la barre), posé par l'appelant pour un scan de
  *   puce inconnue et pour un événement « puce » ; null sinon.
  *   poste null : lecteur non affecté ; deplacement : l'objet arrive à un autre lieu (accueil.js).
@@ -60,6 +62,7 @@ export function scanEvent(db, scanId) {
     nom: known ? row.item_name : null,
     poste: row.station_id === null ? null : row.station_name,
     posteId: row.station_id,
+    de: row.from,
     lecteur: row.reader_id,
     iso: row.at,
     inconnu: !known,
@@ -73,15 +76,18 @@ export function scanEvent(db, scanId) {
  * Événement d'une action sur une fiche (web.js) : 'correction' (emplacement corrigé à la main) ou
  * 'puce' (puce associée, fiche créée depuis une puce, puce retirée). item : inventory.js, getItem
  * (emplacement après l'action). par : identifiant du compte qui a agi.
+ * before (étape U6) : la fiche AVANT l'action (getItem), pour le champ de, ou null (fiche créée).
  */
-export function itemEvent(type, item, par, iso = new Date().toISOString()) {
+export function itemEvent(type, item, par, iso = new Date().toISOString(), before = null) {
   const placed = item.at !== null && item.station_id !== null;
+  const wasPlaced = before !== null && before.at !== null && before.station_id !== null;
   return {
     type,
     itemId: item.id,
     nom: item.name,
     poste: placed ? item.station_name : null,
     posteId: placed ? item.station_id : null,
+    de: wasPlaced ? before.station_id : null,
     lecteur: null,
     iso,
     inconnu: false,

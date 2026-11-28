@@ -100,7 +100,7 @@ test('création : nom invalide → 400, rien n\'est écrit, saisie (nettoyée) e
   assert.ok(long.body.includes('Le lecteur n\'a pas été créé.'));
   assert.ok(long.body.includes('Le nom ne doit pas dépasser 100 caractères (101 saisis).'));
   assert.ok(long.body.includes(`value="${'x'.repeat(101)}"`));
-  assert.ok(long.body.includes('<option value="1" selected>Atelier</option>'));
+  assert.ok(long.body.includes('<input type="radio" name="station" value="1" id="station-1" checked><span>Atelier</span>'));
   assert.match(long.body, /<input id="name"[^>]*aria-describedby="name-aide name-erreur" aria-invalid="true">/);
   const invisible = await post('/readers/new', { name: HANGUL_FILLER, station: '' });
   assert.equal(invisible.status, 400);
@@ -135,7 +135,7 @@ test('affichage : liste, fiche, fiche du poste, frise des scans de l\'objet ; nu
     assert.ok(res.body.includes('<p class="sous-titre-page">Boîtier établi gauche · Atelier</p>'), path);
     assert.ok(res.body.includes('<a href="/readers/1">Boîtier établi gauche</a>'), `${path} : fil d'Ariane`);
   }
-  assert.ok((await page('/readers/1/replace')).body.includes('au même poste (Atelier), sous le même nom.'));
+  assert.ok((await page('/readers/1/replace')).body.includes('<p>Une nouvelle clé va être créée.'));
 });
 
 test('renommer : CSRF et Origin exigés (403, rien n\'est écrit)', async () => {
@@ -193,14 +193,17 @@ test('nom vidé : le lecteur est de nouveau désigné par son poste ; remplaceme
   assert.ok(replaced.body.includes('Clé remplacée : nouveau numéro 2. L&#39;ancien numéro (1) est désactivé.'));
   // Homonymes (le remplaçant reprend le nom) : le numéro les distingue, dans la liste comme sur
   // la fiche du poste, sans la formule « Lecteur n° ».
-  for (const path of ['/readers', '/stations/1']) {
-    const body = (await page(path)).body;
-    assert.ok(body.includes('<th scope="col">N° boîtier</th>'), path);
-    for (const id of [1, 2]) {
-      assert.ok(body.includes(`<a class="lien-objet" href="/readers/${id}">Boîtier établi gauche</a></td>\n<td data-label="N° boîtier"><span class="numero-boitier">${id}</span></td>`), `${path} : ${id}`);
-    }
-    assert.ok(!/lecteur n°/i.test(body), path);
+  // Étape U6 : numéro en information secondaire à côté du nom ; la fiche du poste ne montre que
+  // les lecteurs en service (le désactivé est rangé en bas de la liste des lecteurs).
+  const listBody = (await page('/readers')).body;
+  for (const id of [1, 2]) {
+    assert.ok(listBody.includes(`<a class="lien-objet" href="/readers/${id}">Boîtier établi gauche</a> <span class="numero-secondaire">N°&nbsp;boîtier&nbsp;<span class="numero-boitier">${id}</span></span>`), `/readers : ${id}`);
   }
+  assert.ok(listBody.includes('<summary>Lecteurs désactivés (1)</summary>'));
+  const stationBody = (await page('/stations/1')).body;
+  assert.ok(stationBody.includes('<a class="lien-objet" href="/readers/2">Boîtier établi gauche</a> <span class="numero-secondaire">N°&nbsp;2</span>'));
+  assert.ok(!stationBody.includes('href="/readers/1"'));
+  for (const body of [listBody, stationBody]) assert.ok(!/lecteur n°/i.test(body));
   // Le lecteur désactivé reste renommable.
   const sheet = await page('/readers/1');
   assert.ok(sheet.body.includes('href="/readers/1/rename">') && !sheet.body.includes('href="/readers/1/station"'));

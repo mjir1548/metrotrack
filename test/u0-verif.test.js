@@ -103,7 +103,8 @@ const lastCorrectionAt = () => db.prepare('SELECT created_at FROM location_corre
 
 /** « Depuis » affiché dans une ligne de tableau (liste ou fiche du poste), ou null si l'objet n'y est pas. */
 function depuisIn(html, name) {
-  const row = html.split('<tr>').find((r) => r.includes(`>${name}</a>`));
+  // Ligne de tableau seulement (étape U6 : la fiche du poste liste aussi les dernières arrivées).
+  const row = html.split('<tr>').slice(1).map((r) => r.split('</tr>')[0]).find((r) => r.includes(`>${name}</a>`));
   if (row === undefined) return null;
   return /<td data-label="Depuis"><time datetime="([^"]+)"/.exec(row)?.[1] ?? 'sans heure';
 }

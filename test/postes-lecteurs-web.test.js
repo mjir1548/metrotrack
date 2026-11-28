@@ -269,12 +269,13 @@ test('bandeau : « Postes » et « Lecteurs » sont deux rubriques ; rubrique co
   assert.ok(stations.body.includes('<li><a href="/inventaire">Inventaire</a></li>'));
   assert.ok(stations.body.includes('<li><a href="/stations" aria-current="page">Postes</a></li>'));
   assert.ok(stations.body.includes('<li><a href="/readers">Lecteurs</a></li>'));
-  assert.ok(stations.body.includes(`<a class="bouton" href="/stations/new">${ICON_ADD}Nouveau poste</a>`));
+  // Étape U6 : « Ajouter un poste » (champ en ligne avec le script).
+  assert.ok(stations.body.includes(`<a class="bouton" href="/stations/new" data-sur-place="ajout-poste">${ICON_ADD}Ajouter un poste</a>`));
   assert.ok(!stations.body.includes('class="onglets"'));
   const readers = await page('/readers');
   assert.ok(readers.body.includes('<li><a href="/stations">Postes</a></li>'));
   assert.ok(readers.body.includes('<li><a href="/readers" aria-current="page">Lecteurs</a></li>'));
-  assert.ok(readers.body.includes(`<a class="bouton" href="/readers/new">${ICON_ADD}Nouveau lecteur</a>`));
+  assert.ok(readers.body.includes(`<a class="bouton" href="/readers/new">${ICON_ADD}Ajouter un lecteur</a>`));
   assert.ok((await page('/readers/1')).body.includes('<li><a href="/readers" aria-current="true">Lecteurs</a></li>'));
   assert.ok((await page('/stations/new')).body.includes('<li><a href="/stations" aria-current="true">Postes</a></li>'));
   const list = await page('/inventaire');
@@ -307,7 +308,8 @@ test('création d\'un poste : 303 vers l\'accueil pendant le démarrage guidé (
   assert.ok(sheet.body.includes('<p class="description-page">Mesures\nélectriques</p>'));
   assert.ok(sheet.body.includes(`<a class="lien-danger" href="/stations/${id}/delete"><svg class="ic" aria-hidden="true"><use href="#i-supprimer"></use></svg>Supprimer</a>`), 'sans historique : supprimable');
   const list = await page('/stations');
-  assert.match(list.body, new RegExp(`href="/stations/${id}">Banc 2</a><span class="description-courte">Mesures\nélectriques</span>`));
+  // Étape U6 : une tuile par poste.
+  assert.match(list.body, new RegExp(`href="/stations/${id}">Banc 2</a></h2>\n<p class="tuile-description">Mesures\nélectriques</p>`));
 });
 
 test('création d\'un poste invalide : 400, saisie réaffichée échappée, aucune écriture (vide, invisible, trop long, doublons casse et NFC/NFD)', async () => {
@@ -391,8 +393,9 @@ test('création d\'un lecteur : page de clé unique (200, no-store, sans redirec
   const banc = stationId('Banc 2');
   const form = await page('/readers/new');
   assert.equal(form.status, 200);
-  assert.ok(form.body.includes('<option value="" selected>Non affecté</option>'));
-  assert.ok(form.body.includes(`<option value="${banc}">Banc 2</option>`));
+  // Étape U6 : poste choisi par boutons radio (12 postes au plus).
+  assert.ok(form.body.includes('<input type="radio" name="station" value="" id="station-aucun" checked><span>Pas de poste pour l&#39;instant</span>'));
+  assert.ok(form.body.includes(`<input type="radio" name="station" value="${banc}" id="station-${banc}"><span>Banc 2</span>`));
   assertSafePage(form.body, 'nouveau lecteur');
 
   const res = await post('/readers/new', { station: String(banc) });
@@ -444,18 +447,22 @@ test('bout en bout : le simulateur, avec la clé affichée, est accepté (204) ;
 test('liste et fiche du lecteur : poste, état, dernier scan, derniers scans avec l\'objet ; ni compteur ni clé', async () => {
   const list = await page('/readers');
   // Étape U1 : la colonne « Dernier compteur » n'est plus affichée (terme technique).
-  assert.match(list.body, /<a class="lien-objet" href="\/readers\/2">Lecteur · Banc 2<\/a><\/td>\n<td data-label="N° boîtier"><span class="numero-boitier">2<\/span><\/td>\n<td data-label="Poste"><a class="lien-simple" href="\/stations\/\d+">Banc 2<\/a><\/td>\n<td data-label="État"><span class="etat etat-actif">actif<\/span><\/td>\n<td data-label="Dernier scan"><time [^>]*>à l&#39;instant<\/time><\/td>\n<td data-label="Créé">/);
+  // Étape U6 : nom, puis N° boîtier en secondaire ; état en mots (« fonctionne », « jamais utilisé »).
+  assert.match(list.body, /<a class="lien-objet" href="\/readers\/2">Lecteur · Banc 2<\/a> <span class="numero-secondaire">N°&nbsp;boîtier&nbsp;<span class="numero-boitier">2<\/span><\/span><\/td>\n<td data-label="Poste"><a class="lien-simple" href="\/stations\/\d+">Banc 2<\/a><\/td>\n<td data-label="État"><span class="etat-lecteur etat-lecteur--ok"><svg class="ic" aria-hidden="true"><use href="#i-valide"><\/use><\/svg>fonctionne<\/span> <span class="texte-doux">· <time [^>]*>à l&#39;instant<\/time><\/span><\/td>/);
   assert.ok(!list.body.includes('ompteur'));
-  assert.match(list.body, /href="\/readers\/1">Lecteur · Atelier<\/a>[\s\S]*?<td data-label="Dernier scan"><span class="texte-doux">aucun<\/span>/);
+  assert.match(list.body, /href="\/readers\/1">Lecteur · Atelier<\/a>[\s\S]*?jamais utilisé<\/span><\/td>/);
   assertSafePage(list.body, 'liste des lecteurs');
   const sheet = await page('/readers/2');
   assert.equal(sheet.status, 200);
   assert.ok(sheet.body.includes('<h1>Lecteur · Banc 2</h1>'));
   assert.ok(sheet.body.includes('<div><dt>Numéro à configurer dans le boîtier</dt><dd><span class="numero-boitier">2</span></dd></div>'));
   assert.ok(sheet.body.includes('<div><dt>Nom</dt><dd><span class="texte-doux">aucun</span></dd></div>'));
-  assert.ok(sheet.body.includes('<a class="bouton" href="/readers/2/station">Changer de poste</a>'));
-  assert.ok(sheet.body.includes('<a class="bouton bouton-secondaire" href="/readers/2/replace">Remplacer la clé</a>'));
-  assert.ok(sheet.body.includes('<a class="lien-danger" href="/readers/2/deactivate">Désactiver</a>'));
+  // Étape U6 : actions sensibles dans un panneau (avec le script), sinon page de confirmation.
+  assert.ok(sheet.body.includes('<a class="bouton" href="/readers/2/station" data-dialogue="poste"><svg class="ic" aria-hidden="true"><use href="#i-poste"></use></svg>Changer de poste</a>'));
+  assert.ok(sheet.body.includes('<a class="bouton bouton-secondaire" href="/readers/2/replace" data-dialogue="cle">Remplacer la clé</a>'));
+  assert.ok(sheet.body.includes('<a class="lien-danger" href="/readers/2/deactivate" data-dialogue="desactiver">Désactiver</a>'));
+  assert.ok(sheet.body.includes('<p class="dialogue-intro">Ce lecteur n&#39;enverra plus de scans. Les scans passés restent dans l&#39;historique. C&#39;est définitif.</p>'));
+  assert.ok(sheet.body.includes('<p class="dialogue-intro">Une nouvelle clé va être créée. L&#39;ancienne cessera de fonctionner tout de suite : pensez à mettre à jour le boîtier.</p>'));
   assert.match(sheet.body, /<td><a class="lien-simple" href="\/items\/1">Multimètre<\/a><\/td>\n<td data-label="Poste">/);
   assert.ok(!sheet.body.includes('ompteur') && !sheet.body.includes('trame'));
   assertSafePage(sheet.body, 'fiche du lecteur');
@@ -472,7 +479,7 @@ test('changer un lecteur de poste : ni scans.station_id ni la localisation actue
   const scansBefore = JSON.stringify(db.prepare('SELECT * FROM scans ORDER BY id').all());
   const locationBefore = JSON.stringify(db.prepare('SELECT * FROM item_locations').all());
   const form = await page('/readers/2/station');
-  assert.ok(form.body.includes(`<option value="${banc}" selected>Banc 2</option>`));
+  assert.ok(form.body.includes(`<input type="radio" name="station" value="${banc}" id="station-${banc}" checked><span>Banc 2</span> <span class="choix-actuel">actuel</span>`));
   assertSafePage(form.body, 'changer de poste');
 
   const audits = count('audit_log');
@@ -508,7 +515,7 @@ test('remplacement de clé : confirmation, puis page de la nouvelle clé ; ancie
   assert.equal(confirm.status, 200);
   assert.ok(confirm.body.includes('<form method="post" action="/readers/2/replace">'));
   assert.ok(confirm.body.includes('<button class="bouton bouton-danger" type="submit">Remplacer la clé</button>'));
-  assert.ok(confirm.body.includes('désactivé définitivement'));
+  assert.ok(confirm.body.includes('<p>Une nouvelle clé va être créée. L&#39;ancienne cessera de fonctionner tout de suite : pensez à mettre à jour le boîtier.</p>'));
   assert.ok(!confirm.body.includes(key2));
   assertSafePage(confirm.body, 'confirmation de remplacement');
 
@@ -542,7 +549,7 @@ test('remplacement de clé : confirmation, puis page de la nouvelle clé ; ancie
 
 test('lecteur désactivé : plus de changement de poste, de remplacement ni de désactivation (409 sans écriture) ; pages explicatives', async () => {
   const sheet = await page('/readers/2');
-  assert.ok(sheet.body.includes('<span class="etat etat-desactive">désactivé</span>'));
+  assert.ok(sheet.body.includes('<span class="etat-lecteur etat-lecteur--desactive"><svg class="ic" aria-hidden="true"><use href="#i-fermer"></use></svg>désactivé</span>'));
   assert.ok(!sheet.body.includes('href="/readers/2/station"') && !sheet.body.includes('href="/readers/2/replace"'));
   assertSafePage(sheet.body, 'fiche d\'un lecteur désactivé');
   for (const action of ['station', 'replace', 'deactivate']) {
@@ -563,8 +570,8 @@ test('lecteur désactivé : plus de changement de poste, de remplacement ni de d
 
 test('désactivation : confirmation, 303 ?ok=desactive, audit ; ses trames sont ensuite refusées (400)', async () => {
   const confirm = await page('/readers/3/deactivate');
-  assert.ok(confirm.body.includes('<button class="bouton bouton-danger" type="submit">Désactiver définitivement</button>'));
-  assert.ok(confirm.body.includes('La désactivation est définitive'));
+  assert.ok(confirm.body.includes('<button class="bouton bouton-danger" type="submit">Désactiver</button>'));
+  assert.ok(confirm.body.includes('<p>Ce lecteur n&#39;enverra plus de scans. Les scans passés restent dans l&#39;historique. C&#39;est définitif.</p>'));
   assertSafePage(confirm.body, 'confirmation de désactivation');
   const res = await post('/readers/3/deactivate');
   assert.equal(res.status, 303);
@@ -590,7 +597,7 @@ test('lecteur non affecté : création sans poste ; un scan donne « lecteur non
   const sheet = await page('/items/1');
   assert.ok(sheet.body.includes('<a class="lien-etat" href="/readers/4"><span class="etat etat-inconnue">'));
   const readers = await page('/readers');
-  assert.match(readers.body, /href="\/readers\/4">Lecteur n° 4<\/a><\/td>\n<td data-label="N° boîtier"><span class="numero-boitier">4<\/span><\/td>\n<td data-label="Poste"><span class="texte-doux">non affecté<\/span>/);
+  assert.match(readers.body, /href="\/readers\/4">Lecteur n° 4<\/a> <span class="numero-secondaire">N°&nbsp;boîtier&nbsp;<span class="numero-boitier">4<\/span><\/span><\/td>\n<td data-label="Poste"><span class="texte-doux">pas de poste<\/span>/);
   // Champ « station » forgé : refusé, aucun lecteur créé.
   const before = snapshot();
   for (const station of ['abc', '999', '-1']) {

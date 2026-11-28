@@ -392,3 +392,23 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
   - le plafond par session (fermeture du flux le plus ancien) s'applique avant le plafond total ;
   - un flux dont le tampon est plein est fermé ; le navigateur se reconnecte avec Last-Event-ID.
 - **Vocabulaire** : « Nouvelle puce » partout ; jamais de « au » accordé devant un nom de poste.
+
+## D-025 — Puces inconnues, postes et lecteurs (étapes U5 et U6)
+
+- **Date** : 2026-11-28 · **Statut** : Proposée (choix de l'orchestrateur selon D-022)
+- **Puces inconnues** :
+  - une carte par puce, mise à jour en direct ;
+  - création d'une fiche en ligne depuis la carte (même POST et même CSRF que `/chips/<UID>/new`) ;
+  - les scans répétés d'une même puce sont regroupés ;
+  - limite acceptée : une puce déjà affichée et rescannée ne remonte pas en tête, pour ne pas perdre une saisie en cours.
+- **Postes** :
+  - tuiles avec le nombre d'objets présents, le dernier arrivé et l'état du lecteur, mis à jour en direct ;
+  - nouveau champ interne `de` (poste quitté) dans le direct navigateur ↔ serveur ; contrat des boîtiers inchangé ;
+  - « Ajouter un poste » ramène à la liste ; la fiche poste ne liste que les lecteurs en service ;
+  - limite : `/stations` prend environ 100 ms avec 200 postes, 5 000 objets et 300 000 scans (calcul d'arrivée complet, gardé pour rester exact).
+- **Lecteurs** :
+  - les lecteurs désactivés sont repliés ;
+  - actions sensibles dans un panneau, chacune expliquée en une phrase, avec le focus sur « Annuler » ;
+  - `?poste=` présélectionne le poste dans « Ajouter un lecteur » ;
+  - la page de clé attend en direct le premier scan du nouveau lecteur.
+- **API** : `GET /api/puces-inconnues` accepte jusqu'à `n=200` et renvoie le nombre de scans de chaque puce.

@@ -129,20 +129,13 @@ const supprimerFiche = encadre(html`<p>La suppression est définitive.</p>
 
 // ---------------------------------------------------------------- postes
 
-const postes = encadre(html`<p>Un poste est un lieu de travail où l'on scanne les objets en arrivant. Un lecteur y est rattaché.</p>
-<ul>
-<li>La liste montre chaque poste, le nombre de lecteurs actifs qui lui sont rattachés et le nombre d'objets qui s'y trouvent.</li>
-<li>«&nbsp;Nouveau poste&nbsp;» : créer un poste, puis lui rattacher un lecteur depuis la rubrique «&nbsp;Lecteurs&nbsp;».</li>
-<li>Un clic sur un poste ouvre sa fiche : les objets présents et ses lecteurs.</li>
-</ul>`);
+const postes = encadre(html`<p>Un poste est un lieu de travail : chaque tuile montre les objets qui s'y trouvent, le dernier arrivé et l'état de son lecteur.</p>
+<p>Un lecteur en orange n'a rien envoyé depuis plus de 24 heures : vérifiez qu'il est allumé et branché.</p>
+<p>«&nbsp;Ajouter un poste&nbsp;» : un nom suffit ; ajoutez-lui ensuite un lecteur.</p>`);
 
-const poste = encadre(html`<p>La fiche du poste montre d'abord les objets qui s'y trouvent en ce moment, puis ses lecteurs et sa description.</p>
-<ul>
-<li>Objets présents : localisés ici par leur dernier scan, ou par une correction à la main. «&nbsp;Depuis&nbsp;» donne leur heure d'arrivée au poste, avec la mention «&nbsp;correction&nbsp;» s'ils y sont arrivés par une correction à la main.</li>
-<li>Lecteurs : ceux rattachés à ce poste. Pour en rattacher un, ouvrez sa fiche dans la rubrique «&nbsp;Lecteurs&nbsp;», puis «&nbsp;Changer de poste&nbsp;».</li>
-<li>«&nbsp;Modifier&nbsp;» : changer le nom ou la description.</li>
-<li>«&nbsp;Supprimer&nbsp;» n'apparaît que si le poste n'a aucun historique : ni scan, ni correction, ni lecteur. Sinon, renommez-le.</li>
-</ul>`);
+const poste = encadre(html`<p>La fiche montre d'abord les objets présents à ce poste et depuis quand, puis son lecteur et les dernières arrivées.</p>
+<p>«&nbsp;Renommer&nbsp;» change le nom du poste sans toucher à son passé.</p>
+<p>Un poste qui n'a jamais servi peut être supprimé ; sinon, renommez-le.</p>`);
 
 const nouveauPoste = encadre(html`<p>Donnez un nom au poste, puis cliquez sur «&nbsp;Créer le poste&nbsp;».</p>
 <ul>
@@ -166,12 +159,9 @@ const supprimerPoste = encadre(html`<p>Seul un poste sans historique peut être 
 
 // ---------------------------------------------------------------- lecteurs
 
-const lecteurs = encadre(html`<p>Un lecteur est le boîtier posé sur un poste : il lit la puce des objets et envoie chaque scan à l'application.</p>
-<ul>
-<li>La liste montre chaque lecteur avec son poste, son état et son dernier scan.</li>
-<li>«&nbsp;Nouveau lecteur&nbsp;» : l'application crée le numéro du lecteur et sa clé secrète. La clé n'est affichée qu'une seule fois : la personne qui prépare le boîtier doit l'y installer aussitôt.</li>
-<li>Un lecteur «&nbsp;non affecté&nbsp;» n'est rattaché à aucun poste : les objets qu'il scanne ont pour emplacement «&nbsp;lecteur non affecté&nbsp;». Rattachez-le à un poste depuis sa fiche.</li>
-</ul>`);
+const lecteurs = encadre(html`<p>Un lecteur est le boîtier posé sur un poste : il lit la puce des objets et envoie chaque scan.</p>
+<p>«&nbsp;Silencieux&nbsp;» signale un lecteur qui n'a rien envoyé depuis plus de 24 heures ; les lecteurs désactivés sont rangés en bas de la page.</p>
+<p>«&nbsp;Ajouter un lecteur&nbsp;» crée sa clé, à copier une seule fois dans le boîtier.</p>`);
 
 const nouveauLecteur = encadre(html`<p>Donnez un nom au lecteur et choisissez son poste si vous le connaissez, puis cliquez sur «&nbsp;Créer le lecteur&nbsp;».</p>
 <ul>
@@ -182,14 +172,9 @@ const nouveauLecteur = encadre(html`<p>Donnez un nom au lecteur et choisissez so
 <li>Si la clé est perdue, remplacez-la depuis la fiche du lecteur.</li>
 </ul>`);
 
-const lecteur = encadre(html`<p>La fiche du lecteur montre son nom, son poste, son état, le numéro à configurer dans le boîtier et les derniers scans qu'il a envoyés.</p>
-<ul>
-<li>«&nbsp;Renommer&nbsp;» : donner au lecteur un nom qui permet de reconnaître le boîtier. Le numéro, lui, ne change pas.</li>
-<li>«&nbsp;Changer de poste&nbsp;» : rattacher le lecteur à un autre poste, par exemple quand le boîtier est déplacé. Les scans déjà enregistrés gardent leur poste : l'historique n'est pas réécrit.</li>
-<li>«&nbsp;Remplacer la clé&nbsp;» : si la clé est perdue ou a pu être vue. Un nouveau lecteur est créé, avec un nouveau numéro et une nouvelle clé, et celui-ci est désactivé.</li>
-<li>«&nbsp;Désactiver&nbsp;» : les scans de ce lecteur sont refusés. C'est définitif ; ses scans passés sont conservés.</li>
-<li>La clé n'est jamais réaffichée.</li>
-</ul>`);
+const lecteur = encadre(html`<p>La fiche montre l'état du lecteur, son poste, le numéro à configurer dans le boîtier et ses derniers scans.</p>
+<p>«&nbsp;Changer de poste&nbsp;» sert quand le boîtier est déplacé : les scans passés gardent leur poste.</p>
+<p>Clé perdue&nbsp;? «&nbsp;Remplacer la clé&nbsp;» en crée une nouvelle ; «&nbsp;Désactiver&nbsp;» retire définitivement le lecteur.</p>`);
 
 const changerPoste = encadre(html`<p>Choisissez le poste où se trouve désormais le boîtier, puis cliquez sur «&nbsp;Enregistrer&nbsp;».</p>
 <ul>
@@ -223,18 +208,10 @@ const remplacerCle = encadre(html`<p>Remplacez la clé si elle a été perdue ou
 
 // ---------------------------------------------------------------- puces inconnues
 
-// L'introduction de la page dit déjà ce qu'est une puce inconnue : pas de redite ici.
-const puces = encadre(html`<p>Pour chaque puce, deux possibilités :</p>
-<ul>
-<li>«&nbsp;Créer une fiche&nbsp;» : l'objet n'a pas encore de fiche. Le numéro de la puce est déjà rempli, et l'objet est localisé au poste de son dernier scan (ou «&nbsp;lecteur non affecté&nbsp;» si ce lecteur n'est rattaché à aucun poste).</li>
-<li>«&nbsp;Associer à une fiche existante&nbsp;» : la fiche existe déjà. Cherchez-la, puis confirmez. Si elle portait déjà une puce, l'ancienne est détachée.</li>
-</ul>
-<p>À savoir :</p>
-<ul>
-<li>Les scans d'une puce inconnue sont gardés : ils comptent dès que la puce reçoit une fiche.</li>
-<li>Si la puce a déjà appartenu à une fiche (supprimée, ou qui a changé de puce), un avertissement s'affiche : ses anciens scans seront rattachés au nouvel objet. Si possible, préférez une puce neuve.</li>
-<li>Seules les ${MAX_UNKNOWN_CHIPS} puces scannées le plus récemment sont affichées. Une fois celles-ci traitées, les suivantes apparaissent.</li>
-</ul>`);
+// Page « Puces inconnues » (étape U5) : trois phrases.
+const puces = encadre(html`<p>Chaque puce scannée qu'aucune fiche ne porte encore apparaît ici, en direct (les ${MAX_UNKNOWN_CHIPS} plus récentes).</p>
+<p>Tapez le nom de l'objet puis Entrée : sa fiche est créée et l'objet est aussitôt localisé au poste où la puce a été scannée.</p>
+<p>L'objet a déjà une fiche&nbsp;? Choisissez «&nbsp;Associer à une fiche existante&nbsp;».</p>`);
 
 const associerRecherche = encadre(html`<p>Cherchez la fiche de l'objet qui porte cette puce, puis cliquez sur «&nbsp;Associer&nbsp;».</p>
 <ul>

@@ -761,3 +761,20 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
 - Retour à `dev` (U4, aller-retour 2/3) : tous ces points, plus un démarrage guidé en liste cochée jusqu'au premier objet localisé et un compteur de puces inconnues dans la navigation.
 - `dev` (U4, aller-retour 2) : les 9 retours sont traités ; un vrai bug corrigé au passage : l'événement d'une puce inconnue n'était pas publié. 661 tests. Orchestrateur : 661/661, capture du démarrage guidé relue. Compléments consignés dans D-024.
 - **U4 (finitions) commitée et poussée** (voir git log). Démo relancée.
+
+### 2026-11-28 — Étapes U5 et U6 lancées (même tâche, car elles touchent les mêmes fichiers)
+- U5, puces inconnues :
+  - cartes lisibles mises à jour en direct ;
+  - création d'une fiche en ligne depuis la carte (un nom, puis Entrée) ;
+  - regroupement des scans répétés ;
+  - avertissements d'association sans jargon.
+- U6, postes et lecteurs :
+  - postes en tuiles (objets présents, dernier mouvement, état du lecteur) ;
+  - fiche poste avec les objets présents en premier ;
+  - lecteurs désactivés repliés ;
+  - actions sensibles expliquées en une phrase ;
+  - page de clé qui attend en direct le premier scan du nouveau lecteur.
+- Agent `dev` lancé.
+- `dev` (U5 et U6) : coupé une fois par la limite d'usage, puis repris. Terminé : 678 tests (le test de durée `recherche-charge` est parfois instable sous charge). 20/20 contrôles réels dans Edge : une puce apparaît en 84 ms, le premier scan d'un lecteur est reconnu en 68 ms. → D-025.
+- Orchestrateur : 678/678 ; capture des postes en tuiles relue.
+- **U5 et U6 commitées et poussées** (voir git log). Démo relancée. Testeur et `revue-ux` lancés pour les finitions.

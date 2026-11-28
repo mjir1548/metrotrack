@@ -250,7 +250,7 @@ test('flux : ni numéro de puce, ni clé, ni compteur ; nom avec sauts de ligne 
   assert.ok(stream.raw.split('\n').every((l) => !l.startsWith('event:') && !l.startsWith('id: 999')), 'aucune ligne SSE fabriquée');
   for (const secret of [...SECRETS, '04ABABABABAB01']) assert.ok(!stream.raw.toUpperCase().includes(secret.toUpperCase()), `secret présent : ${secret}`);
   for (const e of stream.events) {
-    assert.deepEqual(Object.keys(e.data).sort(), ['deplacement', 'inconnu', 'iso', 'itemId', 'lecteur', 'nom', 'par', 'poste', 'posteId', 'puces', 'type']);
+    assert.deepEqual(Object.keys(e.data).sort(), ['de', 'deplacement', 'inconnu', 'iso', 'itemId', 'lecteur', 'nom', 'par', 'poste', 'posteId', 'puces', 'type']);
   }
   stream.close();
 });
@@ -337,11 +337,12 @@ test('Sec-Fetch-Site : same-site, cross-site, none → 403 ; same-origin → acc
 });
 
 test('/api/puces-inconnues : n invalide → 400 ; sans session → 401', async () => {
-  for (const n of ['0', '21', 'abc', '-1', '1e1', '3.0', '', '001']) {
+  for (const n of ['0', '201', 'abc', '-1', '1e1', '3.0', '', '001']) {
     const r = await page(`/api/puces-inconnues?n=${encodeURIComponent(n)}`);
     assert.equal(r.status, 400, `n=${JSON.stringify(n)}`);
   }
   assert.equal((await page('/api/puces-inconnues?n=20')).status, 200);
+  assert.equal((await page('/api/puces-inconnues?n=200')).status, 200); // page « Puces inconnues » (étape U5)
   assert.equal((await send({ path: '/api/puces-inconnues' })).status, 401);
   assert.equal((await send({ path: '/api/direct' })).status, 401);
 });

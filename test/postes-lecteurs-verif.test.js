@@ -151,9 +151,10 @@ test('poste au nom et à la description piégés : réaffiché échappé sur tou
   // Correction d'emplacement (12 postes au plus, étape U2) : bouton radio, même échappement.
   const location = pages.slice(1).find((r) => r.path === '/items/1/location');
   assert.match(location.body, new RegExp(`<input type="radio" name="station" value="${st}"[^>]*><span>${escapedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</span>`));
+  // Étape U6 : le poste d'un lecteur se choisit aussi par boutons radio, même échappement.
   for (const path of ['/readers/new', `/readers/${reader}/station`]) {
     const res = pages.slice(1).find((r) => r.path === path); // pages[0] : page de clé (POST /readers/new)
-    assert.match(res.body, new RegExp(`<option value="${st}"[^>]*>${escapedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</option>`), path);
+    assert.match(res.body, new RegExp(`<input type="radio" name="station" value="${st}"[^>]*><span>${escapedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</span>`), path);
   }
   noInternalError();
 });

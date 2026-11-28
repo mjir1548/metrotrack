@@ -42,9 +42,9 @@ import {
 } from './readers.js';
 import {
   listUnknownChips, getChip, chipPreviousOwner, chipPreviousOwners, createItemForChip, associateChip, detachChip, MAX_ASSOCIATE_RESULTS,
-  MAX_OFFERED_CHIPS, unknownChipsOverview,
+  MAX_OFFERED_CHIPS, MAX_UNKNOWN_CHIPS, unknownChipsOverview,
 } from './chips.js';
-import { homeData, isOnboarding } from './accueil.js';
+import { homeData, isOnboarding, recentMovements } from './accueil.js';
 import { itemEvent, parseEventId } from './direct.js';
 import {
   loginPage as loginView, forbiddenPage, errorPage, inventoryPage, itemPage as itemView, itemNotFoundPage, BUSY_MESSAGE,
@@ -366,6 +366,7 @@ function detachChipAction(ctx, req, res, idText) {
     // strict qu'un identifiant), vérifié dans la transaction d'écriture.
     const keep = form.get('garder') === '1' ? parseItemId(form.get('poste') ?? '') : null;
     if (form.get('garder') === '1' && keep === null) return sendErrorPage(res, 400, true);
+    const before = getItem(ctx.db, id); // emplacement avant le retrait, pour le direct (étape U6)
     const outcome = detachChip(ctx.db, session.userId, id, form.get('previous'), keep);
     if (outcome === 'no_item') return sendHtml(res, 404, itemNotFoundPage(user));
     if (outcome === 'no_station' || outcome.changed) {
@@ -374,7 +375,7 @@ function detachChipAction(ctx, req, res, idText) {
       return sendHtml(res, 409, detachChipView(user, { item, changed: true, fallback: lastCorrectionStation(ctx.db, id) }));
     }
     ctx.log(`puce ${outcome.previousUid} retirée de la fiche ${outcome.id} par ${session.username}${outcome.kept ? ' (emplacement gardé)' : ''}`);
-    publishItem(ctx, 'puce', outcome.id, session.username);
+    publishItem(ctx, 'puce', outcome.id, session.username, before);
     redirect(res, `/items/${outcome.id}?ok=${outcome.kept ? 'puce_retiree_gardee' : 'puce_retiree'}`);
   });
 }
@@ -450,11 +451,12 @@ function directApi(ctx, req, res) {
 }
 
 /** Publie l'événement d'une action sur une fiche (après l'écriture) ; un échec est seulement journalisé. */
-function publishItem(ctx, type, itemId, username) {
+// before : la fiche avant l'action (getItem), ou null (fiche créée) : champ « de » (étape U6).
+function publishItem(ctx, type, itemId, username, before = null) {
   try {
     const item = getItem(ctx.db, itemId);
     if (!item) return;
-    const event = itemEvent(type, item, username);
+    const event = itemEvent(type, item, username, undefined, before);
     if (type === 'puce') event.puces = ctx.chipsCounter.refresh();
     ctx.direct.publish(event);
   } catch (err) {
@@ -462,12 +464,13 @@ function publishItem(ctx, type, itemId, username) {
   }
 }
 
-// Nombre maximal de puces demandées à GET /api/puces-inconnues (page « Donner une puce »).
-const MAX_API_CHIPS = MAX_OFFERED_CHIPS;
+// Nombre maximal de puces demandées à GET /api/puces-inconnues : la page « Puces inconnues »
+// (étape U5) se met à jour en direct et affiche au plus MAX_UNKNOWN_CHIPS puces.
+const MAX_API_CHIPS = MAX_UNKNOWN_CHIPS;
 
 /**
  * GET /api/puces-inconnues?n=3 : les n puces inconnues les plus récentes (1 ≤ n ≤ MAX_API_CHIPS,
- * 3 par défaut) et leur nombre total. Appelé par app.js après un événement du direct « puce
+ * 3 par défaut), avec leur nombre de scans, et leur nombre total. Appelé par app.js après un événement du direct « puce
  * inconnue » (le flux, lui, ne contient jamais de numéro de puce). Mêmes contrôles que
  * /api/recherche (origine, session, JSON échappé, no-store). Ces numéros sont ceux qu'affiche
  * déjà la page « Puces inconnues » au même compte.
@@ -478,7 +481,7 @@ function chipsApi(ctx, req, res) {
   const session = currentSession(ctx, req);
   if (!session) return sendJson(res, 401, { erreur: 'session' });
   const text = queryParam(req, 'n') ?? '3';
-  const n = /^[0-9]{1,2}$/.test(text) ? Number(text) : 0;
+  const n = /^[1-9][0-9]{0,2}$/.test(text) ? Number(text) : 0;
   if (n < 1 || n > MAX_API_CHIPS) return sendJson(res, 400, { erreur: 'requete' });
   const { chips, total } = unknownChipsOverview(ctx.db, n);
   const now = Date.now();
@@ -579,7 +582,7 @@ function correctLocationAction(ctx, req, res, idText) {
       return sendHtml(res, 400, locationView(user, { item, stations: listStations(ctx.db), selected, error }));
     }
     ctx.log(`localisation de la fiche ${item.id} corrigée par ${session.username}`);
-    publishItem(ctx, 'correction', item.id, session.username);
+    publishItem(ctx, 'correction', item.id, session.username, item);
     redirect(res, `/items/${item.id}?ok=corrige`);
   });
 }
@@ -648,7 +651,14 @@ function withBlankRows(form, wanted) {
 function stationsList(ctx, req, res) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  sendHtml(res, 200, stationsPage(pageUser(ctx, session), { stations: listStationSummaries(ctx.db), notice: queryParam(req, 'ok') }));
+  // ?ok=ajoute&poste=<id> : poste ajouté depuis le champ en ligne ; son nom est lu en base (le
+  // message reste un texte constant, seul le nom vient de la base).
+  const notice = queryParam(req, 'ok');
+  const addedId = notice === 'ajoute' ? parseItemId(queryParam(req, 'poste') ?? '') : null;
+  const added = addedId === null ? null : getStation(ctx.db, addedId);
+  sendHtml(res, 200, stationsPage(pageUser(ctx, session), {
+    stations: listStationSummaries(ctx.db), now: Date.now(), notice, added: added === null ? null : { id: added.id, name: added.name },
+  }));
 }
 
 function stationPage(ctx, req, res, idText) {
@@ -661,6 +671,7 @@ function stationPage(ctx, req, res, idText) {
     station,
     readers: stationReaders(ctx.db, station.id),
     items: stationItems(ctx.db, station.id),
+    movements: recentMovements(ctx.db, STATION_MOVEMENTS, station.id),
     deletable: !stationHasHistory(ctx.db, station.id),
     now: Date.now(),
     notice: queryParam(req, 'ok'),
@@ -672,6 +683,9 @@ function newStationPage(ctx, req, res) {
   if (!session) return redirect(res, '/login');
   sendHtml(res, 200, stationFormPage(pageUser(ctx, session), { station: null, form: { name: '', description: '' }, errors: {} }));
 }
+
+// Dernières arrivées affichées sur la fiche d'un poste (étape U6).
+const STATION_MOVEMENTS = 8;
 
 const duplicateStationError = (existing) => `Un poste porte déjà ce nom : « ${existing} » (majuscules et minuscules confondues). Choisissez un autre nom.`;
 
@@ -687,6 +701,9 @@ function createStationAction(ctx, req, res) {
     ctx.log(`poste ${outcome.id} créé par ${session.username}`);
     // Démarrage guidé (étape U4) : tant qu'aucun objet n'a été localisé, retour à l'accueil, qui
     // montre l'étape suivante.
+    // Champ en ligne de la page Postes (retour=postes, étape U6) : retour à la liste, poste mis en
+    // évidence. Sinon, pendant le démarrage guidé, retour à l'accueil.
+    if (form.get('retour') === 'postes') return redirect(res, `/stations?ok=ajoute&poste=${outcome.id}`);
     redirect(res, isOnboarding(ctx.db) ? '/?ok=poste' : `/stations/${outcome.id}?ok=cree`);
   });
 }
@@ -705,7 +722,10 @@ function updateStationAction(ctx, req, res, idText) {
     const user = pageUser(ctx, session);
     const station = findStation(ctx, res, user, idText);
     if (!station) return;
-    const result = validateStationInput({ name: form.get('name'), description: form.get('description') });
+    // « Renommer » sur place (étape U6) n'envoie que le nom : sans champ description, la
+    // description enregistrée est gardée telle quelle.
+    const description = form.has('description') ? form.get('description') : station.description;
+    const result = validateStationInput({ name: form.get('name'), description });
     if (!result.ok) return sendHtml(res, 400, stationFormPage(user, { station, form: result.form, errors: result.errors }));
     const outcome = updateStation(ctx.db, session.userId, station.id, result.station);
     if (outcome === null) return sendHtml(res, 404, stationNotFoundPage(user));
@@ -780,13 +800,17 @@ function readerPage(ctx, req, res, idText) {
   const user = pageUser(ctx, session);
   const reader = findReader(ctx, res, user, idText);
   if (!reader) return;
-  sendHtml(res, 200, readerView(user, { reader, scans: readerScans(ctx.db, reader.id), now: Date.now(), notice: queryParam(req, 'ok') }));
+  // stations : choix du panneau « Changer de poste » (étape U6), seulement pour un lecteur actif.
+  const stations = reader.active === 1 ? listStations(ctx.db) : [];
+  sendHtml(res, 200, readerView(user, { reader, scans: readerScans(ctx.db, reader.id), now: Date.now(), notice: queryParam(req, 'ok'), stations }));
 }
 
 function newReaderPage(ctx, req, res) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  sendHtml(res, 200, readerFormPage(pageUser(ctx, session), { stations: listStations(ctx.db) }));
+  // ?poste=<id> : poste présélectionné (lien « Ajouter un lecteur » d'un poste, étape U6).
+  const preset = parseItemId(queryParam(req, 'poste') ?? '');
+  sendHtml(res, 200, readerFormPage(pageUser(ctx, session), { stations: listStations(ctx.db), selected: preset === null ? '' : String(preset) }));
 }
 
 function createReaderAction(ctx, req, res) {
@@ -1058,6 +1082,7 @@ function associateChipAction(ctx, req, res, uidText, itemIdText) {
     if (uid === null) return sendHtml(res, 404, chipNotFoundPage(user));
     if (itemId === null) return sendHtml(res, 404, itemNotFoundPage(user));
     // previous : puce de la fiche affichée sur la page de confirmation ('' : aucune).
+    const before = getItem(ctx.db, itemId); // emplacement avant l'association, pour le direct (étape U6)
     const outcome = associateChip(ctx.db, session.userId, uid, itemId, form.get('previous'));
     if (chipConflictAnswered(res, user, uid, outcome)) return;
     if (outcome === 'no_item') return sendHtml(res, 404, itemNotFoundPage(user));
@@ -1069,7 +1094,7 @@ function associateChipAction(ctx, req, res, uidText, itemIdText) {
     }
     const replaced = outcome.previousUid === null ? '' : ` (remplace ${outcome.previousUid})`;
     ctx.log(`puce ${uid} associée à la fiche ${outcome.id} par ${session.username}${replaced}`);
-    publishItem(ctx, 'puce', outcome.id, session.username);
+    publishItem(ctx, 'puce', outcome.id, session.username, before);
     redirect(res, `/items/${outcome.id}?ok=${outcome.previousUid === null ? 'puce_associee' : 'puce_remplacee'}`);
   });
 }

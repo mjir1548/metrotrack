@@ -73,12 +73,12 @@ test(`${UNKNOWN} puces inconnues : /chips n'affiche que les ${MAX_UNKNOWN_CHIPS}
   const res = await page('/chips');
   t.diagnostic(`GET /chips : ${Math.round(res.ms)} ms, ${Math.round(res.body.length / 1024)} Kio`);
   assert.equal(res.status, 200);
-  // Une carte par puce, numéro groupé par octets (étape U1).
-  const uids = [...res.body.matchAll(/<p class="encart-texte">Puce <span class="uid">([0-9A-F ]+)<\/span><\/p>/g)].map((m) => m[1].replaceAll(' ', ''));
+  // Une carte par puce (étape U5 : « Nouvelle puce · <poste> », repérée par data-uid).
+  const uids = [...res.body.matchAll(/<li class="encart puce-carte" data-uid="([0-9A-F]+)"/g)].map((m) => m[1]);
   assert.equal(uids.length, MAX_UNKNOWN_CHIPS);
   // Les plus récentes : les derniers UID scannés, dans l'ordre inverse.
   assert.deepEqual(uids, Array.from({ length: MAX_UNKNOWN_CHIPS }, (_, i) => unknownUid(UNKNOWN - 1 - i)));
-  assert.ok(res.body.includes(`Plus de ${MAX_UNKNOWN_CHIPS} puces inconnues · les ${MAX_UNKNOWN_CHIPS} plus récentes sont affichées.`));
+  assert.ok(res.body.includes(`Plus de ${MAX_UNKNOWN_CHIPS} nouvelles puces · les ${MAX_UNKNOWN_CHIPS} plus récentes sont affichées.`));
   assert.ok(res.body.length < 200 * 1024, `${res.body.length} octets`);
   assert.ok(res.ms < MAX_MS, `${Math.round(res.ms)} ms`);
 });

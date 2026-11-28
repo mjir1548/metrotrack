@@ -95,7 +95,8 @@ test('association : fiches sans puce d\'abord (page et API), puce actuelle dans 
   assert.ok(res.body.includes('<div id="association-resultats">'));
   const api = JSON.parse((await page('/api/recherche?q=sonde&pour=association')).body);
   assert.equal(api.total, 3);
-  assert.deepEqual(api.resultats.map((r) => [r.nom, r.puce]), [['Sonde sans puce', null], ['Sonde avec puce', 'A1 B2 C3 D4'], ['Autre sonde avec puce', 'A1 B2 C3 D5']]);
+  // Étape U5 : « a déjà une puce » ou non, sans le numéro.
+  assert.deepEqual(api.resultats.map((r) => [r.nom, r.puce]), [['Sonde sans puce', false], ['Sonde avec puce', true], ['Autre sonde avec puce', true]]);
   assert.deepEqual(Object.keys(api.resultats[0]).sort(), ['arrivee', 'emplacement', 'id', 'nom', 'puce']);
 });
 
@@ -110,11 +111,11 @@ test('pages introuvables : une phrase claire, « Chercher un objet » (palette s
   }
 });
 
-test('fiche poste : description sous le titre, colonne « Dernier scan » des lecteurs', async () => {
+test('fiche poste : description sous le titre, état et dernier scan des lecteurs', async () => {
   const res = await page('/stations/1');
   assert.ok(res.body.includes('<p class="description-page">Établi près de la fenêtre</p>'));
-  assert.ok(res.body.includes('<th scope="col">Dernier scan</th>'));
-  assert.match(res.body, /<td data-label="Dernier scan"><time datetime="[^"]+" title="[^"]+" data-age>à l&#39;instant<\/time><\/td>/);
+  // Étape U6 : état en mots et dernier scan, sous le nom du lecteur.
+  assert.match(res.body, /fonctionne<\/span> <span class="texte-doux">· dernier scan <time datetime="[^"]+" title="[^"]+" data-age>à l&#39;instant<\/time><\/span>/);
   assert.ok(res.body.includes('>Lecteur du Poste 1</a>'));
   assert.ok((await page('/stations/2')).body.includes('>Lecteur · Atelier</a>'));
 });

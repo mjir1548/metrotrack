@@ -170,7 +170,7 @@ test('scan accepté → événement léger (objet, poste, heure, déplacement), 
   await stream.waitFor((s) => messages(s).length === 1);
   const [event] = messages(stream);
   const item = db.prepare("SELECT id FROM items WHERE uid_nfc = '04A1B2C3D4E5F6'").get().id;
-  assert.deepEqual(Object.keys(event).sort(), ['deplacement', 'inconnu', 'iso', 'itemId', 'lecteur', 'nom', 'par', 'poste', 'posteId', 'puces', 'type']);
+  assert.deepEqual(Object.keys(event).sort(), ['de', 'deplacement', 'inconnu', 'iso', 'itemId', 'lecteur', 'nom', 'par', 'poste', 'posteId', 'puces', 'type']);
   assert.equal(event.type, 'scan');
   assert.equal(event.itemId, item);
   assert.equal(event.nom, 'Multimètre <Fluke> "87V"');
@@ -238,7 +238,7 @@ test('correction manuelle et association → événements « correction » et «
   assert.equal((await send({ method: 'POST', path: `/items/${item}/location`, headers, body })).status, 303);
   await stream.waitFor((s) => messages(s).length === 1);
   assert.deepEqual({ ...messages(stream)[0], iso: 'x' }, {
-    type: 'correction', itemId: item, nom: 'Multimètre <Fluke> "87V"', poste: 'Poste A', posteId: 1, lecteur: null, iso: 'x', inconnu: false, deplacement: true, par: 'alice', puces: null,
+    type: 'correction', itemId: item, nom: 'Multimètre <Fluke> "87V"', poste: 'Poste A', posteId: 1, de: 2, lecteur: null, iso: 'x', inconnu: false, deplacement: true, par: 'alice', puces: null,
   });
   // Fiche créée depuis la puce inconnue DEADBEEF.
   const created = form({ name: 'Caméra' });
@@ -421,7 +421,7 @@ test('non-régression /api/frames sous 10 flux ouverts : 30 trames concurrentes 
 test('/api/puces-inconnues : session, origine, n borné ; numéros et poste des plus récentes', async () => {
   assert.equal((await send({ path: '/api/puces-inconnues' })).status, 401);
   assert.equal((await send({ path: '/api/puces-inconnues', headers: { Cookie: sessionCookie(), 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
-  for (const n of ['0', '21', 'abc', '-1', '1.5', '999']) {
+  for (const n of ['0', '201', 'abc', '-1', '1.5', '999', '020']) {
     assert.equal((await send({ path: `/api/puces-inconnues?n=${n}`, headers: { Cookie: sessionCookie() } })).status, 400, n);
   }
   const res = await send({ path: '/api/puces-inconnues?n=1', headers: { Cookie: sessionCookie() } });
@@ -429,7 +429,8 @@ test('/api/puces-inconnues : session, origine, n borné ; numéros et poste des 
   assert.equal(res.headers['cache-control'], 'no-store');
   const data = JSON.parse(res.body);
   assert.equal(data.total, 1); // CAFE0001 (DEADBEEF a reçu une fiche)
-  assert.deepEqual(Object.keys(data.puces[0]).sort(), ['exacte', 'iso', 'lecteur', 'numero', 'poste', 'texte', 'uid']);
+  assert.deepEqual(Object.keys(data.puces[0]).sort(), ['exacte', 'iso', 'lecteur', 'numero', 'poste', 'scans', 'texte', 'uid']);
+  assert.ok(Number.isSafeInteger(data.puces[0].scans) && data.puces[0].scans >= 1); // étape U5 : scans regroupés
   assert.equal(data.puces[0].uid, 'CAFE0001');
   assert.equal(data.puces[0].numero, 'CA FE 00 01');
   assert.ok(['Poste A', 'Poste B'].includes(data.puces[0].poste));

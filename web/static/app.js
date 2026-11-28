@@ -12,7 +12,12 @@
 //      fermeture du menu « … » au clic ailleurs ou sur Échap ;
 //   4. le direct (étape U4) : flux GET /api/direct (EventSource), mises à jour de l'accueil,
 //      notifications brèves, bandeau de la fiche, puce scannée sur « Donner une puce », et
-//      dates relatives recalculées chaque minute.
+//      dates relatives recalculées chaque minute ;
+//   5. étape U5 : page « Puces inconnues » mise à jour en direct, et création rapide d'une fiche
+//      depuis une puce (un nom, puis Entrée : POST /chips/<UID>/new, jeton CSRF de la page) ;
+//   6. étape U6 : tuiles des postes à jour en direct, « Renommer » et « Ajouter un poste » sur
+//      place, panneaux de confirmation de la fiche d'un lecteur, et attente du premier scan sur
+//      la page de clé d'un lecteur.
 // Les deux premiers interrogent GET /api/recherche (server/web.js, searchApi), sur ce même
 // serveur ; le direct lit GET /api/direct et GET /api/puces-inconnues, sur ce même serveur.
 //
@@ -578,11 +583,11 @@
         el('p', '', `Aucune fiche ne correspond à ${quoted(query)}.`),
         el('p', 'texte-doux', 'Essayez un autre mot du nom ou d\'une propriété, ou quelques caractères du numéro de sa puce actuelle.'),
       ),
-      body: (results, base) => table('tableau-association', ['Objet', 'Puce actuelle', 'Emplacement', 'Action'], results.map((result) => {
+      body: (results, base) => table('tableau-association', ['Objet', 'Puce', 'Emplacement', 'Action'], results.map((result) => {
         const tr = el('tr');
         const chipCell = el('td');
-        chipCell.dataset.label = 'Puce actuelle';
-        chipCell.append(result.puce ? el('span', 'uid', String(result.puce)) : el('span', 'texte-doux', 'aucune puce'));
+        chipCell.dataset.label = 'Puce';
+        chipCell.append(result.puce === true ? 'a déjà une puce' : el('span', 'texte-doux', 'sans puce'));
         const actionCell = el('td', 'cellule-actions');
         const associate = el('a', 'bouton bouton-secondaire bouton-petit', 'Associer');
         associate.href = `${base}/${result.id}`;
@@ -723,12 +728,52 @@
     opener.addEventListener('click', (event) => {
       event.preventDefault();
       dialog.showModal();
-      const first = dialog.querySelector('input[type="radio"], select');
+      // Action irréversible : « Annuler » reçoit le focus (data-focus) ; sinon le poste coché.
+      const first = ['[data-focus]', 'input[type="radio"]:checked', 'input[type="radio"]', 'select']
+        .map((selector) => dialog.querySelector(selector)).find((node) => node !== null);
       if (first) first.focus();
     });
     for (const closer of dialog.querySelectorAll('[data-fermer]')) closer.addEventListener('click', () => dialog.close());
     dialog.addEventListener('click', (event) => {
       if (event.target === dialog) dialog.close(); // clic sur le fond, hors de la boîte
+    });
+  }
+
+  // ------------------------------------------------------------ saisie sur place (étape U6)
+  //
+  // « Renommer » (fiche d'un poste) et « Ajouter un poste » (page Postes) : sans script, le lien
+  // mène à la page du formulaire ; avec lui, le petit formulaire caché de la page (même POST, jeton
+  // CSRF compris) s'affiche à la place, le champ prêt à la saisie. Échap ou « Annuler » referment.
+  for (const opener of document.querySelectorAll('a[data-sur-place]')) {
+    const form = document.getElementById(opener.dataset.surPlace);
+    if (!form || form.tagName !== 'FORM') continue;
+    const title = form.dataset.titre ? document.getElementById(form.dataset.titre) : null;
+    const input = form.querySelector('input[name="name"]');
+    const initial = input ? input.value : '';
+    const show = (on) => {
+      form.hidden = !on;
+      opener.hidden = on;
+      if (title) title.hidden = on;
+    };
+    const close = () => {
+      if (input) input.value = initial;
+      show(false);
+      opener.focus();
+    };
+    opener.addEventListener('click', (event) => {
+      event.preventDefault();
+      show(true);
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    });
+    for (const cancel of form.querySelectorAll('[data-annuler]')) cancel.addEventListener('click', close);
+    form.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close();
+      }
     });
   }
 
@@ -863,6 +908,7 @@
       && (e.itemId === null || isId(e.itemId))
       && textOrNull(e.nom) && textOrNull(e.poste) && textOrNull(e.par)
       && (e.posteId === null || isId(e.posteId))
+      && (e.de === undefined || e.de === null || isId(e.de))
       && (e.lecteur === null || isId(e.lecteur))
       && isText(e.iso) && Number.isFinite(Date.parse(e.iso))
       && typeof e.inconnu === 'boolean' && typeof e.deplacement === 'boolean'
@@ -880,6 +926,9 @@
   const offered = document.getElementById('puces-offertes');
   const liveState = document.getElementById('direct-etat');
   const guideScan = document.getElementById('etape-scan');
+  const chipCards = document.getElementById('puces-inconnues'); // page « Puces inconnues » (U5)
+  const chipsEmpty = document.getElementById('puces-vide');
+  const chipsSummary = document.getElementById('puces-resume');
   const onHome = window.location.pathname === '/';
 
   // Zone des notifications : créée au chargement (une zone role="status" doit exister avant
@@ -1166,9 +1215,219 @@
     }
   }
 
+  // ---- page « Puces inconnues » (étape U5) : cartes mises à jour en direct, création rapide
+
+  const CHIP_NEW_PATH = /^\/chips\/(?:[0-9A-F]{8}|[0-9A-F]{14}|[0-9A-F]{20})\/new$/; // adresse fixe du formulaire
+  const CREATED_PATH = /^\/items\/([1-9][0-9]{0,15})$/;
+  const MAX_CHIPS_PAGE = 200; // = MAX_UNKNOWN_CHIPS de server/chips.js
+  const MAX_NAME_CHARS = 200; // = MAX_NAME_CHARS de server/items.js
+  let chipsTotal = chipCards ? chipCards.children.length : 0;
+
+  const newChipsText = (n) => (n > 1 ? `${n.toLocaleString('fr-FR')} nouvelles puces` : `${n} nouvelle puce`);
+  const scansText = (n) => (Number.isSafeInteger(n) && n > 1 ? `${n.toLocaleString('fr-FR')} scans · dernier ` : '');
+
+  /** Résumé (« 3 nouvelles puces ») et passage liste / état vide. */
+  function updateChipsState() {
+    const shown = chipCards.children.length;
+    chipCards.hidden = shown === 0;
+    if (chipsEmpty) chipsEmpty.hidden = shown > 0;
+    if (chipsSummary) {
+      chipsSummary.hidden = shown === 0;
+      chipsSummary.textContent = chipsTotal > shown
+        ? `Plus de ${newChipsText(shown)} · les ${shown} plus récentes sont affichées. Traitez-les pour voir les suivantes.`
+        : newChipsText(shown);
+    }
+  }
+
+  /** Message sous le champ de création rapide (erreur), ou rien. */
+  function quickError(form, text, withLogin = false) {
+    let message = form.querySelector('.erreur-champ');
+    if (!text) {
+      message?.remove();
+      return;
+    }
+    if (!message) {
+      message = el('p', 'erreur-champ');
+      message.setAttribute('role', 'alert');
+      form.append(message);
+    }
+    message.replaceChildren(text);
+    if (withLogin) {
+      const link = el('a', '', 'Se reconnecter');
+      link.href = '/login';
+      message.append(NBSP, link);
+    }
+  }
+
+  /**
+   * Création rapide : un petit formulaire (un nom, puis Entrée) remplace le lien « Créer une
+   * fiche » de la carte. Même adresse et mêmes champs que la page /chips/<UID>/new : le nom et le
+   * jeton CSRF de la page (champ du formulaire de déconnexion, déjà présent).
+   */
+  function enableQuickCreate(card) {
+    const uid = card.dataset.uid;
+    if (!UID_FORMAT.test(uid ?? '') || card.querySelector('form.creation-rapide')) return;
+    const form = el('form', 'creation-rapide');
+    form.method = 'post';
+    form.setAttribute('action', `/chips/${uid}/new`);
+    const csrf = el('input');
+    csrf.type = 'hidden';
+    csrf.name = 'csrf';
+    csrf.value = document.querySelector('input[name="csrf"]')?.value ?? '';
+    const label = el('label', 'visuellement-cache', 'Nom de l\'objet');
+    label.htmlFor = `nom-${uid}`;
+    const input = el('input');
+    input.id = `nom-${uid}`;
+    input.name = 'name';
+    input.maxLength = MAX_NAME_CHARS;
+    input.required = true;
+    input.autocomplete = 'off';
+    input.placeholder = 'Nom de l\'objet, puis Entrée';
+    const submit = el('button', 'bouton bouton-petit');
+    submit.type = 'submit';
+    submit.append(icon('ajouter'), 'Créer la fiche');
+    const more = el('a', 'lien-simple creation-complete', 'Plus de champs');
+    more.href = `/chips/${uid}/new`;
+    form.append(csrf, label, input, submit, more);
+    card.append(form);
+    const link = card.querySelector('.puce-creer');
+    if (link) link.hidden = true;
+  }
+
+  /**
+   * Envoi de la création rapide : même POST que la page /chips/<UID>/new (champs du formulaire,
+   * jeton CSRF compris ; le navigateur joint l'en-tête Origin). Le serveur répond par une
+   * redirection vers la fiche créée, suivie par fetch : son adresse donne le numéro de la fiche.
+   */
+  function quickCreate(form) {
+    const card = form.closest('li');
+    const action = form.getAttribute('action') ?? '';
+    const input = form.querySelector('input[name="name"]');
+    const button = form.querySelector('button[type="submit"]');
+    if (!card || !input || !button || !CHIP_NEW_PATH.test(action) || button.disabled) return;
+    const name = input.value.trim();
+    if (name === '') {
+      quickError(form, 'Tapez le nom de l\'objet, puis Entrée.');
+      input.focus();
+      return;
+    }
+    quickError(form, '');
+    button.disabled = true;
+    fetch(action, { method: 'POST', body: new URLSearchParams(new FormData(form)), cache: 'no-store', headers: { Accept: 'text/html' } })
+      .then((response) => {
+        const path = new URL(response.url, window.location.href).pathname;
+        const created = CREATED_PATH.exec(path);
+        if (response.ok && response.redirected && created) {
+          quickCreated(card, Number(created[1]), name);
+        } else if (path === '/login') {
+          quickError(form, 'Votre session a expiré.', true);
+        } else if (response.status === 409 || response.status === 404) {
+          quickError(form, 'Cette puce vient d\'être traitée depuis un autre écran.');
+          refreshChips();
+        } else if (response.status === 403) {
+          quickError(form, 'La page a expiré : rechargez-la, puis recommencez.');
+        } else {
+          quickError(form, 'La fiche n\'a pas été créée. Essayez « Plus de champs ».');
+        }
+      })
+      .catch(() => quickError(form, 'La fiche n\'a pas été créée : la connexion a été perdue. Réessayez.'))
+      .finally(() => { button.disabled = false; });
+  }
+
+  /** Fiche créée : la carte disparaît, une notification la nomme, le curseur passe à la suivante. */
+  function quickCreated(card, id, name) {
+    const place = card.dataset.poste || 'lecteur non affecté';
+    const next = card.nextElementSibling ?? card.previousElementSibling;
+    card.remove();
+    chipsTotal = Math.max(0, chipsTotal - 1);
+    updateChipsState();
+    const nextInput = next?.querySelector('form.creation-rapide input[name="name"]');
+    if (nextInput) nextInput.focus();
+    const link = el('a', '', name);
+    link.href = `/items/${id}`;
+    toast([link, ` créé · ${place}`], { actions: [linkButton('bouton bouton-secondaire bouton-petit', `/items/${id}`, null, 'Ouvrir la fiche')] });
+  }
+
+  /** Carte d'une puce reçue en direct (même structure que views.js, chipCard). */
+  function chipCardNode(chip) {
+    const li = el('li', 'encart puce-carte');
+    li.dataset.uid = chip.uid;
+    li.dataset.poste = chip.poste ?? 'lecteur non affecté';
+    const pictogram = el('span', 'encart-icone');
+    pictogram.append(icon('puce'));
+    const body = el('div', 'encart-corps');
+    const text = el('p', 'encart-texte', 'Nouvelle puce · ');
+    text.append(el('strong', '', chip.poste ?? 'lecteur non affecté'));
+    const meta = el('p', 'encart-meta');
+    const count = el('span', '', scansText(chip.scans));
+    count.dataset.scans = '';
+    const number = el('span', 'puce-numero', `N°${NBSP}`);
+    number.append(el('span', 'uid', chip.numero));
+    meta.append(count, ageTag(chip.iso), number);
+    body.append(text, meta);
+    const buttons = el('div', 'groupe-boutons puce-actions');
+    const create = linkButton('bouton bouton-petit puce-creer', `/chips/${chip.uid}/new`, 'ajouter', 'Créer une fiche');
+    buttons.append(create, linkButton('bouton bouton-secondaire bouton-petit', `/chips/${chip.uid}/associate`, 'associer', 'Associer à une fiche existante'));
+    li.append(pictogram, body, buttons);
+    if (Date.now() - Date.parse(chip.iso) < FRESH_MS) {
+      li.classList.add('puce-carte--nouvelle');
+      const fresh = el('span', 'badge badge--nouveau', 'Nouveau');
+      text.append(' ', fresh);
+      setTimeout(() => {
+        fresh.remove();
+        li.classList.remove('puce-carte--nouvelle');
+      }, NEW_BADGE_MS);
+    }
+    enableQuickCreate(li);
+    return li;
+  }
+
+  /**
+   * Liste à jour (GET /api/puces-inconnues) : les puces traitées ailleurs disparaissent, les
+   * nouvelles sont insérées à leur rang (la plus récente en tête). Les cartes déjà là ne sont
+   * pas reconstruites : une saisie en cours dans leur champ est conservée.
+   */
+  function reconcileChips(chips, total) {
+    const wanted = new Set(chips.map((chip) => chip.uid));
+    const cards = new Map();
+    for (const card of [...chipCards.children]) {
+      if (!wanted.has(card.dataset.uid)) card.remove();
+      else cards.set(card.dataset.uid, card);
+    }
+    let after = null; // carte précédente dans l'ordre du serveur
+    for (const chip of chips) {
+      let card = cards.get(chip.uid);
+      if (card) {
+        const count = card.querySelector('[data-scans]');
+        if (count) count.textContent = scansText(chip.scans);
+        const time = card.querySelector('.encart-meta time');
+        if (time) time.replaceWith(ageTag(chip.iso));
+      } else {
+        card = chipCardNode(chip);
+        if (after) after.after(card);
+        else chipCards.prepend(card);
+      }
+      after = card;
+    }
+    chipsTotal = total;
+    updateChipsState();
+  }
+
+  if (chipCards) {
+    for (const card of chipCards.children) enableQuickCreate(card);
+    chipCards.addEventListener('submit', (event) => {
+      const form = event.target.closest('form.creation-rapide');
+      if (!form) return;
+      event.preventDefault();
+      quickCreate(form);
+    });
+    if (chipCards.dataset.plus === '1') chipsTotal = MAX_CHIPS_PAGE + 1;
+  }
+
   function applyChips(data) {
     const chips = data.puces.filter(validChip);
     setNavChips(data.total);
+    if (chipCards) reconcileChips(chips.slice(0, MAX_CHIPS_PAGE), data.total);
     if (toDo) renderToDo(chips.slice(0, 3), data.total);
     if (offered && giveChipItem !== null) offerChips(chips);
     const first = chips[0];
@@ -1189,7 +1448,9 @@
       return;
     }
     chipsBusy = true;
-    const wanted = offered ? 20 : 3; // 20 = MAX_OFFERED_CHIPS de server/chips.js
+    let wanted = 3;
+    if (chipCards) wanted = MAX_CHIPS_PAGE;
+    else if (offered) wanted = 20; // = MAX_OFFERED_CHIPS de server/chips.js
     fetch(`${CHIPS_API}?${new URLSearchParams({ n: String(wanted) })}`, { cache: 'no-store', headers: { Accept: 'application/json' } })
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
@@ -1279,16 +1540,95 @@
     }
   }
 
+  // ---- page Postes (étape U6) : nombre d'objets, dernier arrivé et état du lecteur de chaque tuile
+
+  const tiles = document.getElementById('tuiles-postes');
+  const tileOf = (id) => (isId(id) && tiles ? tiles.querySelector(`li[data-poste="${id}"]`) : null);
+
+  /** « 38 objets présents », « 1 objet présent », « 0 objet présent » (comme views.js, presentCount). */
+  function setTileCount(tile, delta) {
+    const line = tile.querySelector('.tuile-nombre');
+    const strong = line?.querySelector('[data-nombre]');
+    if (!line || !strong) return;
+    const before = Number(strong.textContent.replace(/[^0-9]/g, '')) || 0;
+    const n = Math.max(0, before + delta);
+    const count = el('strong', '', n.toLocaleString('fr-FR'));
+    count.dataset.nombre = '';
+    line.replaceChildren(count, ' ', el('span', '', n > 1 ? 'objets présents' : 'objet présent'));
+  }
+
+  /** Ligne « dernier mouvement » d'une tuile : « Multimètre arrivé à l'instant » (ou « parti »). */
+  function setTileLast(tile, e, verb) {
+    const line = tile.querySelector('.tuile-dernier');
+    if (!line) return;
+    const name = el('a', 'tuile-lien', e.nom);
+    name.href = `/items/${e.itemId}`;
+    line.dataset.objet = String(e.itemId);
+    line.replaceChildren(name, ` ${verb} `, ageTag(e.iso));
+  }
+
+  /** Un scan est arrivé de ce lecteur : s'il était le dernier silencieux du poste, « Lecteur OK ». */
+  function tileReaderAlive(tile, e) {
+    const line = tile.querySelector('.tuile-lecteur');
+    if (!line) return;
+    const silent = (line.dataset.silencieux ?? '').split(' ').filter((id) => id !== '' && id !== String(e.lecteur));
+    line.dataset.silencieux = silent.join(' ');
+    if (silent.length > 0) return;
+    line.className = 'tuile-lecteur tuile-lecteur--ok';
+    const text = el('span', '', 'Lecteur OK · dernier scan ');
+    text.append(ageTag(e.iso));
+    line.replaceChildren(icon('valide'), text);
+  }
+
+  function updateTiles(e) {
+    if (e.type === 'scan' && isId(e.posteId)) {
+      const tile = tileOf(e.posteId);
+      if (tile) tileReaderAlive(tile, e);
+    }
+    if (e.itemId === null || (e.de ?? null) === (e.posteId ?? null)) return;
+    const from = tileOf(e.de);
+    if (from) {
+      setTileCount(from, -1);
+      const last = from.querySelector('.tuile-dernier');
+      if (last && last.dataset.objet === String(e.itemId)) setTileLast(from, e, `parti vers ${placeText(e)}`);
+    }
+    const to = tileOf(e.posteId);
+    if (to) {
+      setTileCount(to, 1);
+      setTileLast(to, e, 'arrivé');
+      to.classList.remove('tuile--nouvelle');
+      void to.offsetWidth; // relance l'animation de mise en évidence
+      to.classList.add('tuile--nouvelle');
+    }
+  }
+
+  // ---- page de clé (étape U6) : « En attente du premier scan de ce lecteur… »
+
+  const waiting = document.getElementById('attente-lecteur');
+  const waitingId = waiting ? Number(waiting.dataset.lecteur) : null;
+  if (waiting && isId(waitingId) && typeof EventSource === 'function') {
+    waiting.hidden = false;
+    for (const hint of document.querySelectorAll('.sans-script')) hint.hidden = true;
+  }
+
+  function readerFirstScan(e) {
+    if (!waiting || e.type !== 'scan' || e.lecteur !== waitingId || waiting.classList.contains('attente-lecteur--ok')) return;
+    waiting.classList.add('attente-lecteur--ok');
+    waiting.replaceChildren(icon('valide'), el('span', '', `Ce lecteur fonctionne : premier scan reçu (${placeText(e)})`));
+  }
+
   // ---- un événement
 
   function handleEvent(e) {
+    if (tiles) updateTiles(e);
+    readerFirstScan(e);
     const recent = Date.now() - Date.parse(e.iso) < FRESH_MS;
     const move = (e.type === 'scan' && !e.inconnu && e.deplacement) || e.type === 'correction';
     if (Number.isSafeInteger(e.puces)) setNavChips(e.puces);
     if (e.type === 'scan') readerAlive(e);
     if (move) addMovement(e);
     if (guideScan && e.type === 'scan' && !e.inconnu) guideKnownScan(e);
-    if ((e.inconnu || e.type === 'puce') && (toDo || offered || guideScan)) refreshChips();
+    if ((e.inconnu || e.type === 'puce') && (toDo || offered || guideScan || chipCards)) refreshChips();
 
     if (currentItem !== null && e.itemId === currentItem) {
       itemChanged(e);
@@ -1296,7 +1636,7 @@
     }
     // Accueil : la ligne « Nouveau » et « À traiter » suffisent, pas de notification.
     if (!recent || onHome) return;
-    if (e.type === 'scan' && e.inconnu && giveChipItem === null) {
+    if (e.type === 'scan' && e.inconnu && giveChipItem === null && !chipCards) {
       // Liens vers la liste tant que le numéro n'est pas connu, puis vers la puce elle-même.
       const create = linkButton('bouton bouton-petit', '/chips', null, 'Créer une fiche');
       const associate = linkButton('bouton bouton-secondaire bouton-petit', '/chips', null, 'Associer');
@@ -1338,7 +1678,8 @@
     });
     // Événements manqués au-delà de ce que le serveur garde : la page propose d'actualiser.
     stream.addEventListener('resynchro', () => {
-      if (moves || guideScan) banner('Des scans ont pu avoir lieu pendant la coupure.', '/');
+      if (chipCards) refreshChips(); // la liste complète est relue : rien n'est manqué
+      else if (moves || guideScan) banner('Des scans ont pu avoir lieu pendant la coupure.', '/');
       else if (currentItem !== null) banner('La fiche a pu changer pendant la coupure.', `/items/${currentItem}`);
     });
     stream.addEventListener('error', () => {
@@ -1364,11 +1705,15 @@
   if (appPage && typeof EventSource === 'function') {
     connect();
     document.addEventListener('visibilitychange', () => {
+      // Page de clé en attente du premier scan : le flux reste ouvert onglet caché (on configure
+      // souvent le boîtier dans une autre fenêtre), pour ne pas manquer ce scan.
+      if (document.hidden && waiting && !waiting.hidden && !waiting.classList.contains('attente-lecteur--ok')) return;
       if (document.hidden) {
         disconnect();
       } else {
         refreshAges();
         connect();
+        if (chipCards) refreshChips(); // puces arrivées ou traitées pendant que l'onglet était caché
       }
     });
     window.addEventListener('pagehide', disconnect);

@@ -75,17 +75,31 @@ const isMove = (row) => {
 export function scanMove(db, scanId) {
   const row = db.prepare(scanMovesSql('(SELECT * FROM scans WHERE id = ?)')).get(scanId);
   if (!row) return null;
-  return { ...row, move: row.item_id === null ? false : isMove(row) };
+  // from (étape U6) : lieu précédent de la fiche (poste, ou null : aucun, ou lecteur non affecté),
+  // pour que la page des postes retire l'objet de la tuile qu'il quitte.
+  const known = row.item_id !== null;
+  return { ...row, move: known ? isMove(row) : false, from: known ? previousPlace(row) ?? null : null };
 }
 
 /**
  * Derniers mouvements de toutes les fiches, du plus récent au plus ancien, au plus `limit` :
  * [{type: 'scan'|'correction', at, item_id, item_name, station_id, station_name, reader_id,
  *   username}]. reader_id : scans seulement ; username : corrections seulement.
+ * stationId (étape U6, fiche d'un poste) : seulement les arrivées à ce poste. Les fenêtres sont
+ * alors prises parmi les scans de ce poste (index scans_by_station, qui contient le numéro du
+ * scan) et parmi les corrections vers ce poste ; même définition d'un mouvement.
  */
-export function recentMovements(db, limit = HOME_MOVEMENTS) {
-  const scans = db.prepare(`${scanMovesSql(`(SELECT * FROM scans ORDER BY id DESC LIMIT ${MOVEMENT_SCAN_WINDOW})`)}
-     WHERE i.id IS NOT NULL`).all()
+export function recentMovements(db, limit = HOME_MOVEMENTS, stationId = null) {
+  const atStation = stationId !== null;
+  const scanSource = atStation
+    ? `(SELECT * FROM scans WHERE station_id = ? ORDER BY id DESC LIMIT ${MOVEMENT_SCAN_WINDOW})`
+    : `(SELECT * FROM scans ORDER BY id DESC LIMIT ${MOVEMENT_SCAN_WINDOW})`;
+  const correctionSource = atStation
+    ? `(SELECT * FROM location_corrections WHERE station_id = ? ORDER BY id DESC LIMIT ${MOVEMENT_CORRECTION_WINDOW})`
+    : `(SELECT * FROM location_corrections ORDER BY id DESC LIMIT ${MOVEMENT_CORRECTION_WINDOW})`;
+  const params = atStation ? [stationId] : [];
+  const scans = db.prepare(`${scanMovesSql(scanSource)}
+     WHERE i.id IS NOT NULL`).all(...params)
     .filter(isMove)
     .map((row) => ({
       type: 'scan', id: row.id, at: row.at, item_id: row.item_id, item_name: row.item_name,
@@ -98,7 +112,7 @@ export function recentMovements(db, limit = HOME_MOVEMENTS) {
             u.username,
             p.received_at AS prev_scan_at, p.station_id AS prev_scan_station,
             pc.created_at AS prev_corr_at, pc.station_id AS prev_corr_station
-       FROM (SELECT * FROM location_corrections ORDER BY id DESC LIMIT ${MOVEMENT_CORRECTION_WINDOW}) c
+       FROM ${correctionSource} c
        JOIN items i ON i.id = c.item_id
        LEFT JOIN stations st ON st.id = c.station_id
        LEFT JOIN users u ON u.id = c.user_id
@@ -110,7 +124,7 @@ export function recentMovements(db, limit = HOME_MOVEMENTS) {
               SELECT c2.id FROM location_corrections c2
                WHERE c2.item_id = c.item_id AND (c2.created_at, c2.id) < (c.created_at, c.id)
                ORDER BY c2.created_at DESC, c2.id DESC LIMIT 1)`
-  ).all()
+  ).all(...params)
     .filter(isMove)
     .map((row) => ({
       type: 'correction', id: row.id, at: row.at, item_id: row.item_id, item_name: row.item_name,

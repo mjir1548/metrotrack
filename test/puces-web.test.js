@@ -117,8 +117,9 @@ const lastAudit = () => {
 // page elle-même (puce détachée, « précisez la recherche », « Sa puce »).
 const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<\/details>/, '');
 // Liste des puces inconnues : une carte par puce depuis l'étape U1 ; numéro affiché groupé par octets.
-const chipRows = (html) => /<ul class="carte liste-puces">([\s\S]*?)<\/ul>/.exec(html)?.[1].split('<li class="encart">').slice(1) ?? [];
-const listedUids = (html) => chipRows(html).map((row) => /<p class="encart-texte">Puce <span class="uid">([0-9A-F ]+)<\/span><\/p>/.exec(row)[1].replaceAll(' ', ''));
+// Étape U5 : une carte par puce (« Nouvelle puce · Atelier »), le numéro en petit.
+const chipRows = (html) => /<ul class="carte liste-puces liste-puces--cartes" id="puces-inconnues"[^>]*>([\s\S]*?)<\/ul>/.exec(html)?.[1].split('<li class="encart puce-carte"').slice(1) ?? [];
+const listedUids = (html) => chipRows(html).map((row) => /^ data-uid="([0-9A-F]+)"/.exec(row)[1]);
 const grouped = (uid) => uid.match(/../g).join(' ');
 
 // Balises autorisées : celles des gabarits. Toute autre serait une injection.
@@ -159,9 +160,12 @@ test('liste vide : message clair ; onglet « Puces inconnues » actif dans le ba
   const res = await page('/chips');
   assert.equal(res.status, 200);
   assert.ok(res.body.includes('<li><a href="/chips" aria-current="page">Puces inconnues</a></li>'));
-  assert.ok(res.body.includes('Aucune puce inconnue : toutes les puces scannées sont associées à une fiche.'));
-  assert.ok(res.body.includes('0 puce inconnue'));
-  assert.ok(!res.body.includes('<table') && !res.body.includes('liste-puces'));
+  // Étape U5 : état vide utile, liste vide cachée (app.js y ajoute les puces reçues en direct).
+  assert.ok(res.body.includes('<p>Aucune nouvelle puce.</p>\n<p class="texte-doux">Quand une puce inconnue est scannée, elle apparaît ici.</p>'));
+  assert.ok(res.body.includes('<div class="vide" id="puces-vide">'));
+  assert.ok(res.body.includes('id="puces-inconnues" data-plus="0" hidden>'));
+  assert.ok(res.body.includes('<p class="direct-etat" id="direct-etat" role="status" hidden>'));
+  assert.ok(!res.body.includes('<table') && chipRows(res.body).length === 0);
   // Onglet présent (inactif) sur les autres rubriques.
   assert.ok((await page('/')).body.includes('<a href="/chips">Puces inconnues</a>'));
   assert.ok((await page('/stations')).body.includes('<a href="/chips">Puces inconnues</a>'));
@@ -175,14 +179,19 @@ test('une puce inconnue scannée apparaît avec son poste, l\'heure et le nombre
   const res = await page('/chips');
   assert.equal(res.status, 200);
   assert.deepEqual(listedUids(res.body), [LOOSE, NEW]);
-  assert.ok(res.body.includes('2 puces inconnues'));
+  assert.ok(res.body.includes('2 nouvelles puces'));
   const [loose, fresh] = chipRows(res.body);
   const last = (uid) => db.prepare('SELECT received_at FROM scans WHERE uid_nfc = ? ORDER BY id DESC LIMIT 1').get(uid).received_at;
-  assert.ok(fresh.includes(' · <span class="etat etat-poste">Atelier</span> · 2 scans</p>'));
-  assert.ok(fresh.includes(`<time datetime="${last(NEW)}"`));
-  assert.ok(fresh.includes(`<a class="bouton bouton-secondaire bouton-petit" href="/chips/${NEW}/new"><svg class="ic" aria-hidden="true"><use href="#i-ajouter"></use></svg>Créer une fiche</a>`));
-  assert.ok(fresh.includes(`<a class="bouton bouton-discret bouton-petit" href="/chips/${NEW}/associate"><svg class="ic" aria-hidden="true"><use href="#i-associer"></use></svg>Associer à une fiche existante</a>`));
-  assert.ok(loose.includes(' · <a class="lien-etat" href="/readers/2"><span class="etat etat-inconnue">lecteur non affecté</span></a> · 1 scan</p>'));
+  // Étape U5 : « Nouvelle puce · Atelier », scans regroupés (« 2 scans · dernier il y a … »), numéro en petit.
+  assert.ok(fresh.includes('<p class="encart-texte">Nouvelle puce · <strong>Atelier</strong></p>'));
+  assert.ok(fresh.includes(`<p class="encart-meta"><span data-scans>2 scans · dernier </span><time datetime="${last(NEW)}"`));
+  assert.ok(fresh.includes(`<span class="puce-numero">N°&nbsp;<span class="uid">${grouped(NEW)}</span></span>`));
+  assert.ok(fresh.includes(`<a class="bouton bouton-petit puce-creer" href="/chips/${NEW}/new"><svg class="ic" aria-hidden="true"><use href="#i-ajouter"></use></svg>Créer une fiche</a>`));
+  assert.ok(fresh.includes(`<a class="bouton bouton-secondaire bouton-petit" href="/chips/${NEW}/associate"><svg class="ic" aria-hidden="true"><use href="#i-associer"></use></svg>Associer à une fiche existante</a>`));
+  // Création rapide : construite par app.js (sans script, le lien « Créer une fiche » reste).
+  assert.ok(!fresh.includes('<form'));
+  assert.ok(loose.includes('<p class="encart-texte">Nouvelle puce · <strong><a class="lien-simple" href="/readers/2">lecteur non affecté</a></strong></p>'));
+  assert.ok(loose.includes('<p class="encart-meta"><span data-scans></span><time'));
   assert.ok(!res.body.includes(OLD));
 });
 
@@ -363,8 +372,10 @@ test('recherche d\'association : toutes les fiches (puce actuelle, localisation)
   assert.ok(res.body.includes('aria-controls="association-resultats"'));
   assert.ok(res.body.includes('4 fiches'));
   assert.ok(res.body.includes(`<a class="bouton bouton-secondaire bouton-petit" href="/chips/${LOOSE}/associate/2"><svg class="ic" aria-hidden="true"><use href="#i-associer"></use></svg>Associer</a>`));
-  assert.ok(res.body.includes('<td data-label="Puce actuelle"><span class="texte-doux">aucune puce</span></td>'));
-  assert.ok(res.body.includes(`<td data-label="Puce actuelle"><span class="uid">${grouped(OLD)}</span></td>`));
+  // Étape U5 : « sans puce » / « a déjà une puce », sans numéro.
+  assert.ok(res.body.includes('<td data-label="Puce"><span class="texte-doux">sans puce</span></td>'));
+  assert.ok(res.body.includes('<td data-label="Puce">a déjà une puce</td>'));
+  assert.ok(!res.body.includes(`<span class="uid">${grouped(OLD)}</span>`));
   assert.ok(res.body.includes(`<a href="/chips/${LOOSE}/new">Créer une fiche pour cette puce</a>`));
   const byName = await page(`/chips/${LOOSE}/associate?q=oscillo`);
   assert.ok(byName.body.includes('1 résultat pour «&nbsp;oscillo&nbsp;»'));
@@ -380,7 +391,9 @@ test('confirmation sans puce existante : confirmation simple, bouton principal �
   assert.equal(res.status, 200);
   assert.ok(res.body.includes('<h1>Associer la puce</h1>'));
   assert.ok(res.body.includes('<div class="panneau panneau-info">'));
-  assert.ok(res.body.includes(`La puce <span class="uid">${grouped(LOOSE)}</span> sera associée à la fiche`));
+  // Étape U5 : une phrase, sans numéro (il figure une fois, en petit, sous le titre).
+  assert.ok(res.body.includes('<p>La puce sera donnée à «&nbsp;<strong class="nom-confirme">Oscilloscope</strong>&nbsp;». L\'objet sera localisé là où la puce a été scannée'));
+  assert.equal(res.body.split(`<span class="uid">${grouped(LOOSE)}</span>`).length - 1, 1);
   assert.ok(res.body.includes('<input type="hidden" name="previous" value="">'));
   assert.ok(res.body.includes(`<form method="post" action="/chips/${LOOSE}/associate/2">`));
   assert.ok(res.body.includes('<button class="bouton" type="submit">Associer la puce</button>'));
@@ -411,9 +424,10 @@ test('confirmation avec une puce existante : avertissement (ancien UID, détache
   assert.equal(res.status, 200);
   assert.ok(res.body.includes('<h1>Remplacer la puce de la fiche</h1>'));
   assert.ok(res.body.includes('<div class="panneau panneau-danger">'));
-  assert.ok(res.body.includes(`porte déjà une puce</strong> (<span class="uid">${grouped(OLD)}</span>).`));
-  assert.ok(res.body.includes('L\'ancienne puce sera détachée de la fiche. Ses scans sont conservés, et elle redevient une puce inconnue.'));
-  assert.ok(res.body.includes(`suivra désormais la nouvelle puce (<span class="uid">${grouped(NEVER)}</span>)`));
+  // Étape U5 : deux phrases sans jargon, aucun numéro de puce dans l'avertissement.
+  assert.ok(res.body.includes('<p><strong>«&nbsp;<span class="nom-confirme">Multimètre</span>&nbsp;» a déjà une puce.</strong> La nouvelle la remplacera, et l\'ancienne ne servira plus.</p>\n<p>L\'objet sera localisé à Labo, où la puce a été scannée <time'));
+  assert.ok(!res.body.includes(`<span class="uid">${grouped(OLD)}</span>`));
+  assert.equal(res.body.split(`<span class="uid">${grouped(NEVER)}</span>`).length - 1, 1);
   assert.ok(res.body.includes(`<input type="hidden" name="previous" value="${OLD}">`));
   assert.ok(res.body.includes('<button class="bouton bouton-danger" type="submit">Remplacer la puce</button>'));
 });
@@ -446,7 +460,7 @@ test('remplacement : ancienne puce détachée et tracée, de retour dans la list
   // Un scan ultérieur de l'ancienne puce ne déplace plus la fiche (Atelier) ; il compte pour la puce inconnue.
   await scan(1, OLD);
   assert.ok((await page('/items/1')).body.includes('<use href="#i-poste"></use></svg><a class="lien-simple lien-discret" href="/stations/2"><span class="etat etat-poste">Labo</span></a></p>'));
-  assert.ok(chipRows((await page('/chips')).body)[0].includes(' · 2 scans</p>'));
+  assert.ok(chipRows((await page('/chips')).body)[0].includes('<span data-scans>2 scans · dernier </span>'));
 });
 
 test('course : deux associations simultanées du même UID à deux fiches → une réussite, un 409, sans 500 ni double écriture', async () => {
@@ -547,8 +561,9 @@ test('puce d\'une fiche supprimée : création et confirmation avertissent (nom,
     const res = await page(path);
     assert.equal(res.status, 200, path);
     assert.ok(res.body.includes('<div class="panneau panneau-alerte panneau-reutilisation" role="note">'), path);
-    assert.ok(res.body.includes(`Cette puce a déjà appartenu à la fiche «&nbsp;Fiche éphémère&nbsp;» (n° ${deleted.entity_id}, supprimée depuis)</strong>, jusqu'au `), path);
-    assert.ok(res.body.includes('Ses 2 scans enregistrés, y compris ceux de cette époque, seront rattachés à la nouvelle fiche'), path);
+    // Étape U5 : deux phrases, sans numéro de fiche.
+    assert.ok(res.body.includes('<p><strong>Cette puce servait à «&nbsp;Fiche éphémère&nbsp;», un objet supprimé depuis, jusqu\'au '), path);
+    assert.ok(res.body.includes('.</strong> Ses anciens scans apparaîtront dans l\'historique de l\'objet qui la reçoit : si possible, préférez une puce neuve.</p>'), path);
     assert.ok(!res.body.includes(`href="/items/${deleted.entity_id}"`), path);
   }
 });
@@ -559,11 +574,10 @@ test('puce remplacée sur sa fiche : l\'avertissement cite la fiche (lien) ; une
   const created = await post('/chips/C1C1C1C1/new', { name: 'Porteuse' });
   const id = Number(/^\/items\/(\d+)/.exec(created.headers.location)[1]);
   assert.equal((await post(`/chips/C2C2C2C2/associate/${id}`, { previous: 'C1C1C1C1' })).status, 303);
-  const owner = `<a href="/items/${id}">«&nbsp;Porteuse&nbsp;» (n° ${id})</a>`;
+  const owner = `<a href="/items/${id}">«&nbsp;Porteuse&nbsp;»</a>`;
   for (const path of ['/chips/C1C1C1C1/new', '/chips/C1C1C1C1/associate/2']) {
     const res = await page(path);
-    assert.ok(res.body.includes(`Cette puce a déjà appartenu à la fiche ${owner}</strong>`), path);
-    assert.ok(res.body.includes('Son scan enregistré sera rattaché à la nouvelle fiche : il apparaîtra dans son historique.'), path);
+    assert.ok(res.body.includes(`<p><strong>Cette puce servait à ${owner} jusqu'au `), path);
   }
   const refused = await post('/chips/C1C1C1C1/new', { name: '' });
   assert.equal(refused.status, 400);

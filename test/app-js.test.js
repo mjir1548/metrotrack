@@ -36,8 +36,13 @@ test('app.js : aucun autre site, aucun stockage local ; un seul point d\'accès,
   // jamais de lecture.
   assert.deepEqual(CODE.match(/navigator\.clipboard\.[a-zA-Z]+/g), ['navigator.clipboard.writeText']);
   assert.match(CODE, /navigator\.clipboard\.writeText\(keyBlock\.textContent\.trim\(\)\)/);
-  // Deux lectures : la recherche (U2) et la liste des puces inconnues après un événement du direct (U4).
-  assert.equal((CODE.match(/\bfetch\(/g) ?? []).length, 2);
+  // Deux lectures : la recherche (U2) et la liste des puces inconnues après un événement du direct (U4) ;
+  // un envoi : la création rapide d'une fiche depuis une puce (U5), vers l'adresse fixe du formulaire
+  // (/chips/<UID>/new, vérifiée par CHIP_NEW_PATH), avec les champs du formulaire (jeton CSRF compris).
+  assert.equal((CODE.match(/\bfetch\(/g) ?? []).length, 3);
+  assert.match(CODE, /fetch\(action, \{ method: 'POST', body: new URLSearchParams\(new FormData\(form\)\)/);
+  assert.match(CODE, /!CHIP_NEW_PATH\.test\(action\)/);
+  assert.match(CODE, /const CHIP_NEW_PATH = \/\^\\\/chips\\\/\(\?:\[0-9A-F\]\{8\}\|\[0-9A-F\]\{14\}\|\[0-9A-F\]\{20\}\)\\\/new\$\/;/);
   assert.match(CODE, /fetch\(`\$\{API\}\?\$\{params\}`/);
   assert.match(CODE, /const API = '\/api\/recherche';/);
   assert.match(CODE, /fetch\(`\$\{CHIPS_API\}\?\$\{new URLSearchParams\(/);

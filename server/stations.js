@@ -168,22 +168,57 @@ export function getStation(db, id) {
 }
 
 /**
- * Postes pour la liste, triés par nom (ordre alphabétique français) :
- * [{id, name, description, active_readers, items_here}].
- * items_here : objets dont la localisation ACTUELLE est ce poste. Une seule lecture de la vue
- * item_locations pour tous les objets (deux lectures d'index par objet, D-013), sans
- * parcourir les scans.
+ * Postes pour la liste en tuiles (étape U6), triés par nom (ordre alphabétique français) :
+ * [{id, name, description, items_here, last_arrival, readers}].
+ *   - items_here : objets dont la localisation ACTUELLE est ce poste ;
+ *   - last_arrival : parmi eux, le dernier arrivé {item_id, item_name, arrived_at, bounded}, ou
+ *     null (heure d'arrivée de « Depuis », D-016 : withLocations, inventory.js) ;
+ *   - readers : lecteurs ACTIFS affectés au poste {id, name, last_scan_at}, par numéro ; jamais
+ *     la clé. Dernier scan : celui de plus grand compteur, lu dans l'index de UNIQUE (reader_id,
+ *     counter), comme dans readers.js.
+ * Coût : l'heure d'arrivée (D-016, withLocations) de chaque objet localisé à un poste, comme la
+ * colonne « Depuis » de l'inventaire, puis une recherche d'index par lecteur actif ; aucun
+ * parcours du journal des scans. Mesuré (test/u6-charge.test.js) : environ 90 à 120 ms pour 5 000
+ * objets et 300 000 scans, presque tout dans ce calcul d'arrivée. Écarté : ne calculer l'arrivée
+ * que des objets scannés le plus récemment ; quand les objets restent à leur poste et y sont
+ * rescannés, tous redeviennent candidats et le coût double.
  */
 export function listStationSummaries(db) {
-  const counts = new Map(db.prepare(
-    'SELECT station_id, count(*) AS n FROM item_locations WHERE station_id IS NOT NULL GROUP BY station_id'
-  ).all().map((row) => [row.station_id, row.n]));
-  return db.prepare(
-    `SELECT st.id, st.name, st.description,
-            (SELECT count(*) FROM readers r WHERE r.station_id = st.id AND r.active = 1) AS active_readers
-       FROM stations st`
-  ).all()
-    .map((row) => ({ ...row, items_here: counts.get(row.id) ?? 0 }))
+  const here = new Map();
+  for (const row of db.prepare(
+    `${withLocations('l.station_id IS NOT NULL')}
+     SELECT l.station_id, l.item_id, i.name, l.arrived_at, l.arrived_at_bounded, l.at
+       FROM locations l
+       JOIN items i ON i.id = l.item_id`
+  ).all()) {
+    const entry = here.get(row.station_id) ?? { count: 0, last: null };
+    entry.count += 1;
+    const arrived = row.arrived_at ?? row.at;
+    if (entry.last === null || arrived > entry.last.arrived_at || (arrived === entry.last.arrived_at && row.item_id > entry.last.item_id)) {
+      entry.last = { item_id: row.item_id, item_name: row.name, arrived_at: arrived, bounded: row.arrived_at_bounded === 1 };
+    }
+    here.set(row.station_id, entry);
+  }
+  const readers = new Map();
+  for (const row of db.prepare(
+    `SELECT r.id, r.name, r.station_id,
+            (SELECT s.received_at FROM scans s WHERE s.reader_id = r.id ORDER BY s.counter DESC LIMIT 1) AS last_scan_at
+       FROM readers r
+      WHERE r.active = 1 AND r.station_id IS NOT NULL
+      ORDER BY r.id`
+  ).all()) {
+    const list = readers.get(row.station_id) ?? [];
+    list.push({ id: row.id, name: row.name, last_scan_at: row.last_scan_at });
+    readers.set(row.station_id, list);
+  }
+  return db.prepare('SELECT id, name, description FROM stations').all()
+    .map((row) => ({
+      ...row,
+      items_here: here.get(row.id)?.count ?? 0,
+      last_arrival: here.get(row.id)?.last ?? null,
+      readers: readers.get(row.id) ?? [],
+      active_readers: readers.get(row.id)?.length ?? 0,
+    }))
     .sort((a, b) => collator.compare(a.name, b.name) || a.id - b.id);
 }
 

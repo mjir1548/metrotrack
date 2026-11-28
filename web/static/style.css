@@ -1218,6 +1218,34 @@ select:focus-visible {
 .encart-meta .etat-poste { font-family: var(--police-texte); font-size: var(--t-sm); }
 .encart .groupe-boutons { justify-content: flex-end; }
 
+/* Page « Puces inconnues » (étape U5) : une carte par puce, mise à jour en direct. */
+.puce-carte { align-items: start; }
+.puce-carte .encart-texte { font-size: var(--t-md); font-weight: 500; }
+.puce-carte .encart-texte strong { font-family: var(--police-titre); font-weight: 600; }
+.puce-carte .encart-texte .badge { margin-left: var(--e-1); vertical-align: middle; }
+/* Numéro de la puce : en petit, groupé, en chasse fixe, secondaire. */
+.puce-numero { margin-left: var(--e-3); color: var(--texte-doux); font-size: var(--t-xs); }
+.puce-numero .uid { font-size: var(--t-xs); font-weight: 400; color: var(--texte-doux); }
+.sous-titre-page .puce-numero { font-size: var(--t-sm); }
+.sous-titre-page .puce-numero .uid { font-size: var(--t-sm); }
+.puce-actions [hidden],
+#puces-vide[hidden],
+#puces-inconnues[hidden],
+#puces-resume[hidden] { display: none; }
+/* Création rapide (affichée par app.js) : un nom, puis Entrée. */
+.creation-rapide {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--e-3);
+}
+.creation-rapide[hidden] { display: none; }
+.creation-rapide input[name="name"] { flex: 1 1 16rem; width: auto; min-height: var(--hauteur-bouton); }
+.creation-rapide .erreur-champ { flex-basis: 100%; margin-top: 0; }
+.creation-complete { font-size: var(--t-sm); }
+.puce-carte--nouvelle { animation: mt-apparition var(--d-lente) var(--courbe) both, mt-estompe var(--d-estompe) ease-out var(--d-lente) both; }
+
 /* --------------------------------------------------------------------------
    14. Aide repliable « Comment ça marche ? » (<details>, sans JavaScript)
    -------------------------------------------------------------------------- */
@@ -1996,6 +2024,118 @@ details.modifications > summary:hover { background: var(--voile); }
 }
 .emplacement-nouveau .ic { width: var(--ic-md); height: var(--ic-md); color: var(--accent); }
 
+/* --------------------------------------------------------------------------
+   15 bis. Postes et lecteurs (étape U6)
+   -------------------------------------------------------------------------- */
+/* Éléments masqués par app.js (saisie sur place, attente du premier scan). */
+.actions-page [hidden],
+.titre-icone[hidden],
+.renommer-sur-place[hidden],
+.ajout-en-ligne[hidden],
+.attente-lecteur[hidden],
+.sans-script[hidden] { display: none; }
+
+/* Tuiles des postes : nom en grand, objets présents, dernier arrivé, état du lecteur. */
+.tuiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: var(--e-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tuile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--e-2);
+  padding: var(--e-6);
+  border: 1px solid var(--bordure);
+  border-radius: var(--r-lg);
+  background: var(--carte);
+  transition: border-color var(--d-rapide), box-shadow var(--d-normale);
+}
+.tuile:hover { border-color: var(--bordure-champ); box-shadow: var(--ombre-pilule); }
+.tuile:focus-within { border-color: var(--focus); }
+.tuile-nom { font-size: var(--t-xl); letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.tuile-nom a { color: var(--texte); text-decoration: none; }
+/* Toute la tuile mène au poste ; les liens internes passent au-dessus. */
+.tuile-nom a::after { content: ""; position: absolute; inset: 0; border-radius: var(--r-lg); }
+.tuile-nom a:focus-visible { outline: none; }
+.tuile-nom a:focus-visible::after { outline: 2px solid var(--focus); outline-offset: 2px; }
+.tuile-lien { position: relative; z-index: 1; color: var(--texte); font-weight: 600; }
+.tuile-description { margin-top: calc(-1 * var(--e-1)); color: var(--texte-doux); font-size: var(--t-sm); overflow-wrap: anywhere; }
+.tuile-nombre { display: flex; align-items: baseline; gap: var(--e-2); margin-top: var(--e-2); color: var(--texte-doux); }
+.tuile-nombre strong { color: var(--texte); font-family: var(--police-titre); font-size: var(--t-3xl); font-weight: 600; line-height: 1; letter-spacing: -0.03em; }
+.tuile-dernier { color: var(--texte-doux); font-size: var(--t-sm); overflow-wrap: anywhere; }
+.tuile-dernier time { color: var(--texte); font-weight: 500; }
+.tuile-lecteur {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--e-2);
+  margin-top: auto;
+  padding-top: var(--e-3);
+  border-top: 1px solid var(--bordure);
+  font-size: var(--t-sm);
+  font-weight: 500;
+}
+.tuile-lecteur .ic { flex-shrink: 0; width: var(--ic-md); height: var(--ic-md); margin-top: 1px; }
+.tuile-lecteur--ok .ic { color: var(--accent); }
+.tuile-lecteur--aucun { color: var(--texte-doux); }
+.tuile-lecteur--attention { color: var(--attention-texte); font-weight: 600; }
+.tuile--nouvelle { animation: mt-estompe var(--d-estompe) ease-out both; }
+
+/* Champ en ligne « Ajouter un poste » et « Renommer » sur place. */
+.ajout-en-ligne { margin-bottom: var(--e-6); padding: var(--e-5) var(--e-6); }
+.ajout-en-ligne label { display: block; margin-bottom: var(--e-2); font-weight: 600; }
+.ajout-en-ligne-champ,
+.renommer-sur-place { display: flex; align-items: center; flex-wrap: wrap; gap: var(--e-3); }
+.ajout-en-ligne-champ input { flex: 1 1 18rem; width: auto; }
+.renommer-sur-place { flex: 1 1 auto; }
+.renommer-sur-place input[name="name"] { flex: 1 1 18rem; width: auto; font-family: var(--police-titre); font-size: var(--t-xl); font-weight: 600; }
+
+/* État d'un lecteur en mots : icône ET texte. */
+.etat-lecteur { display: inline-flex; align-items: center; gap: var(--e-1); font-weight: 600; }
+.etat-lecteur .ic { width: var(--ic-sm); height: var(--ic-sm); }
+.etat-lecteur--ok { color: var(--accent); }
+.etat-lecteur--silencieux { color: var(--attention-texte); }
+.etat-lecteur--jamais,
+.etat-lecteur--desactive { color: var(--texte-doux); }
+.numero-secondaire { color: var(--texte-doux); font-size: var(--t-xs); font-weight: 400; white-space: nowrap; }
+.numero-secondaire .numero-boitier { font-size: var(--t-xs); }
+.lecteurs-desactives { margin-top: var(--e-8); }
+.lecteurs-desactives > summary { margin-bottom: var(--e-3); color: var(--texte-doux); font-weight: 600; cursor: pointer; }
+.lecteurs-desactives[open] > summary { color: var(--texte); }
+
+/* Fiche d'un poste : lecteurs et dernières arrivées. */
+.lecteurs-poste,
+.arrivees { margin: 0; padding: 0; list-style: none; }
+.lecteurs-poste li + li,
+.arrivee + .arrivee { margin-top: var(--e-3); padding-top: var(--e-3); border-top: 1px solid var(--bordure); }
+.lecteurs-poste-etat { margin-top: var(--e-1); font-size: var(--t-sm); }
+.carte-action { margin-top: var(--e-3); }
+.arrivee { display: grid; grid-template-columns: var(--ic-xl) minmax(0, 1fr) auto; align-items: center; gap: var(--e-3); }
+.arrivee-icone { color: var(--texte-doux); }
+.arrivee-icone .ic { width: var(--ic-md); height: var(--ic-md); }
+.arrivee-objet { overflow-wrap: anywhere; }
+.arrivee-objet a { color: var(--texte); font-weight: 600; text-decoration: none; }
+.arrivee-objet a:hover { text-decoration: underline; }
+.arrivee-quand { font-size: var(--t-sm); white-space: nowrap; }
+.note-poste { margin-top: var(--e-6); color: var(--texte-doux); font-size: var(--t-sm); }
+
+/* Page de clé : étape suivante et attente du premier scan. */
+.etape-suivante { margin-bottom: var(--e-6); }
+.etape-suivante > * + * { margin-top: var(--e-3); }
+.attente-lecteur { display: flex; align-items: center; gap: var(--e-2); color: var(--accent); font-weight: 600; }
+.attente-lecteur .direct-point { animation: direct-pulse var(--d-pulsation) ease-in-out infinite; }
+.attente-lecteur--ok {
+  padding: var(--e-3) var(--e-4);
+  border-radius: var(--r-md);
+  background: var(--accent-doux);
+  color: var(--texte);
+}
+.attente-lecteur--ok .ic { flex-shrink: 0; width: var(--ic-lg); height: var(--ic-lg); color: var(--accent); }
+
 /* Fenêtre basse (1280 × 720) : la recherche reste en tête, les mouvements remontent. */
 @media (max-height: 800px) {
   .heros { padding: var(--e-6) 0 var(--e-8); }
@@ -2065,6 +2205,7 @@ details.modifications > summary:hover { background: var(--voile); }
   .cellule-actions { text-align: left; }
   .encart { grid-template-columns: 40px minmax(0, 1fr); }
   .encart .groupe-boutons { grid-column: 1 / -1; justify-content: flex-start; }
+  .creation-rapide { grid-column: 1 / -1; }
   .frise-etape { grid-template-columns: 32px minmax(0, 1fr); }
   .frise-quand { grid-column: 2; grid-row: 2; padding-top: 0; text-align: left; }
   .frise-etape::before { left: 15px; }

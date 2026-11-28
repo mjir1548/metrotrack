@@ -111,8 +111,10 @@ const lastAuditId = () => db.prepare('SELECT coalesce(max(id), 0) AS n FROM audi
 const location = (itemId) => ({ ...db.prepare('SELECT station_id, source, reader_id FROM item_locations WHERE item_id = ?').get(itemId) });
 // Une carte par puce depuis l'étape U1, numéro groupé par octets.
 const grouped = (uid) => uid.match(/../g).join(' ');
-const chipRow = (html, uid) => (/<ul class="carte liste-puces">([\s\S]*?)<\/ul>/.exec(html)?.[1] ?? '')
-  .split('<li class="encart">').find((row) => row.includes(`<p class="encart-texte">Puce <span class="uid">${grouped(uid)}</span></p>`)) ?? null;
+// Étape U5 : carte « Nouvelle puce · <poste> », repérée par son attribut data-uid.
+const chipRow = (html, uid) => (/<ul class="carte liste-puces liste-puces--cartes" id="puces-inconnues"[^>]*>([\s\S]*?)<\/ul>/.exec(html)?.[1] ?? '')
+  .split('<li class="encart puce-carte"').find((row) => row.startsWith(` data-uid="${uid}"`)) ?? null;
+const scansLine = (n) => new RegExp(n > 1 ? `<span data-scans>${n} scans · dernier </span>` : '<span data-scans></span>');
 const createdId = (res) => Number(/^\/items\/(\d+)\?ok=/.exec(res.headers.location)?.[1]);
 
 // ---------------------------------------------------------------- parcours complet
@@ -123,8 +125,8 @@ test('parcours : puce inconnue → fiche créée, localisée tout de suite ; puc
   await scan(1, uid);
   const row = chipRow((await page('/chips')).body, uid);
   assert.ok(row, 'puce listée');
-  assert.match(row, /<span class="etat etat-poste">Atelier<\/span>/);
-  assert.match(row, / · 2 scans<\/p>/);
+  assert.ok(row.includes('Nouvelle puce · <strong>Atelier</strong>'));
+  assert.match(row, scansLine(2));
   assert.match(row, /<time datetime="\d{4}-\d\d-\d\dT[\d:.]+Z"/);
 
   const dump = scansDump();
@@ -154,7 +156,7 @@ test('parcours : remplacement de la puce d\'une fiche localisée ; la fiche suit
   const confirm = await page(`/chips/${NEW}/associate/1`);
   assert.equal(confirm.status, 200);
   assert.ok(confirm.body.includes('panneau-danger'));
-  assert.ok(confirm.body.includes(`porte déjà une puce</strong> (<span class="uid">${grouped(OLD)}</span>)`));
+  assert.ok(confirm.body.includes('» a déjà une puce.</strong> La nouvelle la remplacera, et l\'ancienne ne servira plus.'));
   assert.ok(confirm.body.includes(`<input type="hidden" name="previous" value="${OLD}">`));
   assert.ok(confirm.body.includes('Labo'));
 
@@ -176,20 +178,20 @@ test('parcours : remplacement de la puce d\'une fiche localisée ; la fiche suit
   assert.equal(chipRow(list, NEW), null);
   const oldRow = chipRow(list, OLD);
   assert.ok(oldRow, 'ancienne puce de retour');
-  assert.match(oldRow, /<span class="etat etat-poste">Atelier<\/span>/);
-  assert.match(oldRow, / · 1 scan<\/p>/);
+  assert.ok(oldRow.includes('Nouvelle puce · <strong>Atelier</strong>'));
+  assert.match(oldRow, scansLine(1));
 
   // Un scan ultérieur de l'ancienne puce ne déplace plus la fiche.
   await scan(1, OLD);
   assert.deepEqual(location(1), { station_id: 2, source: 'scan', reader_id: 2 });
-  assert.match(chipRow((await page('/chips')).body, OLD), / · 2 scans<\/p>/);
+  assert.match(chipRow((await page('/chips')).body, OLD), scansLine(2));
 });
 
 test('lecteur non affecté : libellé et lien dans la liste et le formulaire ; fiche créée « lecteur non affecté »', async () => {
   const uid = 'DEADBEEF';
   await scan(3, uid);
   const row = chipRow((await page('/chips')).body, uid);
-  assert.ok(row.includes('<a class="lien-etat" href="/readers/3"><span class="etat etat-inconnue">lecteur non affecté</span></a>'), row);
+  assert.ok(row.includes('Nouvelle puce · <strong><a class="lien-simple" href="/readers/3">lecteur non affecté</a></strong>'), row);
   const form = await page(`/chips/${uid}/new`);
   assert.ok(form.body.includes('<a class="lien-simple" href="/readers/3">lecteur non affecté</a>'));
   const res = await post(`/chips/${uid}/new`, { name: 'Pince' });
@@ -276,7 +278,7 @@ test('suppression : association pendant la suppression sans 500 ; après suppres
   const id = createdId(await post(`/chips/${uid2}/new`, { name: 'Éphémère' }));
   assert.equal(chipRow((await page('/chips')).body, uid2), null);
   assert.equal((await post(`/items/${id}/delete`)).status, 303);
-  assert.match(chipRow((await page('/chips')).body, uid2), / · 1 scan<\/p>/);
+  assert.match(chipRow((await page('/chips')).body, uid2), scansLine(1));
   assert.equal(scansDump(), dump);
 });
 
@@ -304,7 +306,7 @@ test('correction manuelle plus récente que le scan : signalée à la confirmati
   await sleep(3);
   assert.equal((await post(`/items/${id}/location`, { station: '2' })).status, 303);
   const confirm = await page(`/chips/${uid}/associate/${id}`);
-  assert.ok(confirm.body.includes('Une correction manuelle d\'emplacement plus récente que ce scan existe'));
+  assert.ok(confirm.body.includes('L\'objet reste à Labo, où il a été corrigé à la main, jusqu\'au prochain scan de la puce.'));
   assert.equal((await post(`/chips/${uid}/associate/${id}`, { previous: '' })).status, 303);
   assert.deepEqual(location(id), { station_id: 2, source: 'manual', reader_id: null });
   await scan(1, uid);
@@ -318,7 +320,7 @@ test('correction manuelle plus ancienne que le scan : aucun avertissement, le sc
   await sleep(3);
   await scan(1, uid);
   const confirm = await page(`/chips/${uid}/associate/${id}`);
-  assert.ok(!confirm.body.includes('Une correction manuelle de localisation plus récente'));
+  assert.ok(!confirm.body.includes('corrigé à la main, jusqu\'au prochain scan'));
   assert.equal((await post(`/chips/${uid}/associate/${id}`, { previous: '' })).status, 303);
   assert.deepEqual(location(id), { station_id: 1, source: 'scan', reader_id: 1 });
 });
@@ -332,7 +334,7 @@ test('réutilisation : nom hostile échappé ; après plusieurs propriétaires, 
   assert.equal((await post(`/items/${first}/delete`)).status, 303);
   const warned = await page(`/chips/${uid}/new`);
   const block = /<div class="panneau panneau-alerte panneau-reutilisation"[\s\S]*?<\/div>/.exec(warned.body)?.[0] ?? '';
-  assert.ok(block.includes(`«&nbsp;Ancienne &lt;img src=x onerror=alert(1)&gt;&quot;&#39;&amp;amp;&nbsp;» (n° ${first}, supprimée depuis)`), block);
+  assert.ok(block.includes('«&nbsp;Ancienne &lt;img src=x onerror=alert(1)&gt;&quot;&#39;&amp;amp;&nbsp;», un objet supprimé depuis,'), block);
   assert.doesNotMatch(warned.body, /<img/);
 
   // La puce passe sur une 2e fiche, puis en est détachée par une autre puce : c'est elle qui est citée.
@@ -343,9 +345,8 @@ test('réutilisation : nom hostile échappé ; après plusieurs propriétaires, 
   const latest = await page(`/chips/${uid}/associate/${first + 1000}`); // fiche absente : 404, avertissement non concerné
   assert.equal(latest.status, 404);
   const again = await page(`/chips/${uid}/new`);
-  assert.ok(again.body.includes(`<a href="/items/${second}">«&nbsp;Seconde&nbsp;» (n° ${second})</a>`));
-  assert.ok(again.body.includes('Son scan enregistré sera rattaché à la nouvelle fiche')); // un seul scan de cette puce
-  assert.ok(!again.body.includes(`(n° ${first}, supprimée depuis)`));
+  assert.ok(again.body.includes(`Cette puce servait à <a href="/items/${second}">«&nbsp;Seconde&nbsp;»</a> jusqu'au `));
+  assert.ok(!again.body.includes('un objet supprimé depuis'));
 
   const bare = createdId(await post('/items/new', { name: 'Sans puce' }));
   const del = await page(`/items/${bare}/delete`);

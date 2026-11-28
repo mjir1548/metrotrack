@@ -90,6 +90,8 @@
   --d-normale: 200ms;
   --courbe: cubic-bezier(0.2, 0.7, 0.2, 1);
   --d-mise-en-evidence: 5s; /* étape de frise qui vient d'être enregistrée */
+  --d-lente: 400ms;          /* apparition d'un mouvement reçu en direct (étape U4) */
+  --d-estompe: 4s;           /* fond « nouveau » qui s'estompe ensuite */
 
   /* Composants (étape U3) */
   --hauteur-bouton: 40px;
@@ -101,6 +103,7 @@
   --trait-epais: 1.5px;
   --largeur-menu: 240px;
   --largeur-panneau: 520px;
+  --largeur-toast: 380px;
 }
 
 /* Mode sombre : simple redéfinition des variables (contrastes vérifiés par le même test). */
@@ -1673,6 +1676,272 @@ details.modifications > summary:hover { background: var(--voile); }
 .pagination .lien-annuler { margin-right: auto; }
 
 /* --------------------------------------------------------------------------
+   15 bis. Écran d'accueil et direct (étape U4, maquette B accueil.html)
+   -------------------------------------------------------------------------- */
+.heros { padding: var(--e-10) 0 var(--e-12); text-align: center; }
+.heros-surtitre { margin-bottom: var(--e-3); color: var(--texte-doux); font-size: var(--t-sm); }
+.heros-surtitre::first-letter { text-transform: uppercase; }
+.heros h1 {
+  margin-bottom: var(--e-8);
+  font-size: var(--t-3xl);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+.recherche--heros {
+  height: 68px;
+  margin: 0 auto;
+  padding: 0 var(--e-3) 0 var(--e-6);
+  text-align: left;
+}
+.recherche--heros > .ic { width: 24px; height: 24px; }
+.recherche--heros input { font-size: var(--t-lg); }
+/* Avec le script, un clic ou une frappe ouvre la palette : le bouton est inutile. */
+.js .recherche--heros > .bouton { display: none; }
+.js .recherche--heros { padding-right: var(--e-5); }
+
+.pile > * + * { margin-top: var(--e-10); }
+.section-entete {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--e-4);
+  margin-bottom: var(--e-4);
+}
+.section-entete h2 { font-size: var(--t-lg); }
+.section-lien { color: var(--texte-doux); font-size: var(--t-sm); font-weight: 500; }
+.section-lien:hover { color: var(--texte); }
+.compteur {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 22px;
+  margin-left: var(--e-1);
+  padding: 0 var(--e-2);
+  border-radius: var(--r-pilule);
+  background: var(--attention-doux);
+  color: var(--attention-texte);
+  font-family: var(--police-texte);
+  font-size: var(--t-xs);
+  font-weight: 700;
+  vertical-align: 2px;
+}
+.compteur[hidden] { display: none; }
+.grille-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 13fr) minmax(0, 10fr);
+  gap: var(--e-6);
+  align-items: start;
+}
+
+/* Indicateur « En direct » : point ET texte (le sens n'est pas porté par la couleur seule). */
+.direct-etat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e-2);
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+.direct-etat[hidden] { display: none; }
+.direct-point { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.direct-etat--coupe { color: var(--attention-texte); }
+.direct-etat:not(.direct-etat--coupe) .direct-point { animation: direct-pulse 2.4s ease-in-out infinite; }
+@keyframes direct-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-doux); }
+  50% { box-shadow: 0 0 0 var(--e-1) var(--accent-doux); }
+}
+
+/* Derniers mouvements. */
+.mouvements { margin: 0; padding: var(--e-2); list-style: none; }
+.mouvements[hidden] { display: none; }
+.mouvement {
+  position: relative;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) minmax(180px, 15rem) 9.5rem;
+  align-items: center;
+  gap: var(--e-4);
+  padding: var(--e-3) var(--e-4);
+  border-radius: var(--r-md);
+}
+.mouvement + .mouvement::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: calc(var(--e-4) + 40px + var(--e-4));
+  right: var(--e-4);
+  height: 1px;
+  background: var(--bordure);
+}
+.mouvement-icone {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--zone);
+  color: var(--texte-doux);
+}
+.mouvement-icone .ic { width: var(--ic-lg); height: var(--ic-lg); }
+.mouvement--main .mouvement-icone { background: var(--carte); border: var(--trait-epais) dashed var(--bordure-champ); color: var(--texte); }
+.mouvement-objet { min-width: 0; }
+.mouvement-objet a { color: var(--texte); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.mouvement-objet a:hover { text-decoration: underline; }
+.mouvement-detail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--e-2);
+  margin-top: 2px;
+  color: var(--texte-doux);
+  font-size: var(--t-sm);
+}
+.mouvement-vers {
+  display: flex;
+  align-items: center;
+  gap: var(--e-2);
+  min-width: 0;
+  font-family: var(--police-titre);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.mouvement-vers > .ic { flex-shrink: 0; width: var(--ic-md); height: var(--ic-md); color: var(--texte-doux); }
+.mouvement-vers a { color: var(--texte); text-decoration: none; }
+.mouvement-vers a:hover { text-decoration: underline; }
+.mouvement-quand { text-align: right; font-size: var(--t-sm); font-weight: 500; }
+.mouvement-quand small { display: block; color: var(--texte-doux); font-size: var(--t-xs); font-weight: 400; }
+/* Mouvement reçu en direct : apparition, puis fond « nouveau » qui s'estompe ; badge « Nouveau ». */
+.badge--nouveau { background: var(--accent); color: var(--sur-accent); }
+.mouvement--nouveau { animation: mt-apparition var(--d-lente) var(--courbe) both, mt-estompe var(--d-estompe) ease-out var(--d-lente) both; }
+@keyframes mt-apparition {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes mt-estompe {
+  from { background-color: var(--accent-doux); }
+  to { background-color: transparent; }
+}
+
+/* Cartes sans contenu (état vide court). */
+.carte-vide { padding: var(--e-6); color: var(--texte-doux); }
+.carte-vide--action { padding: 0; }
+.carte-vide--action .bouton { margin-top: var(--e-3); }
+
+/* À traiter : puces inconnues, boutons sous le texte (colonne étroite). */
+.encart-liste { margin: 0; padding: 0; list-style: none; }
+.encart--empile { grid-template-columns: 40px minmax(0, 1fr); align-items: start; padding: 0; }
+.encart--empile .groupe-boutons { grid-column: 2; justify-content: flex-start; margin-top: calc(-1 * var(--e-2)); }
+.encart-liste > .encart + .encart { margin-top: var(--e-4); padding-top: var(--e-4); }
+.voir-tout { margin-top: var(--e-5); padding-top: var(--e-4); border-top: 1px solid var(--bordure); font-size: var(--t-sm); font-weight: 600; }
+.voir-tout a { display: inline-flex; align-items: center; gap: var(--e-1); }
+.voir-tout .ic { width: var(--ic-sm); height: var(--ic-sm); }
+
+/* Lecteurs : silencieux en orange (icône ET texte), puis ceux qui fonctionnent. */
+.alerte-lecteur {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: var(--e-3);
+  padding: var(--e-4);
+  border-radius: var(--r-md);
+  background: var(--attention-doux);
+  box-shadow: inset 3px 0 0 var(--attention);
+}
+.alerte-lecteur + .alerte-lecteur { margin-top: var(--e-3); }
+.alerte-lecteur > .ic { width: 24px; height: 24px; color: var(--attention-texte); }
+.alerte-lecteur-titre { font-weight: 600; color: var(--attention-texte); overflow-wrap: anywhere; }
+.alerte-lecteur-titre a { color: inherit; }
+.alerte-lecteur p + p { margin-top: 2px; color: var(--texte-doux); font-size: var(--t-sm); }
+.etat-ok {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: var(--e-3);
+  padding: var(--e-1) var(--e-4) 0;
+}
+.etat-ok[hidden] { display: none; }
+.alerte-lecteur + .etat-ok { margin-top: var(--e-4); }
+.etat-ok--seul { padding: 0; }
+.etat-ok > .ic { width: 24px; height: 24px; color: var(--accent); }
+.etat-ok-titre { font-weight: 600; }
+.etat-ok p + p { color: var(--texte-doux); font-size: var(--t-sm); }
+.etat-ok p[hidden] { display: none; }
+
+/* Base vide : bienvenue et premières étapes. */
+.bienvenue h1 { margin-bottom: var(--e-4); }
+.bienvenue-texte { color: var(--texte-doux); font-size: var(--t-md); }
+.bienvenue-etapes {
+  display: grid;
+  gap: var(--e-3);
+  max-width: 520px;
+  margin: var(--e-8) auto 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+.bienvenue-etapes li { display: flex; align-items: center; gap: var(--e-3); }
+.bienvenue-numero {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent-doux);
+  color: var(--accent);
+  font-family: var(--police-titre);
+  font-weight: 700;
+}
+.bienvenue-actions { justify-content: center; margin-top: var(--e-8); }
+
+/* Notifications du direct (toasts), en bas à droite ; elles disparaissent seules. */
+.toasts {
+  position: fixed;
+  right: var(--e-6);
+  bottom: var(--e-6);
+  z-index: 20;
+  display: grid;
+  gap: var(--e-2);
+  width: min(var(--largeur-toast), calc(100vw - 2 * var(--e-4)));
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--e-2) var(--e-3);
+  padding: var(--e-3) var(--e-3) var(--e-3) var(--e-4);
+  border: 1px solid var(--bordure);
+  border-radius: var(--r-md);
+  background: var(--carte);
+  box-shadow: var(--ombre-pilule), inset 3px 0 0 var(--accent);
+  animation: mt-apparition var(--d-normale) var(--courbe) both;
+  overflow-wrap: anywhere;
+}
+.toast--puce { box-shadow: var(--ombre-pilule), inset 3px 0 0 var(--attention); }
+.toast-texte { flex: 1 1 auto; min-width: 0; font-weight: 500; }
+.toast-texte a { color: var(--texte); }
+.toast .bouton { flex-shrink: 0; }
+.toast-fermer { flex-shrink: 0; }
+
+/* Bandeau de la fiche d'un objet : il vient d'être scanné ailleurs. */
+.bandeau-direct {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--e-3);
+  margin-bottom: var(--e-5);
+  padding: var(--e-3) var(--e-4);
+  border-radius: var(--r-md);
+  background: var(--accent-doux);
+  font-weight: 500;
+}
+.bandeau-direct a { font-weight: 600; }
+
+/* Fenêtre basse (1280 × 720) : la recherche reste en tête, les mouvements remontent. */
+@media (max-height: 800px) {
+  .heros { padding: var(--e-6) 0 var(--e-8); }
+  .heros h1 { margin-bottom: var(--e-5); }
+}
+
+/* --------------------------------------------------------------------------
    16. Largeurs intermédiaires (fenêtre réduite)
    -------------------------------------------------------------------------- */
 @media (max-width: 1100px) {
@@ -1690,6 +1959,10 @@ details.modifications > summary:hover { background: var(--voile); }
   /* Fiche d'un objet sur une fenêtre étroite : l'historique juste après l'en-tête. */
   .fiche > .carte-historique { order: -1; }
   .emplacement--xl { font-size: var(--t-3xl); }
+  .grille-2 { grid-template-columns: minmax(0, 1fr); }
+  .mouvement { grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .mouvement-vers { grid-column: 2; grid-row: 2; }
+  .mouvement-quand { grid-column: 3; grid-row: 1 / span 2; }
 }
 
 /* --------------------------------------------------------------------------
@@ -1768,4 +2041,5 @@ details.modifications > summary:hover { background: var(--voile); }
   }
   /* Correction qui vient d'être enregistrée : mise en évidence fixe, sans animation. */
   .frise-etape.nouveau .frise-contenu { border-color: var(--accent); background: var(--accent-doux); }
+  /* Mouvement reçu en direct : le badge « Nouveau » suffit, sans fond animé. */
 }

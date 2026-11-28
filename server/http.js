@@ -6,6 +6,7 @@ import { createServer } from 'node:https';
 import { constants } from 'node:crypto';
 import { ingestFrame } from './ingest.js';
 import { handleWeb, sendInternalError, LOGIN_FAILURE_DELAY_MS } from './web.js';
+import { createDirectHub, scanEvent, MAX_DIRECT_CLIENTS, HEARTBEAT_MS } from './direct.js';
 
 const FRAMES_PATH = '/api/frames';
 // Plafond de lecture du corps : une trame fait 36 octets. Au-delà, on cesse de lire
@@ -31,21 +32,27 @@ const TLS12_CIPHERS = [
 const HSTS = 'max-age=31536000';
 // Plafond de connexions simultanées (anti-saturation) : largement suffisant pour quelques
 // dizaines de boîtiers et de navigateurs. Au-delà, les nouvelles connexions sont fermées.
+// Les flux du direct (connexions longues, server/direct.js) en occupent au plus
+// MAX_DIRECT_CLIENTS (50) : il en reste toujours au moins 206 pour les boîtiers et les pages.
 const MAX_CONNECTIONS = 256;
 
 /**
  * Serveur HTTPS unique : POST /api/frames (boîtiers) et interface web (navigateurs).
  * @param {import('node:sqlite').DatabaseSync} db
- * @param {{tls: {cert: Buffer|string, key: Buffer|string}, log?: (line:string) => void, maxConnections?: number, loginFailureDelayMs?: number}} options
+ * @param {{tls: {cert: Buffer|string, key: Buffer|string}, log?: (line:string) => void, maxConnections?: number, loginFailureDelayMs?: number,
+ *   maxDirectClients?: number, directHeartbeatMs?: number}} options
  *   tls : certificat et clé privée du serveur (PEM), OBLIGATOIRES ;
  *   log : destination du journal (console par défaut) ;
- *   maxConnections, loginFailureDelayMs : réservés aux tests (petites valeurs) ; pas des
- *   paramètres de configuration.
+ *   maxConnections, loginFailureDelayMs, maxDirectClients, directHeartbeatMs : réservés aux tests
+ *   (petites valeurs) ; pas des paramètres de configuration.
+ * Le concentrateur du direct est exposé en server.direct (tests : nombre de flux ouverts).
  */
 export function createFrameServer(db, {
   tls, log = console.log, maxConnections = MAX_CONNECTIONS, loginFailureDelayMs = LOGIN_FAILURE_DELAY_MS,
+  maxDirectClients = MAX_DIRECT_CLIENTS, directHeartbeatMs = HEARTBEAT_MS,
 } = {}) {
   if (!tls?.cert || !tls?.key) throw new Error('certificat et clé TLS obligatoires');
+  const direct = createDirectHub({ db, maxClients: maxDirectClients, heartbeatMs: directHeartbeatMs });
   const options = {
     cert: tls.cert,
     key: tls.key,
@@ -86,7 +93,7 @@ export function createFrameServer(db, {
         fail(err);
       }
     };
-    const web = { db, log, loginFailureDelayMs, guard, fail };
+    const web = { db, log, loginFailureDelayMs, guard, fail, direct };
     guard(handleRequest)(db, log, req, res, guard, web);
   });
   // Limite le temps laissé à un client pour envoyer sa requête complète.
@@ -96,6 +103,7 @@ export function createFrameServer(db, {
   server.on('drop', () => log(`connexion refusée : plafond de ${maxConnections} connexions atteint`));
   // Échec de poignée de main (version, suite, certificat client...) : code seul, pour le diagnostic.
   server.on('tlsClientError', (err) => log(`TLS refusé : ${err.code}`));
+  server.direct = direct;
   return server;
 }
 
@@ -151,6 +159,14 @@ function handleRequest(db, log, req, res, guard, web) {
       log(`scan ${result.scanId} accepté, mais journalisation détaillée impossible : ${err.message}`);
     }
     sendEmpty(res, 204, false);
+    // Direct (étape U4) : APRÈS le COMMIT et la réponse au boîtier, qui ne dépend donc jamais du
+    // direct (contrat inchangé, docs/protocole.md). Un échec est seulement journalisé.
+    try {
+      const event = scanEvent(db, result.scanId);
+      if (event) web.direct.publish(event);
+    } catch (err) {
+      log(`scan ${result.scanId} accepté, mais diffusion en direct impossible : ${err.message}`);
+    }
   }));
 }
 

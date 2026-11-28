@@ -177,7 +177,7 @@ test('CSRF : chaque envoi sans jeton, avec un mauvais jeton, sans Origin ou avec
       assert.equal(res.status, 403, `${path} ${name}`);
       assert.match(res.body, /<h1>Action refusée<\/h1>/, `${path} ${name}`);
       // Session valide : le lien de la page mène à l'inventaire (étape U0).
-      assert.ok(res.body.includes('<a class="bouton" href="/">Revenir à l\'inventaire</a>'), `${path} ${name}`);
+      assert.ok(res.body.includes('<a class="bouton" href="/">Revenir à l\'accueil</a>'), `${path} ${name}`);
     }
   }
   assert.equal(snapshot(), before);
@@ -230,7 +230,7 @@ test('correction de localisation sans aucun poste : message explicatif et lien v
   // Liens (sans doublons) : marque et bandeau (Inventaire, Postes, Lecteurs, Puces inconnues ;
   // étape U1), fil d'Ariane (inventaire, fiche), création d'un poste (étape 6). Les ancres de la
   // page (« Aller au contenu », icônes) ne sont pas des liens vers d'autres pages.
-  assert.deepEqual([...new Set([...res.body.matchAll(/href="([^"]*)"/g)].map((m) => m[1]).filter((h) => !h.startsWith('/static/') && !h.startsWith('#')))].sort(), ['/', '/chips', '/items/1', '/readers', '/stations', '/stations/new']);
+  assert.deepEqual([...new Set([...res.body.matchAll(/href="([^"]*)"/g)].map((m) => m[1]).filter((h) => !h.startsWith('/static/') && !h.startsWith('#')))].sort(), ['/', '/chips', '/inventaire', '/items/1', '/readers', '/stations', '/stations/new']);
   const before = snapshot();
   const sent = await post('/items/1/location', { station: '1' });
   assert.equal(sent.status, 400);
@@ -240,7 +240,7 @@ test('correction de localisation sans aucun poste : message explicatif et lien v
 // ---------------------------------------------------------------- création
 
 test('liste et fiche : bouton principal « Nouvelle fiche » ; fiche : Corriger l\'emplacement, Modifier la fiche, Supprimer', async () => {
-  const list = await page('/');
+  const list = await page('/inventaire');
   assert.ok(list.body.includes('<a class="bouton" href="/items/new"><svg class="ic" aria-hidden="true"><use href="#i-ajouter"></use></svg>Nouvelle fiche</a>'));
   assert.ok(list.body.includes('<button class="bouton bouton-secondaire" type="submit">Rechercher</button>'));
   const sheet = await page('/items/1');
@@ -457,7 +457,7 @@ test('413 strict : session et Origin valides, Content-Length: 300000 annoncé sa
   assert.equal(res.headers.connection, 'close');
   // Étape U0 : page « Formulaire trop long » au lieu d'un corps vide ; session valide → lien vers l'inventaire.
   assert.ok(res.body.includes('<h1>Formulaire trop long</h1>'));
-  assert.ok(res.body.includes('href="/">Revenir à l\'inventaire</a>'));
+  assert.ok(res.body.includes('href="/">Revenir à l\'accueil</a>'));
   assert.equal(snapshot(), before);
   assert.ok(server.listening);
 });
@@ -565,7 +565,7 @@ test('correction : 303 ?ok=corrige, localisation changée (liste et fiche, « co
   assert.match(sheet.body, /<p class="localisation-detail"><span><time [^>]*>à l&#39;instant<\/time> · aujourd&#39;hui à \d\d:\d\d<\/span><span class="badge badge--main"><svg[^>]*><use href="#i-main"><\/use><\/svg>Corrigé à la main par alice<\/span><\/p>/);
   // Étape U3 : la correction est en tête de la frise, mise en évidence (classe « nouveau »).
   assert.match(sheet.body, /<li class="frise-etape frise-etape--actuel frise-etape--main nouveau">[\s\S]*?<p class="frise-lieu"><a class="lien-simple lien-discret" href="\/stations\/3">étuve<\/a><\/p>\n<p class="frise-detail"><svg[^>]*><use href="#i-main"><\/use><\/svg><span><strong>Corrigé à la main<\/strong> par alice<\/span>/);
-  const list = await page('/');
+  const list = await page('/inventaire');
   assert.match(list.body, /href="\/items\/1">Multimètre Fluke 87V<\/a>[\s\S]*?<span class="etat etat-poste">étuve<\/span>/);
 
   // Scan ultérieur (lecteur 2, non affecté) : la localisation suit de nouveau les scans.
@@ -585,10 +585,10 @@ test('?ok= : seul un code connu affiche un message constant ; code inconnu ou ho
     assert.ok(!withoutAppScript(sheet.body).includes('<script'), ok);
   }
   for (const ok of ['cree', 'modifie', 'xyz', '__proto__']) {
-    const list = await page(`/?ok=${ok}`);
+    const list = await page(`/inventaire?ok=${ok}`);
     assert.ok(!list.body.includes('class="succes"'), ok);
   }
-  assert.ok((await page('/?ok=supprime')).body.includes('<p class="succes" role="status">Fiche supprimée.</p>'));
+  assert.ok((await page('/inventaire?ok=supprime')).body.includes('<p class="succes" role="status">Fiche supprimée.</p>'));
 });
 
 // ---------------------------------------------------------------- atomicité
@@ -628,7 +628,7 @@ test('suppression : confirmation rappelant le nom et ce qui part ; envoi → 303
   assert.equal(count('location_corrections'), 1);
   const res = await post('/items/1/delete');
   assert.equal(res.status, 303);
-  assert.equal(res.headers.location, '/?ok=supprime');
+  assert.equal(res.headers.location, '/inventaire?ok=supprime');
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM items WHERE id = 1').get().n, 0);
   assert.equal(count('location_corrections'), 0);
   assert.equal(count('scans'), scans);
@@ -638,7 +638,7 @@ test('suppression : confirmation rappelant le nom et ce qui part ; envoi → 303
   assert.equal(deleted.details.name, 'Multi <script>"x"</script>');
   assert.equal(deleted.details.uid_nfc, UID);
 
-  const list = await page('/?ok=supprime');
+  const list = await page('/inventaire?ok=supprime');
   assert.ok(list.body.includes('<p class="succes" role="status">Fiche supprimée.</p>'));
   assert.ok(!list.body.includes('href="/items/1"'));
   assertSafePage(list.body, 'liste après suppression');

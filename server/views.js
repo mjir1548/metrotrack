@@ -7,7 +7,7 @@
 // Aide « Comment ça marche ? » sous le titre des pages : texte constant, dans server/aide.js.
 
 import { html } from './html.js';
-import { formatAge, formatDateTime, formatSince, formatDay, formatDayParts } from './dates.js';
+import { formatAge, formatDateTime, formatSince, formatDay, formatDayParts, formatLongDay } from './dates.js';
 import { MAX_QUERY_CHARS } from './inventory.js';
 import {
   MAX_NAME_CHARS, MAX_NOTES_CHARS, MAX_PROPERTIES, MAX_PROPERTY_KEY_CHARS, MAX_PROPERTY_VALUE_CHARS,
@@ -50,7 +50,7 @@ const READER_NOTICES = {
   nom_inchange: 'Aucune modification : le lecteur portait déjà ce nom.',
 };
 
-// Marque : pastille + nom. Dans l'application, c'est un lien vers l'inventaire.
+// Marque : pastille + nom. Dans l'application, c'est un lien vers l'accueil.
 // Logo officiel (web/static/logo.svg, couleurs de marque), intégré au HTML : sans xmlns ni
 // style, décoratif (aria-hidden) puisque le mot « MetroTrack » est écrit à côté.
 const LOGO = html`<svg class="logo-image" viewBox="0 0 900 900" aria-hidden="true"><defs><clipPath id="mt-losange"><rect x="167" y="172" width="566" height="566" rx="96" transform="rotate(45 450 455)"></rect></clipPath></defs><g clip-path="url(#mt-losange)"><rect x="0" y="0" width="900" height="900" fill="#0E95A4"></rect><rect x="238" y="455" width="426" height="460" fill="#03245A"></rect></g><circle cx="451" cy="455" r="213" fill="#FFFFFF"></circle><circle cx="451" cy="455" r="114" fill="#03245A"></circle></svg>`;
@@ -58,7 +58,8 @@ const BRAND_CONTENT = html`${LOGO}<span>MetroTrack</span>`;
 
 // script : charge web/static/app.js (pages de l'application seulement, D-021). Fichier local,
 // différé (defer), sans aucun script en ligne : la CSP default-src 'self' est inchangée.
-function documentPage(title, bodyClass, content, script = false) {
+// icons : icônes à inclure au sprite pour les éléments ajoutés par app.js (icones.js, spriteFor).
+function documentPage(title, bodyClass, content, script = false, icons = []) {
   const body = html`<a class="lien-evitement" href="#contenu">Aller au contenu</a>
 ${content}`;
   return html`<!doctype html>
@@ -73,7 +74,7 @@ ${content}`;
 ${script ? html`<script src="/static/app.js" defer></script>
 ` : null}</head>
 <body class="${bodyClass}">
-${spriteFor(body)}
+${spriteFor(body, icons)}
 ${body}
 </body>
 </html>
@@ -119,13 +120,13 @@ ${error}<form class="formulaire" method="post" action="/login">
 
 /**
  * Refus d'un envoi de formulaire (contrôle anti-falsification, web.js). connected : une session
- * valide accompagne la requête ; le lien mène alors à l'inventaire plutôt qu'à la connexion.
+ * valide accompagne la requête ; le lien mène alors à l'accueil plutôt qu'à la connexion.
  */
 export function forbiddenPage(connected = false) {
   return cardLayout('Action refusée', html`<h1>Action refusée</h1>
 <p class="sous-titre">La page a peut-être expiré. Rechargez-la puis recommencez.</p>
 ${connected
-    ? html`<a class="bouton" href="/">Revenir à l'inventaire</a>`
+    ? html`<a class="bouton" href="/">Revenir à l'accueil</a>`
     : html`<a class="bouton" href="/login">Revenir à la connexion</a>`}`);
 }
 
@@ -149,14 +150,14 @@ const ERROR_PAGES = {
 /**
  * Page d'erreur pour une clé de ERROR_PAGES. Carte centrée, comme la connexion : elle ne lit
  * rien du compte (pas de bandeau), et peut donc être produite même quand l'erreur vient de là.
- * connected : lien « Revenir à l'inventaire » ; sinon « Se connecter ».
+ * connected : lien « Revenir à l'accueil » ; sinon « Se connecter ».
  */
 export function errorPage(status, connected = false) {
   const { title, text } = ERROR_PAGES[status];
   return cardLayout(title, html`<h1>${title}</h1>
 <p class="sous-titre">${text}</p>
 ${connected
-    ? html`<a class="bouton" href="/">Revenir à l'inventaire</a>`
+    ? html`<a class="bouton" href="/">Revenir à l'accueil</a>`
     : html`<a class="bouton" href="/login">Se connecter</a>`}`);
 }
 
@@ -165,12 +166,14 @@ ${connected
 // Rubriques du bandeau. Pas de badge « nombre de puces inconnues » sur l'onglet : il serait
 // calculé sur chaque page, et son calcul coûte environ 20 ms à 300 000 scans
 // (server/chips.js), au-delà du budget fixé.
+const SECTION_HOME = 'home';
 const SECTION_ITEMS = 'items';
 const SECTION_STATIONS = 'stations';
 const SECTION_READERS = 'readers';
 const SECTION_CHIPS = 'chips';
 const NAV = [
-  ['/', 'Inventaire', SECTION_ITEMS],
+  ['/', 'Accueil', SECTION_HOME],
+  ['/inventaire', 'Inventaire', SECTION_ITEMS],
   ['/stations', 'Postes', SECTION_STATIONS],
   ['/readers', 'Lecteurs', SECTION_READERS],
   ['/chips', 'Puces inconnues', SECTION_CHIPS],
@@ -197,13 +200,14 @@ function initials(username) {
  * Page de l'application : bandeau (marque, navigation, recherche, compte, déconnexion) puis
  * contenu.
  * @param {{username: string, csrf: string}} user
- * @param {{section?: string, exact?: boolean, search?: boolean}} [options]
+ * @param {{section?: string, exact?: boolean, search?: boolean, icons?: string[]}} [options]
  *   section : rubrique active du bandeau ; exact : la page est la liste de cette rubrique ;
- *   search : recherche compacte dans le bandeau (absente de l'inventaire, qui a la sienne).
+ *   search : recherche compacte dans le bandeau (absente de l'inventaire et de l'accueil, qui ont
+ *   la leur) ; icons : icônes des éléments ajoutés en direct par app.js (étape U4).
  */
-function appLayout(user, title, content, { section = SECTION_ITEMS, exact = false, search = true } = {}) {
+function appLayout(user, title, content, { section = SECTION_ITEMS, exact = false, search = true, icons = [] } = {}) {
   const searchForm = search
-    ? html`<form class="recherche-barre" method="get" action="/" role="search">
+    ? html`<form class="recherche-barre" method="get" action="/inventaire" role="search">
 ${icon('recherche')}
 <input name="q" type="search" maxlength="${MAX_QUERY_CHARS}" aria-label="Rechercher un objet dans l'inventaire" placeholder="Où est… ?" autocomplete="off" spellcheck="false">
 ${SHORTCUT_HINT}
@@ -232,13 +236,15 @@ ${searchForm}
 </header>
 <main id="contenu" class="page">
 ${content}
-</main>`, true);
+</main>`, true, icons);
 }
 
 /**
  * Fil d'Ariane : liens [href, libellé] vers les pages parentes, puis la page courante (texte).
  * Toutes les adresses sont des chemins fixes du site, avec des identifiants lus en base.
  */
+const INVENTORY_TRAIL = ['/inventaire', 'Inventaire'];
+
 function trail(links, current) {
   return html`<nav class="fil" aria-label="Fil d'Ariane">
 ${links.map(([href, label]) => html`<a href="${href}">${label}</a>${icon('chevron')}`)}<span>${current}</span>
@@ -278,8 +284,9 @@ function locationBadge(row) {
 }
 
 // Ancienneté lisible, avec l'horodatage exact pour les machines (datetime) et au survol (title).
+// data-age : web/static/app.js recalcule ce texte chaque minute à partir de datetime (étape U4).
 function timeTag(iso, now) {
-  return html`<time datetime="${iso}" title="${formatDateTime(iso)}">${formatAge(iso, now)}</time>`;
+  return html`<time datetime="${iso}" title="${formatDateTime(iso)}" data-age>${formatAge(iso, now)}</time>`;
 }
 
 /**
@@ -360,7 +367,7 @@ function createItemLink(query) {
 export function inventoryPage(user, { query, items, now, notice = null }) {
   const searching = query !== '';
   const summary = searching
-    ? html`<p class="resultats" role="status">${plural(items.length, 'résultat', 'résultats')} pour «&nbsp;${query}&nbsp;» · <a href="/">Effacer</a></p>`
+    ? html`<p class="resultats" role="status">${plural(items.length, 'résultat', 'résultats')} pour «&nbsp;${query}&nbsp;» · <a href="/inventaire">Effacer</a></p>`
     : html`<p class="resultats">${plural(items.length, 'objet', 'objets')}</p>`;
 
   let body;
@@ -392,7 +399,7 @@ ${items.map((item) => html`<tr>
 <a class="bouton" href="/items/new">${icon('ajouter')}Nouvelle fiche</a>
 </div>
 </div>
-${AIDE.inventaire}<form class="recherche recherche--direct" method="get" action="/" role="search">
+${AIDE.inventaire}<form class="recherche recherche--direct" method="get" action="/inventaire" role="search">
 ${icon('recherche')}
 <label class="visuellement-cache" for="q">Rechercher un objet par nom, propriété ou numéro de puce</label>
 <input id="q" name="q" type="search" value="${query}" maxlength="${MAX_QUERY_CHARS}" placeholder="Nom, n° de série, numéro de puce…" autocomplete="off" spellcheck="false" aria-controls="inventaire-resultats">
@@ -677,7 +684,7 @@ ${item.properties.map(([key, value]) => html`<div><dt>${key}</dt><dd>${value}</d
   const more = timeline.next === null
     ? null
     : html`<p class="frise-tout"><a class="bouton bouton-discret bouton-petit" href="/items/${item.id}/historique">${icon('historique')}Voir tout l'historique</a></p>\n`;
-  return appLayout(user, item.name, html`${trail([['/', 'Inventaire']], item.name)}
+  return appLayout(user, item.name, html`${trail([INVENTORY_TRAIL], item.name)}
 ${noticeHtml}<div class="carte fiche-entete">
 <div class="fiche-entete-haut">
 <div class="fiche-titre">${icon('objet')}<h1>${item.name}</h1></div>
@@ -731,7 +738,7 @@ export function itemHistoryPage(user, { item, timeline, first, now }) {
   const links = [];
   if (!first) links.push(html`<a class="bouton bouton-secondaire bouton-petit" href="${base}">Revenir aux plus récents</a>`);
   if (timeline.next !== null) links.push(html`<a class="bouton bouton-secondaire bouton-petit" href="${base}?avant=${encodeURIComponent(timeline.next)}">Déplacements plus anciens${icon('chevron')}</a>`);
-  return appLayout(user, `Historique · ${item.name}`, html`${trail([['/', 'Inventaire'], [`/items/${item.id}`, item.name]], 'Historique')}
+  return appLayout(user, `Historique · ${item.name}`, html`${trail([INVENTORY_TRAIL, [`/items/${item.id}`, item.name]], 'Historique')}
 <div class="entete-page">
 <h1>Historique des déplacements</h1>
 <p class="sous-titre-page">${item.name}</p>
@@ -773,11 +780,14 @@ export function giveChipPage(user, { item, chips, more, owners, now }) {
 <button class="${style}" type="submit">${icon('associer')}Choisir cette puce</button>
 </form>`;
   };
+  // Sans puce à proposer : la liste (vide, masquée) attend la puce scannée, ajoutée en direct par
+  // app.js ; sans script, « Actualiser » recharge la page.
   const body = chips.length === 0
-    ? emptyState('puce', html`<p>Aucune puce inconnue pour l'instant. Scannez la nouvelle puce sur un lecteur, puis actualisez cette page.</p>
-<a class="bouton" href="${self}">Actualiser</a>`)
-    : html`<ul class="carte liste-puces">
-${chips.map((chip, i) => html`<li class="encart">
+    ? html`<ul class="carte liste-puces" id="puces-offertes" hidden></ul>
+${emptyState('puce', html`<p>Aucune puce inconnue pour l'instant. Scannez la nouvelle puce sur un lecteur : elle apparaîtra ici.</p>
+<a class="bouton" href="${self}">Actualiser</a>`)}`
+    : html`<ul class="carte liste-puces" id="puces-offertes">
+${chips.map((chip, i) => html`<li class="encart" data-uid="${chip.uid}">
 <span class="encart-icone">${icon('puce')}</span>
 <div class="encart-corps">
 <p class="encart-texte">Puce ${chipCode(chip.uid)}</p>
@@ -789,14 +799,14 @@ ${choose(chip, i === 0)}
 </li>
 `)}</ul>
 ${more ? html`<p class="resultats">Seules les ${chips.length} puces scannées le plus récemment sont affichées.</p>\n` : null}`;
-  return appLayout(user, title, html`${trail([['/', 'Inventaire'], [`/items/${item.id}`, item.name]], title)}
+  return appLayout(user, title, html`${trail([INVENTORY_TRAIL, [`/items/${item.id}`, item.name]], title)}
 <div class="entete-page">
 <h1>${title}</h1>
 <p class="sous-titre-page">${item.name}</p>
 </div>
 ${AIDE.donnerPuce}<p class="intro-action">Scannez la puce sur n'importe quel lecteur, puis choisissez-la ici. <a href="${self}">Actualiser</a></p>
 ${replacing ? html`<div class="panneau panneau-info" role="note"><p>Puce actuelle : ${chipCode(item.uid_nfc)}. L'historique est conservé ; les prochains scans viendront de la nouvelle puce.</p></div>\n` : null}${body}
-<p class="alternative"><a class="lien-annuler" href="/items/${item.id}">Retour à la fiche</a></p>`);
+<p class="alternative"><a class="lien-annuler" href="/items/${item.id}">Retour à la fiche</a></p>`, { icons: ['puce', 'associer'] });
 }
 
 /**
@@ -839,7 +849,7 @@ ${keep}<div class="actions-formulaire">
 </div>
 </form>
 </div>`;
-  return appLayout(user, 'Retirer la puce', html`${trail([['/', 'Inventaire'], [`/items/${item.id}`, item.name]], 'Retirer la puce')}
+  return appLayout(user, 'Retirer la puce', html`${trail([INVENTORY_TRAIL, [`/items/${item.id}`, item.name]], 'Retirer la puce')}
 <div class="entete-page">
 <h1>Retirer la puce</h1>
 <p class="sous-titre-page">${item.name}</p>
@@ -857,14 +867,14 @@ function notFoundPage(user, { title, text, parents, layout, iconName }) {
 ${emptyState(iconName, html`<h1>${title}</h1>
 <p>${text}</p>
 <div class="groupe-boutons">
-<a class="bouton" href="/" data-palette="ouvrir">${icon('recherche')}Chercher un objet</a>
-<a class="bouton bouton-secondaire" href="/">Retour à l'inventaire</a>
+<a class="bouton" href="/inventaire" data-palette="ouvrir">${icon('recherche')}Chercher un objet</a>
+<a class="bouton bouton-secondaire" href="/inventaire">Retour à l'inventaire</a>
 </div>`)}`, layout);
 }
 
 export function itemNotFoundPage(user) {
   return notFoundPage(user, {
-    title: 'Fiche introuvable', text: 'Cette fiche n\'existe pas ou a été supprimée.', parents: [['/', 'Inventaire']], layout: undefined, iconName: 'objet',
+    title: 'Fiche introuvable', text: 'Cette fiche n\'existe pas ou a été supprimée.', parents: [INVENTORY_TRAIL], layout: undefined, iconName: 'objet',
   });
 }
 
@@ -896,12 +906,12 @@ const EMPTY_ROW = { key: '', value: '', error: null };
 export function itemFormPage(user, { item, form, errors, chip = null, now = Date.now() }) {
   const editing = item !== null;
   let action = '/items/new';
-  let cancel = '/';
-  let parents = [['/', 'Inventaire']];
+  let cancel = '/inventaire';
+  let parents = [INVENTORY_TRAIL];
   if (editing) {
     action = `/items/${item.id}/edit`;
     cancel = `/items/${item.id}`;
-    parents = [['/', 'Inventaire'], [cancel, item.name]];
+    parents = [INVENTORY_TRAIL, [cancel, item.name]];
   } else if (chip !== null) {
     action = `/chips/${chip.uid}/new`;
     cancel = '/chips';
@@ -968,7 +978,7 @@ ${row.error ? html`<p class="erreur-champ" id="${errorId}">${row.error}</p>\n` :
 
 /** Confirmation de suppression d'une fiche. */
 export function deleteItemPage(user, { item }) {
-  return appLayout(user, 'Supprimer la fiche', html`${trail([['/', 'Inventaire'], [`/items/${item.id}`, item.name]], 'Supprimer')}
+  return appLayout(user, 'Supprimer la fiche', html`${trail([INVENTORY_TRAIL, [`/items/${item.id}`, item.name]], 'Supprimer')}
 <div class="entete-page">
 <h1>Supprimer la fiche</h1>
 </div>
@@ -1007,7 +1017,7 @@ ${choice}
 </div>
 </form>`;
   }
-  return appLayout(user, 'Corriger l\'emplacement', html`${trail([['/', 'Inventaire'], [`/items/${item.id}`, item.name]], 'Corriger l\'emplacement')}
+  return appLayout(user, 'Corriger l\'emplacement', html`${trail([INVENTORY_TRAIL, [`/items/${item.id}`, item.name]], 'Corriger l\'emplacement')}
 <div class="entete-page">
 <h1>Corriger l'emplacement</h1>
 <p class="sous-titre-page">${item.name}</p>
@@ -1701,7 +1711,7 @@ export function associateConfirmPage(user, { chip, item, now, changed = false, f
   // « Annuler » ramènent à cette page ; le formulaire le signale (champ depuis) pour un 409.
   const back = fromItem ? `/items/${item.id}/puce` : search;
   const parents = fromItem
-    ? [['/', 'Inventaire'], [`/items/${item.id}`, item.name], [back, replacing ? 'Changer de puce' : 'Donner une puce']]
+    ? [INVENTORY_TRAIL, [`/items/${item.id}`, item.name], [back, replacing ? 'Changer de puce' : 'Donner une puce']]
     : [CHIPS_TRAIL, [search, 'Associer la puce']];
   const lastScan = html`${chipPlace(chip)}, ${timeTag(chip.received_at, now)}`;
   // Sémantique de la vue item_locations : la plus récente des deux l'emporte. Une correction
@@ -1758,5 +1768,226 @@ export function chipKnownPage(user, { uid, itemId }) {
     action: { href: `/items/${itemId}`, label: 'Voir la fiche' },
     layout: chipsSection,
     iconName: 'valide',
+  });
+}
+
+// ---------------------------------------------------------------- écran d'accueil (étape U4)
+
+/**
+ * Puce inconnue pour GET /api/puces-inconnues (sérialisée en JSON par web.js, affichée par
+ * app.js avec textContent). Le numéro sert aux adresses /chips/<UID>/… ; il n'est donné qu'aux
+ * comptes connectés, comme sur la page « Puces inconnues ».
+ */
+export function chipResult(chip, now) {
+  return {
+    uid: chip.uid,
+    numero: chipNumber(chip.uid),
+    poste: chip.station_id === null ? null : chip.station_name,
+    lecteur: chip.reader_id,
+    iso: chip.received_at,
+    texte: formatAge(chip.received_at, now),
+    exacte: formatDateTime(chip.received_at),
+  };
+}
+
+// Identifiants techniques qui ne sont pas des prénoms : pas de « Bonjour Admin ».
+const NOT_A_NAME = new Set(['admin', 'administrateur', 'root', 'demo', 'test', 'user', 'utilisateur', 'metrotrack']);
+
+/**
+ * Prénom pour la salutation, tiré de l'identifiant (« claire.martin » → « Claire »), ou null :
+ * première partie avant « . », « _ » ou « - », lettres seulement, au moins deux, et pas un
+ * identifiant technique. L'identifiant est au format restreint [A-Za-z0-9._-] (D-011).
+ */
+export function greetingName(username) {
+  const first = username.split(/[._-]/)[0];
+  if (!/^[A-Za-z]{2,}$/.test(first) || NOT_A_NAME.has(first.toLowerCase())) return null;
+  return first[0].toUpperCase() + first.slice(1).toLowerCase();
+}
+
+/** « 3 jours », « 26 h » : durée d'un silence de lecteur (plus de 24 h par définition). */
+export function silenceLength(ms) {
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.floor(hours / 24)} jours`;
+}
+
+/**
+ * Heure exacte sous l'ancienneté d'un mouvement, ou null si l'ancienneté la donne déjà
+ * (« 25 nov. 2026 à 08:47 ») ; « hier à … » n'est pas répété (date complète à la place).
+ */
+function exactUnder(iso, now) {
+  const age = formatAge(iso, now);
+  const day = formatDay(iso, now);
+  if (day !== age) return day;
+  const full = formatDateTime(iso);
+  return full === age ? null : full;
+}
+
+/**
+ * Un mouvement de l'accueil (accueil.js, recentMovements). Même structure que celle produite par
+ * app.js pour un mouvement reçu en direct.
+ */
+function movementItem(move, now) {
+  const manual = move.type === 'correction';
+  const detail = manual
+    ? html`<span class="badge badge--main">${icon('main')}Corrigé à la main</span>par ${move.username ?? 'un compte inconnu'}`
+    : 'Scanné';
+  return html`<li class="mouvement${manual ? ' mouvement--main' : ''}">
+<span class="mouvement-icone">${icon(manual ? 'main' : 'lecteur')}</span>
+<div class="mouvement-objet">
+<a href="/items/${move.item_id}">${move.item_name}</a>
+<p class="mouvement-detail">${detail}</p>
+</div>
+<p class="mouvement-vers">${icon('poste')}<span><span class="visuellement-cache">Déplacé vers </span>${placeLink(move)}</span></p>
+<p class="mouvement-quand">${timeTag(move.at, now)}${exactUnder(move.at, now) === null ? null : html`<small>${exactUnder(move.at, now)}</small>`}</p>
+</li>
+`;
+}
+
+/** Une puce inconnue de « À traiter » (même structure que celle produite par app.js). */
+function chipToDo(chip, now) {
+  const place = chip.station_id === null ? 'un lecteur non affecté' : chip.station_name;
+  return html`<li class="encart encart--empile">
+<span class="encart-icone">${icon('puce')}</span>
+<div class="encart-corps">
+<p class="encart-texte">Puce inconnue scannée ${chip.station_id === null ? 'sur ' : 'au '}<strong>${place}</strong></p>
+<p class="encart-meta">${timeTag(chip.received_at, now)}</p>
+</div>
+<div class="groupe-boutons">
+<a class="bouton bouton-petit" href="/chips/${chip.uid}/new">${icon('ajouter')}Créer une fiche</a>
+<a class="bouton bouton-secondaire bouton-petit" href="/chips/${chip.uid}/associate">${icon('associer')}Associer à une fiche existante</a>
+</div>
+</li>
+`;
+}
+
+/** Contenu de la carte « À traiter » (remplacé par app.js quand une puce arrive en direct). */
+function chipsToDo({ chips, total }, now) {
+  if (total === 0) {
+    return html`<div class="etat-ok etat-ok--seul">
+${icon('valide')}
+<div><p class="etat-ok-titre">Rien à traiter</p><p>Chaque puce scannée a sa fiche.</p></div>
+</div>`;
+  }
+  return html`<ul class="encart-liste">
+${chips.map((chip) => chipToDo(chip, now))}</ul>
+<p class="voir-tout"><a href="/chips">${total === 1 ? 'Voir la puce inconnue' : `Voir les ${thousands(total)} puces inconnues`}${icon('chevron')}</a></p>`;
+}
+
+const okReaders = (n) => (n === 1 ? '1 lecteur fonctionne' : `${n} lecteurs fonctionnent`);
+
+/** Carte « Lecteurs » : lecteurs silencieux en orange (icône ET texte), puis ceux qui fonctionnent. */
+function readersCard(readers, now) {
+  if (readers.total === 0) {
+    return html`<div class="carte-vide carte-vide--action">
+<p>Ajoutez un lecteur : chaque poste a besoin du sien pour localiser les objets.</p>
+<a class="bouton bouton-petit" href="/readers/new">${icon('ajouter')}Ajouter un lecteur</a>
+</div>`;
+  }
+  const silent = readers.silent.map((reader) => {
+    const since = reader.last_scan_at === null
+      ? 'aucun scan reçu pour l\'instant'
+      : `aucun scan depuis ${silenceLength(now - Date.parse(reader.last_scan_at))}`;
+    const hint = reader.last_scan_at === null
+      ? html`Vérifiez qu'il est branché et que sa clé est installée.`
+      : html`Dernier scan ${timeTag(reader.last_scan_at, now)}. Vérifiez qu'il est allumé et branché.`;
+    return html`<div class="alerte-lecteur" data-lecteur="${reader.id}">
+${icon('silence')}
+<div>
+<p class="alerte-lecteur-titre"><span class="visuellement-cache">À surveiller : </span><a href="/readers/${reader.id}">${readerLabel(reader)}</a> : ${since}</p>
+<p>${hint}</p>
+</div>
+</div>
+`;
+  });
+  const last = readers.lastScanAt === null
+    ? html`<p id="dernier-scan" hidden>Dernier scan reçu <time data-age></time></p>`
+    : html`<p id="dernier-scan">Dernier scan reçu ${timeTag(readers.lastScanAt, now)}</p>`;
+  return html`${silent}<div class="etat-ok" id="lecteurs-ok" data-nombre="${readers.working}"${readers.working === 0 ? html` hidden` : null}>
+${icon('valide')}
+<div><p class="etat-ok-titre">${okReaders(readers.working)}</p>${last}</div>
+</div>`;
+}
+
+/** Surtitre : « Bonjour Claire · jeudi 27 novembre », ou la date seule. */
+const surtitle = (greeting, today) => (greeting === null ? today : `Bonjour ${greeting} · ${today}`);
+
+/** Accueil d'une base vide : par où commencer. */
+function welcome(user, greeting, today) {
+  return appLayout(user, 'Accueil', html`<section class="heros bienvenue" aria-labelledby="titre-bienvenue">
+<p class="heros-surtitre">${surtitle(greeting, today)}</p>
+<h1 id="titre-bienvenue">Bienvenue&nbsp;!</h1>
+<p class="bienvenue-texte">Commencez par créer vos postes et vos lecteurs, puis scannez un objet.</p>
+<ol class="bienvenue-etapes">
+<li><span class="bienvenue-numero" aria-hidden="true">1</span><span>Créez un poste pour chaque lieu de travail.</span></li>
+<li><span class="bienvenue-numero" aria-hidden="true">2</span><span>Ajoutez un lecteur à chaque poste et installez sa clé dans le boîtier.</span></li>
+<li><span class="bienvenue-numero" aria-hidden="true">3</span><span>Scannez un objet : sa puce apparaîtra ici, prête à recevoir une fiche.</span></li>
+</ol>
+<div class="groupe-boutons bienvenue-actions">
+<a class="bouton" href="/stations/new">${icon('ajouter')}Créer un poste</a>
+<a class="bouton bouton-secondaire" href="/readers/new">${icon('ajouter')}Ajouter un lecteur</a>
+</div>
+</section>
+${AIDE.accueil}`, { section: SECTION_HOME, exact: true, search: false });
+}
+
+/**
+ * Écran d'accueil (maquette B). Les sections portent des identifiants que web/static/app.js
+ * met à jour en direct (mouvements, À traiter, lecteurs) ; sans script, la page est complète.
+ * @param {{counts: {items, stations, readers}, movements: object[], chips: {chips, total},
+ *   readers: object, now: number}} data accueil.js, homeData
+ */
+export function homePage(user, { counts, movements, chips, readers, now }) {
+  const greeting = greetingName(user.username);
+  const today = formatLongDay(now);
+  if (counts.items === 0 && counts.stations === 0 && counts.readers === 0) return welcome(user, greeting, today);
+  const placeholder = counts.items === 0
+    ? 'Un objet, un n° de série…'
+    : `Un objet, un n° de série… parmi ${thousands(counts.items)} ${counts.items > 1 ? 'objets' : 'objet'}`;
+  return appLayout(user, 'Accueil', html`<section class="heros" aria-labelledby="titre-recherche">
+<p class="heros-surtitre">${surtitle(greeting, today)}</p>
+<h1 id="titre-recherche">Où est…&nbsp;?</h1>
+<form class="recherche recherche--heros" method="get" action="/inventaire" role="search">
+${icon('recherche')}
+<label class="visuellement-cache" for="recherche-accueil">Rechercher un objet par nom, propriété ou numéro de puce</label>
+<input id="recherche-accueil" name="q" type="search" maxlength="${MAX_QUERY_CHARS}" placeholder="${placeholder}" autocomplete="off" spellcheck="false">
+${SHORTCUT_HINT}
+<button class="bouton" type="submit">Rechercher</button>
+</form>
+</section>
+<div class="pile">
+<section aria-labelledby="titre-mouvements">
+<div class="section-entete">
+<h2 id="titre-mouvements">Derniers mouvements</h2>
+<p class="direct-etat" id="direct-etat" hidden><span class="direct-point" aria-hidden="true"></span><span class="direct-texte">En direct</span></p>
+</div>
+<ol class="carte mouvements" id="mouvements"${movements.length === 0 ? html` hidden` : null}>
+${movements.map((move) => movementItem(move, now))}</ol>
+${movements.length === 0 ? html`<div class="carte carte-vide" id="mouvements-vide">
+<p>Aucun mouvement pour l'instant. Scannez un objet à un poste.</p>
+</div>` : null}
+</section>
+<div class="grille-2">
+<section aria-labelledby="titre-puces">
+<div class="section-entete">
+<h2 id="titre-puces">À traiter <span class="compteur" id="puces-compteur"${chips.total === 0 ? html` hidden` : null}>${thousands(chips.total)}</span></h2>
+</div>
+<div class="carte carte-corps" id="a-traiter">
+${chipsToDo(chips, now)}
+</div>
+</section>
+<section aria-labelledby="titre-lecteurs">
+<div class="section-entete">
+<h2 id="titre-lecteurs">Lecteurs</h2>
+<a class="section-lien" href="/readers">Tous les lecteurs</a>
+</div>
+<div class="carte carte-corps" id="lecteurs-etat">
+${readersCard(readers, now)}
+</div>
+</section>
+</div>
+${AIDE.accueil}</div>`, {
+    section: SECTION_HOME, exact: true, search: false,
+    icons: ['lecteur', 'main', 'poste', 'puce', 'ajouter', 'associer', 'valide', 'chevron'],
   });
 }

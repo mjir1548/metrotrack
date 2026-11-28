@@ -738,3 +738,18 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
 - Retour à `dev` (U3, aller-retour 2/3) : ces points et les suggestions de la revue.
 - `dev` (U3, aller-retour 2) : tout est fait, 621 tests. Captures relues par l'orchestrateur (retrait de puce avec la case « Garder… »). Mesures : fiche à environ 10 ms à 300 000 scans, y compris avec 40 puces successives. → D-023 (Proposée).
 - **U3 commitée et poussée** (voir git log). Démo relancée.
+
+### 2026-11-27 — Étape U4 lancée : accueil et direct
+- Contenu :
+  - nouvel accueil `/` (recherche au centre, derniers mouvements, puces inconnues à traiter, lecteurs silencieux après 24 h) ; l'inventaire passe sur `/inventaire` ;
+  - direct par Server-Sent Events (`/api/direct`) : mouvements et puces qui apparaissent sans recharger, notification sur tous les écrans, bandeau sur la fiche concernée, nouvelle puce visible en direct dans « Donner une puce » ;
+  - dates relatives rafraîchies chaque minute.
+- Agent `dev` lancé.
+- `dev` (U4) : la session précédente s'est terminée en plein travail ; reprise. Terminé : 646 tests.
+  - Accueil `/` (`server/accueil.js`), inventaire sur `/inventaire`.
+  - Direct par Server-Sent Events (`server/direct.js` : 50 flux au plus, 8 par session, reprise par `Last-Event-ID`), publié après le COMMIT et après le 204 au boîtier.
+  - Notifications, bandeau sur la fiche, puce en direct dans « Donner une puce », dates relatives rafraîchies.
+  - Mesures : accueil à 68 ms (5 000 objets, 300 000 scans). Un scan apparaît en 70 ms environ sans recharger (vérifié dans Edge).
+  - Nouvelle route `GET /api/puces-inconnues`. → D-024.
+- Orchestrateur : 646/646 ; capture de l'accueil en direct relue (« Nouveau », notification).
+- **U4 commitée et poussée** (voir git log). Testeur et `revue-ux` lancés pour les finitions.

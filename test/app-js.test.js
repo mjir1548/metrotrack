@@ -28,7 +28,7 @@ test('app.js : aucune insertion de HTML ni évaluation de code', () => {
 test('app.js : aucun autre site, aucun stockage local ; un seul point d\'accès, sur ce serveur', () => {
   // Seule adresse absolue : l'espace de noms SVG (identifiant, jamais chargé).
   assert.deepEqual(CODE.match(/https?:\/\/[^'"`\s]*/g), ['http://www.w3.org/2000/svg']);
-  for (const forbidden of [/localStorage/, /sessionStorage/, /indexedDB/, /document\.cookie/, /XMLHttpRequest/, /WebSocket/, /EventSource/,
+  for (const forbidden of [/localStorage/, /sessionStorage/, /indexedDB/, /document\.cookie/, /XMLHttpRequest/, /WebSocket/,
     /sendBeacon/, /postMessage/, /window\.open/, /clipboard\.read/]) {
     assert.doesNotMatch(CODE, forbidden, String(forbidden));
   }
@@ -36,9 +36,16 @@ test('app.js : aucun autre site, aucun stockage local ; un seul point d\'accès,
   // jamais de lecture.
   assert.deepEqual(CODE.match(/navigator\.clipboard\.[a-zA-Z]+/g), ['navigator.clipboard.writeText']);
   assert.match(CODE, /navigator\.clipboard\.writeText\(keyBlock\.textContent\.trim\(\)\)/);
-  assert.equal((CODE.match(/\bfetch\(/g) ?? []).length, 1);
+  // Deux lectures : la recherche (U2) et la liste des puces inconnues après un événement du direct (U4).
+  assert.equal((CODE.match(/\bfetch\(/g) ?? []).length, 2);
   assert.match(CODE, /fetch\(`\$\{API\}\?\$\{params\}`/);
   assert.match(CODE, /const API = '\/api\/recherche';/);
+  assert.match(CODE, /fetch\(`\$\{CHIPS_API\}\?\$\{new URLSearchParams\(/);
+  assert.match(CODE, /const CHIPS_API = '\/api\/puces-inconnues';/);
+  // Direct (U4) : un seul flux EventSource, vers /api/direct sur ce serveur.
+  assert.equal((CODE.match(/new EventSource\(/g) ?? []).length, 1);
+  assert.match(CODE, /new EventSource\(lastId === null \? DIRECT_API : `\$\{DIRECT_API\}\?\$\{new URLSearchParams\(\{ depuis: lastId \}\)\}`\)/);
+  assert.match(CODE, /const DIRECT_API = '\/api\/direct';/);
   // Adresses construites : chemins fixes du site uniquement.
   // `${base}/…` : adresse du formulaire d'association, vérifiée par ASSOCIATE_PATH (chemin fixe /chips/<UID>/associate).
   for (const [, url] of CODE.matchAll(/\.href = (`[^`]*`|'[^']*')/g)) assert.match(url, /^(?:[`']\/(?!\/)|`\$\{base\}\/)/, url);

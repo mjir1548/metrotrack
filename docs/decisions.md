@@ -357,3 +357,25 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
 - **Limites acceptées** :
   - juste après un retrait avec conservation, « depuis » vaut « à l'instant » : l'arrivée devient la correction automatique (D-016) ;
   - « Modifier la fiche sur place » et l'attente en direct d'une puce sont reportés (le direct arrive avec U4).
+
+## D-024 — Écran d'accueil et direct (étape U4)
+
+- **Date** : 2026-11-28 · **Statut** : Proposée (choix du développeur selon D-022, à revoir par l'humain)
+- **Décision** :
+  - `/` devient l'**accueil** ; l'inventaire passe sur `/inventaire`. Une ancienne adresse `/?q=…` est redirigée (303) vers `/inventaire?q=…` (chemin fixe, saisie encodée). Navigation : Accueil, Inventaire, Postes, Lecteurs, Puces inconnues. Pages d'erreur : « Revenir à l'accueil » ;
+  - **mouvement** (`server/accueil.js`) : un scan d'une puce portée par une fiche, ou une correction manuelle, dont le lieu diffère de l'événement précédent de la fiche (même ordre que la vue). Un rescan au même poste n'en est pas un. Calcul borné : 2 000 derniers scans et 200 dernières corrections examinés, une recherche d'index par événement. Rien n'est stocké ;
+  - **lecteur silencieux** : actif et sans scan depuis plus de 24 h, ou jamais (seuil fixe) ;
+  - **À traiter** : 3 puces inconnues les plus récentes et leur total exact, en un seul parcours d'index (`unknownChipsOverview`) ;
+  - **direct** : `GET /api/direct` en Server-Sent Events, sans dépendance (`server/direct.js`). Session obligatoire (401), `Sec-Fetch-Site` same-origin si annoncé (403), `no-store`, CSP inchangée. Événement publié après le COMMIT **et** après la réponse 204 au boîtier (contrat `/api/frames` inchangé, `docs/protocole.md` inchangé), et après correction, association, création depuis une puce, retrait de puce. Contenu : `{type, itemId, nom, poste, posteId, lecteur, iso, inconnu, deplacement, par}` : ni clé, ni compteur, ni numéro de puce ;
+  - le numéro des puces inconnues (nécessaire à « Créer une fiche ») est lu à part par `GET /api/puces-inconnues?n=` (mêmes contrôles que `/api/recherche`), au plus une fois par seconde par page ;
+  - **plafonds** : 50 flux au total (503 au-delà), 8 par session (le plus ancien est fermé). Le plafond de 256 connexions du serveur laisse donc toujours au moins 206 connexions aux boîtiers et aux pages ;
+  - battement de cœur toutes les 25 s, qui revérifie aussi la session (expirée ou compte désactivé : flux fermé) ; la déconnexion ferme aussitôt les flux de la session ;
+  - **reprise** : les 100 derniers événements sont gardés en mémoire avec un numéro croissant ; `Last-Event-ID` ou `?depuis=` renvoie les manqués, sinon un événement `resynchro` (la page propose d'actualiser) ;
+  - côté navigateur (`app.js`) : le flux est fermé quand l'onglet est masqué et rouvert ensuite avec `?depuis=` (un navigateur n'ouvre que 6 connexions HTTP/1.1 par site : des onglets cachés ne doivent pas les occuper).
+- **Mesure** (5 000 objets, 300 000 scans, 5 000 puces inconnues, 2 000 corrections) : données de l'accueil 57 ms, `GET /` complet en HTTPS 68 ms (médianes, `test/u4-charge.test.js`).
+- **Limites acceptées** :
+  - si les 2 000 derniers scans ne sont que des rescans ou des puces inconnues, l'accueil montre moins de 8 mouvements ;
+  - une association n'apparaît pas comme un mouvement en direct ; au rechargement, le dernier scan de la puce apparaît comme une arrivée à son heure d'origine ;
+  - un retrait de puce avec « Garder l'emplacement » crée une correction au même poste, affichée comme « Corrigé à la main » dans les mouvements (la puce n'étant plus là, l'événement précédent n'est pas retrouvé) ;
+  - le serveur reste en HTTP/1.1 : plus de 6 onglets visibles en même temps sur le même navigateur bloqueraient les requêtes suivantes.
+- **Alternatives écartées** : WebSocket (inutile, plus complexe) ; actualisation périodique (moins réactive, plus coûteuse) ; numéro de puce dans le flux (refusé par minimisation).

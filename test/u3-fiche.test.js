@@ -274,7 +274,7 @@ test('donner une puce : état vide utile, puis puces inconnues récentes (la plu
   assert.equal(empty.status, 200);
   assert.ok(empty.body.includes('<h1>Donner une puce</h1>'));
   assert.ok(empty.body.includes('Scannez la puce sur n\'importe quel lecteur, puis choisissez-la ici. <a href="/items/'));
-  assert.ok(empty.body.includes('Aucune puce inconnue pour l\'instant. Scannez la nouvelle puce sur un lecteur, puis actualisez cette page.'));
+  assert.ok(empty.body.includes('Aucune puce inconnue pour l\'instant. Scannez la nouvelle puce sur un lecteur : elle apparaîtra ici.'));
   scanAt(2, 2, '0B000001', T(500));
   scanAt(1, 1, '0B000002', T(510));
   const list = (await page(`/items/${id}/puce`)).body;

@@ -125,3 +125,8 @@ export function formatDayParts(iso, now, timeZone = undefined) {
   else if (sameDay(day, previousDay(today))) label = 'Hier';
   return { day: label, time: f.time.format(at) };
 }
+
+/** « jeudi 27 novembre » : jour de la semaine et date, sans l'année (surtitre de l'accueil, étape U4). */
+export function formatLongDay(now, timeZone = undefined) {
+  return new Intl.DateTimeFormat('fr-FR', { timeZone, weekday: 'long', day: 'numeric', month: 'long' }).format(now);
+}

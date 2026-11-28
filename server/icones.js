@@ -34,6 +34,9 @@ const SYMBOLS = {
   main: html`<symbol id="i-main" ${S}><path d="M8 12.5V6.8a1.5 1.5 0 013 0V11"></path><path d="M11 10.5V5.3a1.5 1.5 0 013 0v5.2"></path><path d="M14 10.5V7a1.5 1.5 0 013 0v6.5a6.5 6.5 0 01-6.5 6.5h-.4a6 6 0 01-4.8-2.4L3.6 14.6a1.5 1.5 0 012.2-2L8 14.5"></path></symbol>`,
   options: html`<symbol id="i-options" ${S}><circle cx="6" cy="12" r="1.2"></circle><circle cx="12" cy="12" r="1.2"></circle><circle cx="18" cy="12" r="1.2"></circle></symbol>`,
   fermer: html`<symbol id="i-fermer" ${S}><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></symbol>`,
+  // Étape U4 (accueil) : direct (ondes) et lecteur silencieux (lecteur barré), du jeu d'icônes.
+  direct: html`<symbol id="i-direct" ${S}><circle cx="12" cy="12" r="2.2"></circle><path d="M8 8a5.7 5.7 0 000 8M16 8a5.7 5.7 0 010 8"></path><path d="M5.2 5.2a9.6 9.6 0 000 13.6M18.8 5.2a9.6 9.6 0 010 13.6"></path></symbol>`,
+  silence: html`<symbol id="i-silence" ${S}><rect x="6" y="9" width="12" height="11" rx="2.5"></rect><path d="M9.5 6.2a4 4 0 015 0"></path><path d="M3.5 3.5l17 17"></path></symbol>`,
   associer: html`<symbol id="i-associer" ${S}><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"></path></symbol>`,
 };
 
@@ -58,9 +61,12 @@ const USE_TAG = /<use href="#i-([a-z]+)"><\/use>/g;
  * d'erreur n'en emporte aucun ; null si la page n'utilise aucune icône). page : fragment déjà produit par html`...`. Les noms sont
  * relevés dans les <use href="#i-..."> du gabarit : une donnée affichée ne peut pas en produire
  * (tout « < » interpolé est échappé), et seuls les noms de SYMBOLS sont retenus.
+ * extra : noms CONSTANTS d'icônes à inclure en plus, pour les éléments que web/static/app.js
+ * ajoute à la page (direct, étape U4) ; un nom inconnu est une erreur de programmation.
  */
-export function spriteFor(page) {
-  const used = new Set([...String(page).matchAll(USE_TAG)].map((m) => m[1]));
+export function spriteFor(page, extra = []) {
+  for (const name of extra) if (!Object.hasOwn(SYMBOLS, name)) throw new Error(`icône inconnue : ${name}`);
+  const used = new Set([...String(page).matchAll(USE_TAG)].map((m) => m[1]).concat(extra));
   const symbols = ICON_NAMES.filter((name) => used.has(name)).map((name) => html`${SYMBOLS[name]}\n`);
   if (symbols.length === 0) return null; // page sans icône : pas de sprite
   return html`<svg class="sprite" aria-hidden="true">

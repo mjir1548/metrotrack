@@ -283,13 +283,13 @@ test('gabarit : « Aller au contenu » vers <main id="contenu">, polices et styl
 test('bandeau : rubrique courante en aria-current="page" sur la liste, "true" sur une sous-page ; recherche compacte vers /?q=', async () => {
   const list = (await send({ path: '/stations', session: token })).body.toString('utf8');
   assert.ok(list.includes('<li><a href="/stations" aria-current="page">Postes</a></li>'));
-  assert.ok(list.includes('<li><a href="/">Inventaire</a></li>'));
-  assert.ok(list.includes('<form class="recherche-barre" method="get" action="/" role="search">'));
+  assert.ok(list.includes('<li><a href="/inventaire">Inventaire</a></li>'));
+  assert.ok(list.includes('<form class="recherche-barre" method="get" action="/inventaire" role="search">'));
   const sub = (await send({ path: '/stations/new', session: token })).body.toString('utf8');
   assert.ok(sub.includes('<li><a href="/stations" aria-current="true">Postes</a></li>'));
   assert.equal((sub.match(/aria-current=/g) ?? []).length, 1);
   // L'inventaire a sa propre recherche : pas de recherche compacte dans le bandeau.
-  const home = (await send({ path: '/', session: token })).body.toString('utf8');
+  const home = (await send({ path: '/inventaire', session: token })).body.toString('utf8');
   assert.ok(!home.includes('recherche-barre'));
-  assert.ok(home.includes('<li><a href="/" aria-current="page">Inventaire</a></li>'));
+  assert.ok(home.includes('<li><a href="/inventaire" aria-current="page">Inventaire</a></li>'));
 });

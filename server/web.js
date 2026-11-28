@@ -1,6 +1,7 @@
 // Interface web : connexion, déconnexion, inventaire (liste et fiche), édition des fiches
 // (création, modification, suppression, correction de localisation), postes et lecteurs
-// (étape 6), puces inconnues et association (étape 7), fichiers statiques (feuilles de style et polices, en liste blanche).
+// (étape 6), puces inconnues et association (étape 7), écran d'accueil et direct (étape U4),
+// fichiers statiques (feuilles de style et polices, en liste blanche).
 // HTML rendu côté serveur, sans ressource externe. Un seul fichier JavaScript local
 // (web/static/app.js, D-021) améliore les pages (recherche Ctrl K, résultats pendant la frappe,
 // via GET /api/recherche) ; chaque page reste utilisable sans lui.
@@ -41,8 +42,10 @@ import {
 } from './readers.js';
 import {
   listUnknownChips, getChip, chipPreviousOwner, chipPreviousOwners, createItemForChip, associateChip, detachChip, MAX_ASSOCIATE_RESULTS,
-  MAX_OFFERED_CHIPS,
+  MAX_OFFERED_CHIPS, unknownChipsOverview,
 } from './chips.js';
+import { homeData } from './accueil.js';
+import { itemEvent, parseEventId } from './direct.js';
 import {
   loginPage as loginView, forbiddenPage, errorPage, inventoryPage, itemPage as itemView, itemNotFoundPage, BUSY_MESSAGE,
   LOGIN_EXPIRED_MESSAGE, SESSION_EXPIRED_MESSAGE,
@@ -51,7 +54,7 @@ import {
   readersPage, readerPage as readerView, readerFormPage, readerStationPage, deactivateReaderPage as deactivateView,
   replaceReaderPage as replaceView, readerRenamePage, readerKeyPage, readerNotFoundPage, readerInactivePage, readerIdsExhaustedPage,
   chipsPage, associateSearchPage, associateConfirmPage, chipNotFoundPage, chipKnownPage, searchResult,
-  itemHistoryPage, giveChipPage as giveChipView, detachChipPage as detachChipView,
+  itemHistoryPage, giveChipPage as giveChipView, detachChipPage as detachChipView, homePage as homeView, chipResult,
 } from './views.js';
 
 // Délai avant la réponse à un échec de connexion (ralentit les essais successifs ; la
@@ -160,8 +163,11 @@ const clearCookie = (name) => `${name}=; ${COOKIE_ATTRIBUTES}; Max-Age=0`;
 
 // Table des routes : chemin exact → méthode → gestionnaire.
 const ROUTES = {
-  '/': { GET: inventory },
+  '/': { GET: home },
+  '/inventaire': { GET: inventory },
   '/api/recherche': { GET: searchApi },
+  '/api/direct': { GET: directApi },
+  '/api/puces-inconnues': { GET: chipsApi },
   '/login': { GET: loginPage, POST: login },
   '/logout': { POST: logout },
   ...Object.fromEntries([...STATIC_FILES].map(([path, file]) => [path, { GET: (ctx, req, res) => sendStatic(res, file) }])),
@@ -256,6 +262,22 @@ export function handleWeb(ctx, path, req, res) {
 }
 
 // ---------------------------------------------------------------- gestionnaires
+
+// Écran d'accueil (étape U4) : recherche, derniers mouvements, puces à traiter, lecteurs.
+// Compatibilité : l'inventaire était à « / » avant U4 ; une ancienne adresse /?q=… (favori,
+// lien enregistré) mène aux mêmes résultats, sur /inventaire. La cible est un chemin FIXE ; la
+// saisie n'y figure que comme valeur de paramètre, encodée (pas de redirection ouverte).
+function home(ctx, req, res) {
+  const session = currentSession(ctx, req);
+  if (!session) return redirect(res, '/login');
+  const query = queryParam(req, 'q');
+  if (query !== null) {
+    const q = normalizeQuery(query);
+    return redirect(res, q === '' ? '/inventaire' : `/inventaire?${new URLSearchParams({ q })}`);
+  }
+  const now = Date.now();
+  sendHtml(res, 200, homeView(pageUser(session), { ...homeData(ctx.db, now), now }));
+}
 
 // Liste de l'inventaire, avec recherche facultative (?q=).
 function inventory(ctx, req, res) {
@@ -352,6 +374,7 @@ function detachChipAction(ctx, req, res, idText) {
       return sendHtml(res, 409, detachChipView(user, { item, changed: true, fallback: lastCorrectionStation(ctx.db, id) }));
     }
     ctx.log(`puce ${outcome.previousUid} retirée de la fiche ${outcome.id} par ${session.username}${outcome.kept ? ' (emplacement gardé)' : ''}`);
+    publishItem(ctx, 'puce', outcome.id, session.username);
     redirect(res, `/items/${outcome.id}?ok=${outcome.kept ? 'puce_retiree_gardee' : 'puce_retiree'}`);
   });
 }
@@ -403,6 +426,60 @@ function searchApi(ctx, req, res) {
   }
   const { total, items } = searchItems(ctx.db, query);
   sendJson(res, 200, { total, resultats: items.map((row) => searchResult(row, now)) });
+}
+
+// ---------------------------------------------------------------- direct (étape U4)
+
+/**
+ * GET /api/direct : flux d'événements du direct (server/direct.js). Mêmes contrôles que
+ * /api/recherche : Sec-Fetch-Site same-origin si annoncé (403 sinon), session obligatoire (401
+ * JSON sinon), aucun en-tête CORS. Plafond de flux atteint : 503 JSON, sans rien ouvrir.
+ * Reprise : Last-Event-ID (EventSource) ou ?depuis= (app.js), au format strict (parseEventId).
+ */
+function directApi(ctx, req, res) {
+  const site = req.headers['sec-fetch-site'];
+  if (site !== undefined && site !== 'same-origin') return sendJson(res, 403, { erreur: 'origine' });
+  const session = currentSession(ctx, req);
+  if (!session) return sendJson(res, 401, { erreur: 'session' });
+  const lastId = parseEventId(req.headers['last-event-id'] ?? queryParam(req, 'depuis'));
+  if (!ctx.direct.open(req, res, session.token, lastId)) {
+    ctx.log('direct : plafond de flux atteint, connexion refusée');
+    res.setHeader('Retry-After', '30');
+    return sendJson(res, 503, { erreur: 'plein' });
+  }
+}
+
+/** Publie l'événement d'une action sur une fiche (après l'écriture) ; un échec est seulement journalisé. */
+function publishItem(ctx, type, itemId, username) {
+  try {
+    const item = getItem(ctx.db, itemId);
+    if (item) ctx.direct.publish(itemEvent(type, item, username));
+  } catch (err) {
+    ctx.log(`diffusion en direct impossible : ${err.message}`);
+  }
+}
+
+// Nombre maximal de puces demandées à GET /api/puces-inconnues (page « Donner une puce »).
+const MAX_API_CHIPS = MAX_OFFERED_CHIPS;
+
+/**
+ * GET /api/puces-inconnues?n=3 : les n puces inconnues les plus récentes (1 ≤ n ≤ MAX_API_CHIPS,
+ * 3 par défaut) et leur nombre total. Appelé par app.js après un événement du direct « puce
+ * inconnue » (le flux, lui, ne contient jamais de numéro de puce). Mêmes contrôles que
+ * /api/recherche (origine, session, JSON échappé, no-store). Ces numéros sont ceux qu'affiche
+ * déjà la page « Puces inconnues » au même compte.
+ */
+function chipsApi(ctx, req, res) {
+  const site = req.headers['sec-fetch-site'];
+  if (site !== undefined && site !== 'same-origin') return sendJson(res, 403, { erreur: 'origine' });
+  const session = currentSession(ctx, req);
+  if (!session) return sendJson(res, 401, { erreur: 'session' });
+  const text = queryParam(req, 'n') ?? '3';
+  const n = /^[0-9]{1,2}$/.test(text) ? Number(text) : 0;
+  if (n < 1 || n > MAX_API_CHIPS) return sendJson(res, 400, { erreur: 'requete' });
+  const { chips, total } = unknownChipsOverview(ctx.db, n);
+  const now = Date.now();
+  sendJson(res, 200, { total, puces: chips.map((chip) => chipResult(chip, now)) });
 }
 
 // ---------------------------------------------------------------- édition des fiches
@@ -470,7 +547,7 @@ function deleteItemAction(ctx, req, res, idText) {
     const id = parseItemId(idText);
     if (id === null || !deleteItem(ctx.db, session.userId, id)) return sendHtml(res, 404, itemNotFoundPage(user));
     ctx.log(`fiche ${id} supprimée par ${session.username}`);
-    redirect(res, '/?ok=supprime');
+    redirect(res, '/inventaire?ok=supprime');
   });
 }
 
@@ -498,6 +575,7 @@ function correctLocationAction(ctx, req, res, idText) {
       return sendHtml(res, 400, locationView(user, { item, stations: listStations(ctx.db), selected, error }));
     }
     ctx.log(`localisation de la fiche ${item.id} corrigée par ${session.username}`);
+    publishItem(ctx, 'correction', item.id, session.username);
     redirect(res, `/items/${item.id}?ok=corrige`);
   });
 }
@@ -924,6 +1002,7 @@ function createChipItemAction(ctx, req, res, uidText) {
     const outcome = createItemForChip(ctx.db, session.userId, chip.uid, valid);
     if (chipConflictAnswered(res, user, chip.uid, outcome)) return;
     ctx.log(`fiche ${outcome.id} créée par ${session.username} avec la puce ${chip.uid}`);
+    publishItem(ctx, 'puce', outcome.id, session.username);
     redirect(res, `/items/${outcome.id}?ok=cree_puce`);
   });
 }
@@ -983,6 +1062,7 @@ function associateChipAction(ctx, req, res, uidText, itemIdText) {
     }
     const replaced = outcome.previousUid === null ? '' : ` (remplace ${outcome.previousUid})`;
     ctx.log(`puce ${uid} associée à la fiche ${outcome.id} par ${session.username}${replaced}`);
+    publishItem(ctx, 'puce', outcome.id, session.username);
     redirect(res, `/items/${outcome.id}?ok=${outcome.previousUid === null ? 'puce_associee' : 'puce_remplacee'}`);
   });
 }
@@ -1086,6 +1166,7 @@ function logout(ctx, req, res) {
     // Sans session valide, aucun jeton CSRF ne peut être valide : 403 comme tout POST non vérifié.
     if (!session || !safeEqual(form.get('csrf'), csrfTokenFor(session.token))) return forbidden(ctx, req, res, 'csrf', remote);
     deleteSession(ctx.db, session.token); // invalidation côté serveur, pas seulement le cookie
+    ctx.direct.closeSession(session.token); // flux du direct de cette session fermés aussitôt
     ctx.log(`déconnexion : compte ${session.username}`);
     redirect(res, '/login', [clearCookie(SESSION_COOKIE)]);
   });

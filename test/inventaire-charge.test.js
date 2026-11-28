@@ -73,8 +73,8 @@ const withoutHelp = (html) => html.replace(/<details class="aide-page">[\s\S]*?<
 const historyRows = (html) => /<ol class="frise">([\s\S]*?)<\/ol>/.exec(html)?.[1].match(/<li class="frise-etape/g)?.length ?? 0;
 
 test(`liste de ${ITEMS} objets avec ${SCANS} scans : toutes les lignes, en moins de ${MAX_MS} ms`, async (t) => {
-  await page('/'); // échauffement
-  const res = await page('/');
+  await page('/inventaire'); // échauffement
+  const res = await page('/inventaire');
   t.diagnostic(`GET / : ${Math.round(res.ms)} ms, ${Math.round(res.body.length / 1024)} Kio`);
   assert.equal(res.status, 200);
   assert.ok(res.body.includes(`${ITEMS} objets`));
@@ -85,7 +85,7 @@ test(`liste de ${ITEMS} objets avec ${SCANS} scans : toutes les lignes, en moins
 });
 
 test('recherche sur la base chargée : résultats corrects, en moins de la borne', async (t) => {
-  const res = await page('/?q=Objet%2099');
+  const res = await page('/inventaire?q=Objet%2099');
   t.diagnostic(`GET /?q=Objet 99 : ${Math.round(res.ms)} ms`);
   assert.equal(res.status, 200);
   // Recherche par mots (étape U2) : « objet » ET « 99 », chacun n'importe où dans le nom (ou une

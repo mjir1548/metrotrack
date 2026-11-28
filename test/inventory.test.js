@@ -207,7 +207,7 @@ test('inventoryPage : aucun résultat de recherche, saisie réaffichée échapp�
   assert.ok(page.includes(`value="${escaped}"`));
   assert.ok(page.includes(`Aucun objet ne correspond à «&nbsp;${escaped}&nbsp;».`));
   assert.ok(page.includes('0 résultat pour'));
-  assert.ok(page.includes('<a href="/">Effacer</a>'));
+  assert.ok(page.includes('<a href="/inventaire">Effacer</a>'));
   assert.ok(!withoutAppScript(page).includes('<script'));
 });
 
@@ -219,7 +219,7 @@ test('itemPage : objet sans puce, sans propriété ni note', () => {
   assert.ok(page.includes('Aucune propriété'));
   assert.ok(page.includes('Aucune note'));
   assert.ok(page.includes('jamais localisé'));
-  assert.ok(page.includes('<nav class="fil" aria-label="Fil d\'Ariane">\n<a href="/">Inventaire</a>')); // étape U1
+  assert.ok(page.includes('<nav class="fil" aria-label="Fil d\'Ariane">\n<a href="/inventaire">Inventaire</a>')); // étape U1
 });
 
 test('loginPage : message de surcharge affiché, jeton CSRF repris', () => {

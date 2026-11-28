@@ -121,11 +121,11 @@ function detailText(inner) {
   return manual ? `${arrival} · correction manuelle ${manual[1]}` : inner;
 }
 async function shown() {
-  const list = (await send({ path: '/', headers: withSession() })).body;
+  const list = (await send({ path: '/inventaire', headers: withSession() })).body;
   const sheet = (await send({ path: '/items/1', headers: withSession() })).body;
   const stationA = (await send({ path: '/stations/1', headers: withSession() })).body;
   const stationB = (await send({ path: '/stations/2', headers: withSession() })).body;
-  const detail = /<p class="localisation-detail">(.*?)<\/p>/s.exec(sheet)?.[1] === undefined ? null : detailText(/<p class="localisation-detail">(.*?)<\/p>/s.exec(sheet)[1]).replace(/ title="[^"]*"/g, '').replace(/^Depuis : /, '').replace(/<\/time> — [^<·]*?(?= · |$)/, '</time>') ?? null; // « Depuis : » : étape U1 ; « — aujourd'hui à … » : étape U2
+  const detail = /<p class="localisation-detail">(.*?)<\/p>/s.exec(sheet)?.[1] === undefined ? null : detailText(/<p class="localisation-detail">(.*?)<\/p>/s.exec(sheet)[1]).replace(/ title="[^"]*"/g, '').replace(/ data-age/g, '').replace(/^Depuis : /, '').replace(/<\/time> — [^<·]*?(?= · |$)/, '</time>') ?? null; // « Depuis : » : étape U1 ; « — aujourd'hui à … » : étape U2
   return { list: depuisIn(list, 'Oscilloscope'), A: depuisIn(stationA, 'Oscilloscope'), B: depuisIn(stationB, 'Oscilloscope'), detail };
 }
 const t = (iso) => `<time datetime="${iso}">`;
@@ -221,7 +221,7 @@ test('base verrouillée par une autre connexion (SQLITE_BUSY) : page 500 lisible
     assert.equal(web.headers['set-cookie'], undefined);
     assert.equal(web.headers.location, undefined);
     assert.ok(web.body.includes('<h1>Un problème est survenu</h1>'));
-    assert.ok(web.body.includes('Revenir à l\'inventaire'));
+    assert.ok(web.body.includes('Revenir à l\'accueil'));
     assert.ok(!web.body.includes(MARK) && !/locked|busy|sqlite/i.test(web.body), 'aucun détail technique ni donnée reçue');
 
     const frame = encodeFrame({ readerId: 1, counter: ++counters[1], uid: Buffer.from(UID, 'hex'), key: KEYS[1] });
@@ -247,7 +247,7 @@ test('pages d\'erreur : ni l\'URL, ni la requête, ni le corps ne sont reflété
   const cases = [
     [404, { path: `/${MARK}%3Cb%3E?q=${MARK}` }],
     [404, { path: `/items/1/${MARK}` }],
-    [405, { method: 'PUT', path: `/?${MARK}=1`, body: MARK }],
+    [405, { method: 'PUT', path: `/inventaire?${MARK}=1`, body: MARK }],
     [405, { path: `/logout?${MARK}` }],
     [400, { method: 'POST', path: `/login?${MARK}`, headers: { 'Content-Type': `text/${MARK}`, Origin: origin }, body: `username=${MARK}` }],
     [400, { method: 'POST', path: '/login', headers: { 'Content-Type': `application/x-www-form-urlencoded; charset=${MARK}`, Origin: origin }, body: `username=${MARK}` }],
@@ -261,7 +261,7 @@ test('pages d\'erreur : ni l\'URL, ni la requête, ni le corps ne sont reflété
       assert.ok(!res.body.includes(MARK), `${what} : reflet`);
       assert.equal(res.headers['x-content-type-options'], 'nosniff', what);
       assert.equal(res.headers['cache-control'], 'no-store', what);
-      assert.ok(res.body.includes(connected ? 'href="/">Revenir à l\'inventaire' : 'href="/login">Se connecter'), what);
+      assert.ok(res.body.includes(connected ? 'href="/">Revenir à l\'accueil' : 'href="/login">Se connecter'), what);
     }
   }
 });
@@ -304,7 +304,7 @@ test('puce rescannée plus de MAX_RUN_SCANS fois au même poste : « au moins »
   const oldestExamined = db.prepare('SELECT received_at FROM scans WHERE uid_nfc = ? ORDER BY received_at DESC, id DESC LIMIT 1 OFFSET ?').get(uid, MAX_RUN_SCANS - 1).received_at;
   const cell = (html) => /<td data-label="Depuis">(.*?)<\/td>/s.exec(html.split('<tr>').find((r) => r.includes('>Sonde fixe</a>')) ?? '')?.[1] ?? null;
   const pages = async () => ({
-    list: cell((await send({ path: '/', headers: withSession() })).body),
+    list: cell((await send({ path: '/inventaire', headers: withSession() })).body),
     post: cell((await send({ path: '/stations/1', headers: withSession() })).body),
     sheet: detailText(/<p class="localisation-detail">(.*?)<\/p>/s.exec((await send({ path: '/items/100', headers: withSession() })).body)?.[1] ?? ''),
   });
@@ -325,7 +325,7 @@ test('puce rescannée plus de MAX_RUN_SCANS fois au même poste : « au moins »
   // Un scan ailleurs (par le vrai point d'entrée) : calcul exact.
   await scan(2, uid);
   const elsewhere = lastScanAt(uid);
-  const listB = cell((await send({ path: '/', headers: withSession() })).body);
+  const listB = cell((await send({ path: '/inventaire', headers: withSession() })).body);
   assert.match(listB, new RegExp(`^<time datetime="${elsewhere}"`), listB);
   assert.equal(cell((await send({ path: '/stations/1', headers: withSession() })).body), null, 'plus au poste A');
   // Retour en A : exact (le scan en B est dans la fenêtre examinée).

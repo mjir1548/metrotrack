@@ -251,8 +251,14 @@ const associerConfirmation = encadre(html`<p>Vérifiez ce qui va changer, puis c
 <li>Le changement est noté dans l'historique de la fiche.</li>
 </ul>`);
 
+// Écran d'accueil (étape U4) : le principe en trois phrases, pour un premier contact.
+const accueil = encadre(html`<p>Chaque objet porte une puce, et chaque poste a son lecteur.</p>
+<p>En arrivant à un poste, présentez l'objet au lecteur : MetroTrack note tout seul son nouvel emplacement, et il apparaît ici dans «&nbsp;Derniers mouvements&nbsp;».</p>
+<p>Un objet a bougé sans être scanné&nbsp;? Corrigez son emplacement à la main depuis sa fiche.</p>`);
+
 /** Encadrés d'aide, un par page. Fragments constants, produits une fois au chargement. */
 export const AIDE = Object.freeze({
+  accueil,
   inventaire,
   nouvelleFiche,
   ficheDepuisPuce,

@@ -265,7 +265,7 @@ test('bandeau : « Postes » et « Lecteurs » sont deux rubriques ; rubrique co
   const ICON_ADD = '<svg class="ic" aria-hidden="true"><use href="#i-ajouter"></use></svg>';
   const stations = await page('/stations');
   assert.equal(stations.status, 200);
-  assert.ok(stations.body.includes('<li><a href="/">Inventaire</a></li>'));
+  assert.ok(stations.body.includes('<li><a href="/inventaire">Inventaire</a></li>'));
   assert.ok(stations.body.includes('<li><a href="/stations" aria-current="page">Postes</a></li>'));
   assert.ok(stations.body.includes('<li><a href="/readers">Lecteurs</a></li>'));
   assert.ok(stations.body.includes(`<a class="bouton" href="/stations/new">${ICON_ADD}Nouveau poste</a>`));
@@ -276,11 +276,11 @@ test('bandeau : « Postes » et « Lecteurs » sont deux rubriques ; rubrique co
   assert.ok(readers.body.includes(`<a class="bouton" href="/readers/new">${ICON_ADD}Nouveau lecteur</a>`));
   assert.ok((await page('/readers/1')).body.includes('<li><a href="/readers" aria-current="true">Lecteurs</a></li>'));
   assert.ok((await page('/stations/new')).body.includes('<li><a href="/stations" aria-current="true">Postes</a></li>'));
-  const list = await page('/');
-  assert.ok(list.body.includes('<li><a href="/" aria-current="page">Inventaire</a></li>'));
+  const list = await page('/inventaire');
+  assert.ok(list.body.includes('<li><a href="/inventaire" aria-current="page">Inventaire</a></li>'));
   assert.ok(list.body.includes('<li><a href="/stations">Postes</a></li>'));
   const sheet = await page('/items/1');
-  assert.ok(sheet.body.includes('<li><a href="/" aria-current="true">Inventaire</a></li>'));
+  assert.ok(sheet.body.includes('<li><a href="/inventaire" aria-current="true">Inventaire</a></li>'));
 });
 
 // ---------------------------------------------------------------- postes
@@ -582,7 +582,7 @@ test('lecteur non affecté : création sans poste ; un scan donne « lecteur non
   assert.ok(res.body.includes('<p class="sous-titre-page">Lecteur n° 4 · non affecté</p>'));
   assert.deepEqual(lastAudit().details, { id: 4, name: '', station: null });
   assert.equal((await postFrame(4, 1, Buffer.from(hex, 'hex'))).status, 204);
-  const list = await page('/');
+  const list = await page('/inventaire');
   assert.ok(list.body.includes('<a class="lien-etat" href="/readers/4"><span class="etat etat-inconnue">lecteur non affecté</span></a>'));
   assertSafePage(list.body, 'inventaire avec lecteur non affecté');
   const sheet = await page('/items/1');

@@ -94,7 +94,7 @@ function assertErrorPage(res, { status, title, connected }) {
   assert.ok(res.body.includes(`<title>${title} · MetroTrack</title>`), what);
   assert.ok(!res.body.includes(String(status)), `${what} : code d'erreur visible`);
   if (connected) {
-    assert.ok(res.body.includes('<a class="bouton" href="/">Revenir à l\'inventaire</a>'), what);
+    assert.ok(res.body.includes('<a class="bouton" href="/">Revenir à l\'accueil</a>'), what);
     assert.ok(!res.body.includes('Se connecter'), what);
   } else {
     assert.ok(res.body.includes('<a class="bouton" href="/login">Se connecter</a>'), what);
@@ -271,7 +271,7 @@ test('405 sur un GET (adresse tapée, ex. /logout) : « Cette adresse ne s\'ouvr
   // HEAD : même choix de texte (aucun corps n'est envoyé, seul le code compte).
   assert.equal((await send({ method: 'HEAD', path: '/logout' })).status, 405);
   // POST sur une route en lecture seule : texte « formulaire » inchangé.
-  const post = await send({ method: 'POST', path: '/', headers: withSession(FORM_TYPE), body: '' });
+  const post = await send({ method: 'POST', path: '/inventaire', headers: withSession(FORM_TYPE), body: '' });
   assertErrorPage(post, { status: 405, title: 'Action impossible', connected: true });
   assert.ok(post.body.includes('Le formulaire envoyé n&#39;a pas pu être lu.'));
 });
@@ -338,7 +338,7 @@ test('500 : « Un problème est survenu », sans aucun détail technique ; le se
     db.exec('DROP TRIGGER temp.audit_casse');
   }
   assert.ok(logs.some((l) => l.includes('erreur interne') && l.includes('panne-secrete-de-test')), 'la cause reste au journal');
-  assert.equal((await send({ path: '/', headers: withSession() })).status, 200);
+  assert.equal((await send({ path: '/inventaire', headers: withSession() })).status, 200);
 });
 
 test('403 avec session valide : « Action refusée » et lien vers l\'inventaire (plus « Revenir à la connexion »)', async () => {
@@ -351,7 +351,7 @@ test('403 avec session valide : « Action refusée » et lien vers l\'inventaire
   assertWebHeaders(res, '403');
   assert.equal(res.headers.connection, 'close');
   assert.ok(res.body.includes('<h1>Action refusée</h1>'));
-  assert.ok(res.body.includes('<a class="bouton" href="/">Revenir à l\'inventaire</a>'));
+  assert.ok(res.body.includes('<a class="bouton" href="/">Revenir à l\'accueil</a>'));
   assert.ok(!res.body.includes('Revenir à la connexion') && !res.body.includes('Requête refusée'));
 });
 

@@ -74,7 +74,7 @@ function send({ method = 'GET', path = '/', headers = {}, body } = {}) {
   });
 }
 const page = (path, session = token) => send({ path, headers: session ? { Cookie: `__Host-mt_session=${session}` } : {} });
-const search = (q) => page(`/?q=${encodeURIComponent(q)}`);
+const search = (q) => page(`/inventaire?q=${encodeURIComponent(q)}`);
 
 /** Lignes du tableau de l'inventaire : [{id, html}] dans l'ordre affiché. */
 function rows(html) {
@@ -133,7 +133,7 @@ const scan = (readerId, uidHex) => ingestFrame(db, encodeFrame({ readerId, count
 // ---------------------------------------------------------------- session obligatoire
 
 test('sans session (ou session invalide) : toutes les pages d\'inventaire redirigent vers /login (303, sans corps)', async () => {
-  for (const path of ['/', '/?q=multi', '/items/1', '/items/2', '/items/0', '/items/abc', '/items/999999', '/items/']) {
+  for (const path of ['/', '/inventaire?q=multi', '/items/1', '/items/2', '/items/0', '/items/abc', '/items/999999', '/items/']) {
     for (const session of [null, 'A'.repeat(43)]) {
       const res = await page(path, session);
       assert.equal(res.status, 303, path);
@@ -147,20 +147,20 @@ test('sans session (ou session invalide) : toutes les pages d\'inventaire rediri
 // ---------------------------------------------------------------- liste
 
 test('liste : en-têtes de sécurité, bandeau (Inventaire actif, compte, déconnexion avec jeton CSRF), titre', async () => {
-  const res = await page('/');
+  const res = await page('/inventaire');
   assert.equal(res.status, 200);
   assertWebHeaders(res, 'liste');
   assert.match(res.body, /<title>Inventaire · MetroTrack<\/title>/);
-  assert.ok(res.body.includes('<li><a href="/" aria-current="page">Inventaire</a></li>'));
+  assert.ok(res.body.includes('<li><a href="/inventaire" aria-current="page">Inventaire</a></li>'));
   assert.match(res.body, /<span class="visuellement-cache">Connecté en tant que <\/span><strong>alice<\/strong>/);
   assert.ok(res.body.includes(`<input type="hidden" name="csrf" value="${csrfTokenFor(token)}">`));
   assert.ok(res.body.includes('<form method="post" action="/logout">'));
-  assert.ok(res.body.includes('<form class="recherche recherche--direct" method="get" action="/" role="search">'));
+  assert.ok(res.body.includes('<form class="recherche recherche--direct" method="get" action="/inventaire" role="search">'));
   assert.ok(res.body.includes('6 objets'));
 });
 
 test('liste : tri par nom insensible à la casse, une ligne par objet avec lien vers sa fiche', async () => {
-  const { body } = await page('/');
+  const { body } = await page('/inventaire');
   // EVIL_NAME commence par « < » : avant les chiffres et les lettres.
   assert.deepEqual(ids(body), [2, 4, 3, 5, 1, 6]);
   assert.ok(rowOf(body, 1).includes('<a class="lien-objet" href="/items/1">Multimètre démo</a>'));
@@ -170,7 +170,7 @@ test('liste : tri par nom insensible à la casse, une ligne par objet avec lien 
 });
 
 test('objet jamais scanné : « jamais localisé » (style atténué) dans la liste et la fiche', async () => {
-  const list = await page('/');
+  const list = await page('/inventaire');
   assert.ok(rowOf(list.body, 5).includes('<span class="etat etat-jamais">jamais localisé</span>'));
   assert.ok(rowOf(list.body, 3).includes('<span class="etat etat-jamais">jamais localisé</span>'), 'objet sans puce');
   const sheet = await page('/items/5');
@@ -181,13 +181,13 @@ test('objet jamais scanné : « jamais localisé » (style atténué) dans la li
 });
 
 test('après un scan accepté (POST /api/frames), la nouvelle localisation apparaît au rechargement de la liste et de la fiche', async () => {
-  const before = await page('/');
+  const before = await page('/inventaire');
   assert.ok(rowOf(before.body, 1).includes('jamais localisé'));
   const frame = encodeFrame({ readerId: 1, counter: ++counter, uid: Buffer.from('04A1B2C3D4E5F6', 'hex'), key: KEY });
   const accepted = await send({ method: 'POST', path: '/api/frames', headers: { 'Content-Type': 'application/octet-stream' }, body: frame });
   assert.equal(accepted.status, 204);
 
-  const list = await page('/');
+  const list = await page('/inventaire');
   const row = rowOf(list.body, 1);
   assert.ok(row.includes('<span class="etat etat-poste">Poste 1</span>'), row);
   assert.match(row, /<time datetime="\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z" title="[^"]+">depuis moins d&#39;une minute<\/time>/);
@@ -200,7 +200,7 @@ test('après un scan accepté (POST /api/frames), la nouvelle localisation appar
 
   // Second scan, ailleurs (via ingestFrame) : la localisation suit le dernier scan.
   assert.equal(scan(3, '04A1B2C3D4E5F6').ok, true);
-  const moved = await page('/');
+  const moved = await page('/inventaire');
   assert.ok(rowOf(moved.body, 1).includes('<span class="etat etat-poste">Atelier &lt;b&gt;&quot;A&quot;&lt;/b&gt; &amp; Cie</span>'));
   const movedSheet = await page('/items/1');
   assert.ok(movedSheet.body.includes('<span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>Scanné <time '));
@@ -214,7 +214,7 @@ test('après un scan accepté (POST /api/frames), la nouvelle localisation appar
 
 test('scan sur un lecteur non affecté : « lecteur non affecté » dans la liste, la fiche et l\'historique, avec lien vers le lecteur', async () => {
   assert.equal(scan(7, '0A0B0C0D').ok, true);
-  const list = await page('/');
+  const list = await page('/inventaire');
   assert.ok(rowOf(list.body, 6).includes('<a class="lien-etat" href="/readers/7"><span class="etat etat-inconnue">lecteur non affecté</span></a>'));
   const sheet = await page('/items/6');
   assert.ok(sheet.body.includes('<a class="lien-etat" href="/readers/7"><span class="etat etat-inconnue">lecteur non affecté</span></a>'));
@@ -225,7 +225,7 @@ test('scan sur un lecteur non affecté : « lecteur non affecté » dans la list
 
 test('nom, propriétés, notes et nom de poste hostiles : affichés échappés, HTML bien formé, aucune balise injectée', async () => {
   assert.equal(scan(3, 'A1B2C3D4').ok, true);
-  const list = await page('/');
+  const list = await page('/inventaire');
   const escapedName = '&lt;script&gt;alert(&quot;nom&quot;)&lt;/script&gt; &amp; &#39;co&#39;';
   assert.ok(rowOf(list.body, 2).includes(`<a class="lien-objet" href="/items/2">${escapedName}</a>`));
   assert.ok(!withoutAppScript(list.body).includes('<script'));
@@ -260,7 +260,7 @@ test('recherche : la valeur de q est réaffichée échappée (champ et résumé)
 test('recherche par nom : sous-chaîne, insensible à la casse ; nombre de résultats et lien Effacer', async () => {
   const res = await search('MULTI');
   assert.deepEqual(ids(res.body), [1]);
-  assert.ok(res.body.includes('1 résultat pour «&nbsp;MULTI&nbsp;» · <a href="/">Effacer</a>'));
+  assert.ok(res.body.includes('1 résultat pour «&nbsp;MULTI&nbsp;» · <a href="/inventaire">Effacer</a>'));
   assert.ok(res.body.includes('value="MULTI"'));
   const two = await search('coton');
   assert.deepEqual(ids(two.body), [4, 3]);
@@ -296,7 +296,7 @@ test('recherche : %, _ et \\ traités littéralement', async () => {
   assert.deepEqual(ids((await search('coton_bleu')).body), [3]);
   assert.deepEqual(ids((await search('\\')).body), []);
   // Encodage brut dans l'URL (un « % » seul, séquence invalide) : pas d'erreur.
-  for (const raw of ['/?q=%', '/?q=%25', '/?q=%E0%A', '/?q=%00', '/?q=&q=multi', '/?q']) {
+  for (const raw of ['/inventaire?q=%', '/inventaire?q=%25', '/inventaire?q=%E0%A', '/inventaire?q=%00', '/inventaire?q=&q=multi', '/inventaire?q']) {
     const res = await page(raw);
     assert.equal(res.status, 200, raw);
   }
@@ -304,8 +304,8 @@ test('recherche : %, _ et \\ traités littéralement', async () => {
 });
 
 test('recherche : accent combinant isolé (?q=%CC%81) → tout l\'inventaire, champ vide, sans « Effacer »', async () => {
-  const all = await page('/');
-  for (const path of ['/?q=%CC%81', '/?q=%20%CC%81%CC%81%20']) {
+  const all = await page('/inventaire');
+  for (const path of ['/inventaire?q=%CC%81', '/inventaire?q=%20%CC%81%CC%81%20']) {
     const res = await page(path);
     assert.equal(res.status, 200, path);
     assert.deepEqual(ids(res.body), ids(all.body), path);
@@ -334,11 +334,11 @@ test('fiche : UID groupé en chasse fixe, propriétés en <dl>, dates, fil d\'Ar
   const sheet = await page('/items/1');
   assert.ok(sheet.body.includes('<span class="uid">04 A1 B2 C3 D4 E5 F6</span>'));
   assert.ok(sheet.body.includes('<dl class="proprietes">\n<div><dt>Marque</dt><dd>Fluke</dd></div>'));
-  assert.ok(sheet.body.includes('<nav class="fil" aria-label="Fil d\'Ariane">\n<a href="/">Inventaire</a>'));
+  assert.ok(sheet.body.includes('<nav class="fil" aria-label="Fil d\'Ariane">\n<a href="/inventaire">Inventaire</a>'));
   // Étape U3 : carte « Identification » avec le seul numéro de puce ; la création est dans la frise.
   assert.ok(sheet.body.includes('<p class="numero-puce"><span class="etiquette">Numéro de puce</span><span class="numero-puce-droite"><span class="uid">04 A1 B2 C3 D4 E5 F6</span> <a class="lien-simple" href="/items/1/puce">Changer</a></span></p>'));
   assert.match(sheet.body, /<li class="frise-etape frise-etape--creation">\n<p class="frise-quand"><time datetime="2026-11-17T/);
-  assert.ok(sheet.body.includes('<li><a href="/" aria-current="true">Inventaire</a></li>'), 'Inventaire courant (sous-page : aria-current="true")');
+  assert.ok(sheet.body.includes('<li><a href="/inventaire" aria-current="true">Inventaire</a></li>'), 'Inventaire courant (sous-page : aria-current="true")');
 
   const noChip = await page('/items/3');
   assert.equal(noChip.status, 200);
@@ -392,7 +392,7 @@ test('méthodes autres que GET sur / et /items/<id> : 405 avec Allow: GET', asyn
 
 test('aucune URL externe, aucun script ni style en ligne, sur la liste, la recherche, la fiche et le 404', async () => {
   const pages = {
-    liste: (await page('/')).body,
+    liste: (await page('/inventaire')).body,
     recherche: (await search('multi')).body,
     'sans résultat': (await search('zzz')).body,
     fiche: (await page('/items/2')).body,

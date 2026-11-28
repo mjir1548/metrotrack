@@ -148,7 +148,7 @@ function assertNoInjection(page, what) {
 // ---------------------------------------------------------------- échappement
 
 test('recette XSS : chaque charge est affichée échappée dans la liste (nom) et la fiche (titre, h1, propriétés, notes)', async () => {
-  const list = await page('/');
+  const list = await page('/inventaire');
   assert.equal(list.status, 200);
   assertNoInjection(list.body, 'liste');
   for (const [i, p] of PAYLOADS.entries()) {
@@ -179,7 +179,7 @@ test('recette XSS : « &amp; » est ré-échappé (&amp;amp;), jamais interprét
 test('recette XSS : nom de poste hostile échappé dans la liste, la fiche et l\'historique', async () => {
   assert.equal(ingestFrame(db, frameOf(3, 1, '0E000000'), '2026-11-17T10:05:00.000Z').ok, true);
   const escaped = esc(EVIL_STATION);
-  const list = await page('/');
+  const list = await page('/inventaire');
   assert.ok(rowOf(list.body, itemIds[0]).includes(`<span class="etat etat-poste">${escaped}</span>`));
   assertNoInjection(list.body, 'liste');
   const sheet = await page(`/items/${itemIds[0]}`);
@@ -194,12 +194,12 @@ const withoutControls = (s) => s.replace(/[\u0000-\u001F\u007F-\u009F\u202A-\u20
 
 test('recette XSS : chaque charge en recherche (q) est réaffichée échappée dans le champ et le résumé', async () => {
   for (const p of PAYLOADS) {
-    const res = await page(`/?q=${encodeURIComponent(p)}`);
+    const res = await page(`/inventaire?q=${encodeURIComponent(p)}`);
     assert.equal(res.status, 200, p);
     assertNoInjection(res.body, `q=${JSON.stringify(p)}`);
     const shown = esc(withoutControls(p));
     assert.ok(res.body.includes(`id="q" name="q" type="search" value="${shown}"`), `champ ${JSON.stringify(p)}`);
-    assert.match(res.body, new RegExp(`\\d+ résultats? pour «&nbsp;${RegExp.escape(shown)}&nbsp;» · <a href="/">Effacer</a>`), `résumé ${JSON.stringify(p)}`);
+    assert.match(res.body, new RegExp(`\\d+ résultats? pour «&nbsp;${RegExp.escape(shown)}&nbsp;» · <a href="/inventaire">Effacer</a>`), `résumé ${JSON.stringify(p)}`);
   }
 });
 
@@ -208,9 +208,9 @@ test('recette XSS : chaque charge en recherche (q) est réaffichée échappée d
 test('recherche : encodage invalide (%E9, %ZZ, %C3, %) → 200, message « aucun résultat », lien Effacer, aucune erreur interne', async () => {
   const cases = { '%E9': '�', '%ZZ': '%ZZ', '%C3': '�', '%ED%A0%80': '���', 'zz%': 'zz%' };
   for (const [raw, shown] of Object.entries(cases)) {
-    const res = await page(`/?q=${raw}`);
+    const res = await page(`/inventaire?q=${raw}`);
     assert.equal(res.status, 200, raw);
-    assert.ok(res.body.includes(`0 résultat pour «&nbsp;${esc(shown)}&nbsp;» · <a href="/">Effacer</a>`), raw);
+    assert.ok(res.body.includes(`0 résultat pour «&nbsp;${esc(shown)}&nbsp;» · <a href="/inventaire">Effacer</a>`), raw);
     assert.ok(res.body.includes(`Aucun objet ne correspond à «&nbsp;${esc(shown)}&nbsp;».`), raw);
     assert.ok(!res.body.includes('<table'), raw);
   }
@@ -218,13 +218,13 @@ test('recherche : encodage invalide (%E9, %ZZ, %C3, %) → 200, message « aucun
 });
 
 test('recherche : q répété → seule la première valeur compte ; q vide ou absent → tout l\'inventaire sans « Effacer »', async () => {
-  const twice = await page('/?q=Objet%20t%C3%A9moin&q=zzz');
+  const twice = await page('/inventaire?q=Objet%20t%C3%A9moin&q=zzz');
   assert.ok(twice.body.includes('value="Objet témoin"'));
-  assert.ok(twice.body.includes('1 résultat pour «&nbsp;Objet témoin&nbsp;» · <a href="/">Effacer</a>'));
-  const firstEmpty = await page('/?q=&q=zzz');
-  const all = await page('/');
+  assert.ok(twice.body.includes('1 résultat pour «&nbsp;Objet témoin&nbsp;» · <a href="/inventaire">Effacer</a>'));
+  const firstEmpty = await page('/inventaire?q=&q=zzz');
+  const all = await page('/inventaire');
   const count = /<p class="resultats">(\d+) objets<\/p>/.exec(all.body)[1];
-  for (const res of [firstEmpty, all, await page('/?q'), await page('/?x=1')]) {
+  for (const res of [firstEmpty, all, await page('/inventaire?q'), await page('/inventaire?x=1')]) {
     assert.ok(res.body.includes(`<p class="resultats">${count} objets</p>`));
     assert.ok(!withoutHelp(res.body).includes('Effacer'));
   }
@@ -232,7 +232,7 @@ test('recherche : q répété → seule la première valeur compte ; q vide ou a
 
 test('recherche : 101 caractères et plus → tronquée à 100 points de code (emoji non coupé), sans erreur', async () => {
   const q = '🔧'.repeat(150);
-  const res = await page(`/?q=${encodeURIComponent(q)}`);
+  const res = await page(`/inventaire?q=${encodeURIComponent(q)}`);
   assert.equal(res.status, 200);
   assert.ok(res.body.includes(`value="${'🔧'.repeat(100)}"`));
   assert.ok(!res.body.includes('�'));
@@ -241,18 +241,18 @@ test('recherche : 101 caractères et plus → tronquée à 100 points de code (e
 test('recherche par HTTP : casse et accents ignorés, y compris saisie décomposée (NFD) ou en majuscules accentuées', async () => {
   const id = idOf('Objet témoin');
   for (const q of ['témoin', 'TÉMOIN', 'temoin', 'TEMOIN', 'témoin', 'TÉMOIN', 'oBjEt TéMoIn']) {
-    const res = await page(`/?q=${encodeURIComponent(q)}`);
+    const res = await page(`/inventaire?q=${encodeURIComponent(q)}`);
     assert.equal(res.status, 200, q);
     assert.ok(rowOf(res.body, id), `« ${q} » doit trouver « Objet témoin »`);
   }
 });
 
 test('recherche par HTTP : contrôles C1 (NEL) et bidi retirés de la saisie ; saisie faite uniquement de contrôles → tout l\'inventaire', async () => {
-  const nel = await page('/?q=t%C3%A9moin%C2%85');
-  assert.ok(nel.body.includes('1 résultat pour «&nbsp;témoin&nbsp;» · <a href="/">Effacer</a>'));
+  const nel = await page('/inventaire?q=t%C3%A9moin%C2%85');
+  assert.ok(nel.body.includes('1 résultat pour «&nbsp;témoin&nbsp;» · <a href="/inventaire">Effacer</a>'));
   assert.ok(nel.body.includes('value="témoin"'));
-  const only = await page('/?q=%00%C2%85%E2%80%AE%E2%81%A6%7F%20');
-  const all = await page('/');
+  const only = await page('/inventaire?q=%00%C2%85%E2%80%AE%E2%81%A6%7F%20');
+  const all = await page('/inventaire');
   const count = /<p class="resultats">(\d+) objets<\/p>/.exec(all.body)[1];
   assert.ok(only.body.includes(`<p class="resultats">${count} objets</p>`));
   assert.ok(!withoutHelp(only.body).includes('Effacer'));
@@ -265,7 +265,7 @@ test('puce scannée AVANT la création de sa fiche : la fiche est localisée dè
   assert.equal(ingestFrame(db, frameOf(2, 1, '0D0D0D0D'), '2026-11-17T10:10:00.000Z').ok, true);
   db.prepare("INSERT INTO items (uid_nfc, name, created_at, updated_at) VALUES ('0D0D0D0D', 'Fiche créée après le scan', ?, ?)").run(NOW, NOW);
   const id = idOf('Fiche créée après le scan');
-  const list = await page('/');
+  const list = await page('/inventaire');
   assert.ok(rowOf(list.body, id).includes('<span class="etat etat-poste">Poste 2</span>'));
   const sheet = await page(`/items/${id}`);
   assert.deepEqual(historyStations(sheet.body), ['Poste 2']);
@@ -293,7 +293,7 @@ test('deux scans à la même milliseconde : le dernier reçu (id le plus grand) 
   const at = '2026-11-17T10:30:00.000Z';
   assert.equal(ingestFrame(db, frameOf(2, 10, '0C0C0C0C'), at).ok, true);
   assert.equal(ingestFrame(db, frameOf(1, 10, '0C0C0C0C'), at).ok, true);
-  const list = await page('/');
+  const list = await page('/inventaire');
   assert.ok(rowOf(list.body, id).includes('<span class="etat etat-poste">Poste 1</span>'));
   const sheet = await page(`/items/${id}`);
   assert.deepEqual(historyStations(sheet.body), ['Poste 1', 'Poste 2']);
@@ -343,7 +343,7 @@ test('scans rapprochés en parallèle sur deux lecteurs : tous acceptés, histor
 
 test('recherche contenant un caractère NUL : ne doit pas élargir les résultats', async () => {
   // « Objet témoin » se termine par « moin » : il ne doit pas sortir pour « moin\0zzz ».
-  const res = await page('/?q=moin%00zzz');
+  const res = await page('/inventaire?q=moin%00zzz');
   assert.ok(res.body.includes('Aucun objet ne correspond'), 'aucun nom ne contient « moin\\0zzz »');
 });
 

@@ -119,7 +119,7 @@ test('préparation : scans, puce réutilisée (fiche supprimée), poste et lecte
 
 // Page → encadré attendu (le texte exact de server/aide.js, pour vérifier la bonne variante).
 const PAGES_WITH_HELP = [
-  ['/', 'inventaire'],
+  ['/inventaire', 'inventaire'],
   ['/items/new', 'nouvelleFiche'],
   ['/items/1', 'fiche'],
   ['/items/1/edit', 'modifierFiche'],

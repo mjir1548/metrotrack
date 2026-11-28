@@ -207,7 +207,7 @@ test('/items/new?nom= : nom pré-rempli, nettoyé, borné et échappé ; rien n\
 });
 
 test('pages de l\'application : seule la balise du script local, aucun script en ligne ni gestionnaire on…=', async () => {
-  for (const path of ['/', '/?q=multi', '/stations', '/readers', '/chips', '/items/1', '/items/new']) {
+  for (const path of ['/', '/inventaire?q=multi', '/stations', '/readers', '/chips', '/items/1', '/items/new']) {
     const res = await send({ path });
     assert.equal(res.status, 200, path);
     assert.equal(res.headers['content-security-policy'], CSP, path);
@@ -217,7 +217,7 @@ test('pages de l\'application : seule la balise du script local, aucun script en
     assert.doesNotMatch(res.body, /javascript:/i, path);
   }
   // La page Inventaire désigne la zone mise à jour pendant la frappe.
-  const home = (await send({ path: '/' })).body;
+  const home = (await send({ path: '/inventaire' })).body;
   assert.ok(home.includes('aria-controls="inventaire-resultats"'));
   assert.ok(home.includes('<div id="inventaire-resultats">'));
 });

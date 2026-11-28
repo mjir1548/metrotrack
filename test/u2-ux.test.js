@@ -66,7 +66,7 @@ function page(path) {
 
 test('inventaire sans résultat (sans JS) : « Créer la fiche « … » », nom encodé dans l\'adresse et échappé', async () => {
   const query = 'Pied & "coulisse" <b>';
-  const res = await page(`/?q=${encodeURIComponent(query)}`);
+  const res = await page(`/inventaire?q=${encodeURIComponent(query)}`);
   assert.equal(res.status, 200);
   assert.ok(res.body.includes('Aucun objet ne correspond à «&nbsp;Pied &amp; &quot;coulisse&quot; &lt;b&gt;&nbsp;».'));
   const link = /<a class="bouton bouton-secondaire" href="([^"]*)">[\s\S]*?Créer la fiche «&nbsp;([^<]*)&nbsp;»<\/a>/.exec(res.body);
@@ -79,7 +79,7 @@ test('inventaire sans résultat (sans JS) : « Créer la fiche « … » », nom
 });
 
 test('inventaire : indice Ctrl K dans le champ, champ filtré pendant la frappe ; aide « Ctrl K ou / »', async () => {
-  const res = await page('/');
+  const res = await page('/inventaire');
   assert.ok(res.body.includes('aria-controls="inventaire-resultats">\n<kbd class="raccourci" aria-hidden="true"><kbd>Ctrl</kbd><kbd>K</kbd></kbd>\n<button class="bouton bouton-secondaire" type="submit">Rechercher</button>'));
   assert.ok(res.body.includes('depuis n\'importe quel écran, <kbd><kbd>Ctrl</kbd><kbd>K</kbd></kbd> ou <kbd><kbd>/</kbd></kbd> ouvre la recherche «&nbsp;Où est…&nbsp;?&nbsp;».'));
   // Colonne « Depuis » : « depuis … », plus « il y a ».
@@ -105,8 +105,8 @@ test('pages introuvables : une phrase claire, « Chercher un objet » (palette s
     const res = await page(path);
     assert.equal(res.status, 404, path);
     assert.ok(res.body.includes(`<p>${text.replaceAll("'", '&#39;')}</p>`), path);
-    assert.ok(res.body.includes('<a class="bouton" href="/" data-palette="ouvrir"><svg class="ic" aria-hidden="true"><use href="#i-recherche"></use></svg>Chercher un objet</a>'), path);
-    assert.ok(res.body.includes('<a class="bouton bouton-secondaire" href="/">Retour à l\'inventaire</a>'), path);
+    assert.ok(res.body.includes('<a class="bouton" href="/inventaire" data-palette="ouvrir"><svg class="ic" aria-hidden="true"><use href="#i-recherche"></use></svg>Chercher un objet</a>'), path);
+    assert.ok(res.body.includes('<a class="bouton bouton-secondaire" href="/inventaire">Retour à l\'inventaire</a>'), path);
   }
 });
 
@@ -114,7 +114,7 @@ test('fiche poste : description sous le titre, colonne « Dernier scan » des le
   const res = await page('/stations/1');
   assert.ok(res.body.includes('<p class="description-page">Établi près de la fenêtre</p>'));
   assert.ok(res.body.includes('<th scope="col">Dernier scan</th>'));
-  assert.match(res.body, /<td data-label="Dernier scan"><time datetime="[^"]+" title="[^"]+">à l&#39;instant<\/time><\/td>/);
+  assert.match(res.body, /<td data-label="Dernier scan"><time datetime="[^"]+" title="[^"]+" data-age>à l&#39;instant<\/time><\/td>/);
   assert.ok(res.body.includes('>Lecteur du Poste 1</a>'));
   assert.ok((await page('/stations/2')).body.includes('>Lecteur · Atelier</a>'));
 });

@@ -83,7 +83,7 @@ const qs = (params) => new URLSearchParams(params).toString();
 const apiNames = async (q, extra = {}) => JSON.parse((await send(`/api/recherche?${qs({ q, ...extra })}`)).body).resultats.map((r) => r.nom);
 /** Noms des objets de la page Inventaire (liens de la colonne « Objet »), dans l'ordre. */
 async function pageNames(q) {
-  const res = await send(`/?${qs({ q })}`);
+  const res = await send(`/inventaire?${qs({ q })}`);
   assert.equal(res.status, 200, q);
   return [...res.body.matchAll(/<a class="lien-objet" href="\/items\/\d+">([^<]*)<\/a>/g)].map((m) => m[1]
     .replaceAll('&#39;', '\'').replaceAll('&quot;', '"').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&'));
@@ -103,7 +103,7 @@ test('page Inventaire sans JavaScript : multi-mots, accents, série, puce, morce
   assert.deepEqual(await pageNames('marque'), [], 'les clés de propriété ne sont pas cherchées');
   assert.deepEqual(await pageNames('fluke zzzz'), [], 'tous les mots sont exigés');
   // Aucun résultat : état vide, saisie rappelée échappée.
-  const empty = await send(`/?${qs({ q: '<b>"zz\'' })}`);
+  const empty = await send(`/inventaire?${qs({ q: '<b>"zz\'' })}`);
   assert.match(empty.body, /Aucun objet ne correspond à «&nbsp;&lt;b&gt;&quot;zz&#39;&nbsp;»/);
   assert.doesNotMatch(empty.body, /<b>"zz/);
 });

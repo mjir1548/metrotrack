@@ -118,14 +118,14 @@ before(async () => {
   pages.set('POST /readers/new (clé, nommé)', await post('/readers/new', { name: 'Boîtier mobile', station: '' }));
   pages.set('POST /items/new (erreurs)', await post('/items/new', { name: '' }));
 
-  const connected = ['/', '/?q=Multi', '/?q=introuvable', '/items/new', '/items/1', '/items/1/edit', '/items/1/delete', '/items/1/location',
+  const connected = ['/', '/inventaire', '/inventaire?q=Multi', '/inventaire?q=introuvable', '/items/new', '/items/1', '/items/1/edit', '/items/1/delete', '/items/1/location',
     '/items/2', '/items/999', '/items/abc', '/stations', '/stations/new', '/stations/1', '/stations/1/edit', '/stations/1/delete', '/stations/2',
     '/readers', '/readers/new', '/readers/1', '/readers/1/station', '/readers/1/replace', '/readers/1/deactivate', '/readers/1/rename', '/readers/2', '/readers/3', '/readers/4', '/readers/4/rename',
     '/chips', `/chips/${UID_UNKNOWN}/new`, `/chips/${UID_UNKNOWN}/associate`, `/chips/${UID_UNKNOWN}/associate?q=pied`,
     `/chips/${UID_UNKNOWN}/associate/2`, '/inconnu', '/logout', '/static/inconnu.css'];
   for (const path of connected) pages.set(path, await send({ path }));
   for (const path of ['/login', '/login?info=session', '/inconnu']) pages.set(`${path} (anonyme)`, await send({ path, session: null }));
-  pages.set('PUT / (405)', await send({ method: 'PUT', path: '/' }));
+  pages.set('PUT / (405)', await send({ method: 'PUT', path: '/inventaire' }));
   pages.set('POST sans Origin (403)', await send({ method: 'POST', path: '/items/new', body: 'a=1', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }));
   pages.set('POST text/plain (400)', await send({ method: 'POST', path: '/items/new', body: 'a', headers: { 'Content-Type': 'text/plain', Origin: `https://127.0.0.1:${port}` } }));
   // 413 : longueur annoncée SANS corps envoyé. Avec un vrai corps de 300 000 octets, le serveur
@@ -206,14 +206,14 @@ test('accessibilité de chaque page : lang, titre, « Aller au contenu », un se
 });
 
 test('rubrique courante : exactement un aria-current sur les pages connectées avec bandeau, et sur la bonne rubrique', () => {
-  const section = (path) => (path.startsWith('/stations') ? '/stations' : path.startsWith('/readers') ? '/readers' : path.startsWith('/chips') ? '/chips' : '/');
+  const section = (path) => (path.startsWith('/stations') ? '/stations' : path.startsWith('/readers') ? '/readers' : path.startsWith('/chips') ? '/chips' : path === '/' ? '/' : '/inventaire');
   for (const [name, { body }] of pages) {
     if (!body.includes('<nav class="nav"') && !/class="nav"/.test(body)) continue;
     const marks = [...body.matchAll(/<a href="([^"]*)" aria-current="(page|true)">/g)];
     assert.equal(marks.length, 1, name);
     const path = (name.startsWith('POST /') ? name.split(' ')[1] : name).split('?')[0];
     assert.equal(marks[0][1], section(path), name);
-    assert.equal(marks[0][2], ['/', '/stations', '/readers', '/chips'].includes(path) ? 'page' : 'true', name);
+    assert.equal(marks[0][2], ['/', '/inventaire', '/stations', '/readers', '/chips'].includes(path) ? 'page' : 'true', name);
   }
 });
 

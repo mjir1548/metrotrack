@@ -127,7 +127,8 @@ async function until(predicate, ms = 3000) {
     await sleep(10);
   }
 }
-const silentIds = (html) => [...html.matchAll(/class="alerte-lecteur" data-lecteur="(\d+)"/g)].map((m) => Number(m[1])).sort();
+// Étape U6 : un lecteur jamais utilisé est « en attente du premier scan » (alerte-lecteur--attente, neutre).
+const silentIds = (html) => [...html.matchAll(/class="alerte-lecteur(?: alerte-lecteur--attente)?" data-lecteur="(\d+)"/g)].map((m) => Number(m[1])).sort();
 const workingCount = (html) => Number(/id="lecteurs-ok" data-nombre="(\d+)"/.exec(html)?.[1]);
 
 // ---------------------------------------------------------------- lecteurs silencieux

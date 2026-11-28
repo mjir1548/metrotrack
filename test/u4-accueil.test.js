@@ -189,8 +189,10 @@ test('accueil : recherche, À traiter au-dessus des mouvements, 5 mouvements + �
   assert.ok(body.includes('<span class="nombre-pastille" id="puces-nombre">2</span>'));
   assert.ok(body.includes('<a href="/chips">Voir les 2 nouvelles puces'));
   // Lecteurs : orange avec icône ET texte, lien vers le lecteur.
-  assert.ok(body.includes('<div class="alerte-lecteur" data-lecteur="3">\n<svg class="ic" aria-hidden="true"><use href="#i-silence"></use></svg>'));
-  assert.ok(body.includes('<a href="/readers/3">Lecteur · Atelier</a> : aucun scan reçu pour l&#39;instant'));
+  // Étape U6 : lecteur jamais utilisé en neutre, « en attente du premier scan » ; silencieux en orange.
+  assert.ok(body.includes('<div class="alerte-lecteur alerte-lecteur--attente" data-lecteur="3">\n<svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>'));
+  assert.ok(body.includes('<a href="/readers/3">Lecteur · Atelier</a> : en attente du premier scan'));
+  assert.ok(body.includes('<div class="alerte-lecteur" data-lecteur="4">\n<svg class="ic" aria-hidden="true"><use href="#i-silence"></use></svg>'));
   assert.ok(body.includes('<a href="/readers/4">Boîtier établi</a> : aucun scan depuis 3 jours'));
   assert.ok(body.includes('<p class="etat-ok-titre">3 lecteurs fonctionnent</p>'));
   assert.ok(!body.includes('data-lecteur="6"'), 'lecteur désactivé ignoré');

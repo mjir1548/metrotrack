@@ -425,7 +425,7 @@ test('confirmation avec une puce existante : avertissement (ancien UID, détache
   assert.ok(res.body.includes('<h1>Remplacer la puce de la fiche</h1>'));
   assert.ok(res.body.includes('<div class="panneau panneau-danger">'));
   // Étape U5 : deux phrases sans jargon, aucun numéro de puce dans l'avertissement.
-  assert.ok(res.body.includes('<p><strong>«&nbsp;<span class="nom-confirme">Multimètre</span>&nbsp;» a déjà une puce.</strong> La nouvelle la remplacera, et l\'ancienne ne servira plus.</p>\n<p>L\'objet sera localisé à Labo, où la puce a été scannée <time'));
+  assert.ok(res.body.includes('<p><strong>«&nbsp;<span class="nom-confirme">Multimètre</span>&nbsp;» a déjà une puce.</strong> La nouvelle la remplacera, et l\'ancienne redeviendra une puce inconnue.</p>\n<p>L\'objet sera localisé à Labo, où la puce a été scannée <time'));
   assert.ok(!res.body.includes(`<span class="uid">${grouped(OLD)}</span>`));
   assert.equal(res.body.split(`<span class="uid">${grouped(NEVER)}</span>`).length - 1, 1);
   assert.ok(res.body.includes(`<input type="hidden" name="previous" value="${OLD}">`));

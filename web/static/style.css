@@ -420,8 +420,35 @@ a.logo:focus-visible { border-radius: var(--r-md); }
   font-weight: 700;
   letter-spacing: 0.02em;
 }
-.compte-nom { font-weight: 500; }
-.compte-nom strong { font-weight: 600; }
+/* Zone du compte (étape U6, retour UX) : pastille d'initiales seule ; le nom et « Se déconnecter »
+   sont dans un petit menu, ouvert tant que le focus est dans la zone (clic sur la pastille,
+   Tab) : aucun script nécessaire. */
+.compte { position: relative; }
+.compte-bouton {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.compte-bouton:hover .avatar,
+.compte:focus-within .avatar { background: var(--accent-doux); }
+.compte-bouton:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.compte .compte-panneau { display: none; }
+.compte:focus-within .compte-panneau { display: grid; }
+.compte-panneau { min-width: 220px; }
+.compte-nom { padding: var(--e-2) var(--e-3); color: var(--texte-doux); font-size: var(--t-sm); overflow-wrap: anywhere; }
+.compte-nom strong { color: var(--texte); font-weight: 600; }
+.compte-panneau form { margin: 0; border-top: 1px solid var(--bordure); padding-top: var(--e-1); }
+.compte-sortie { width: 100%; border: 0; background: transparent; font: inherit; font-weight: 500; text-align: left; cursor: pointer; }
+/* Fenêtre moyenne : l'indice Ctrl K de la barre cède sa place au texte « Où est… ? ». */
+@media (max-width: 1500px) {
+  .js .recherche-barre .raccourci { display: none; }
+}
 
 /* --------------------------------------------------------------------------
    4. Mise en page et en-têtes
@@ -1183,6 +1210,30 @@ select:focus-visible {
 }
 /* Bouton « Copier la clé » (ajouté par app.js ; absent sans script). */
 .copier-cle { margin-top: var(--e-3); }
+/* Retour UX U6 : numéro et clé côte à côte, pour que numéro, clé et « Copier la clé » tiennent
+   au-dessus de la ligne de flottaison à 1280 × 720. */
+.carte-cle {
+  display: grid;
+  grid-template-columns: minmax(10rem, auto) minmax(0, 1fr);
+  gap: var(--e-4) var(--e-8);
+  align-items: start;
+}
+.carte-cle .numero-lecteur { margin-bottom: 0; }
+.cle-avertissement {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--e-2);
+  padding: var(--e-3) var(--e-4);
+  border-radius: var(--r-md);
+  background: var(--attention-doux);
+  box-shadow: inset var(--filet) 0 0 var(--attention);
+  font-size: var(--t-sm);
+}
+.cle-avertissement .ic { flex-shrink: 0; width: var(--ic-md); height: var(--ic-md); color: var(--attention-texte); }
+@media (max-width: 40rem) {
+  .carte-cle { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* --------------------------------------------------------------------------
    13. Puces inconnues
@@ -2056,7 +2107,7 @@ details.modifications > summary:hover { background: var(--voile); }
   transition: border-color var(--d-rapide), box-shadow var(--d-normale);
 }
 .tuile:hover { border-color: var(--bordure-champ); box-shadow: var(--ombre-pilule); }
-.tuile:focus-within { border-color: var(--focus); }
+
 .tuile-nom { font-size: var(--t-xl); letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .tuile-nom a { color: var(--texte); text-decoration: none; }
 /* Toute la tuile mène au poste ; les liens internes passent au-dessus. */
@@ -2081,7 +2132,15 @@ details.modifications > summary:hover { background: var(--voile); }
 }
 .tuile-lecteur .ic { flex-shrink: 0; width: var(--ic-md); height: var(--ic-md); margin-top: 1px; }
 .tuile-lecteur--ok .ic { color: var(--accent); }
-.tuile-lecteur--aucun { color: var(--texte-doux); }
+.tuile-lecteur--aucun,
+.tuile-lecteur--attente { color: var(--texte-doux); }
+.tuile-aucun { color: var(--texte-doux); font-size: var(--t-md); font-weight: 500; }
+.tuile-dernier:empty { display: none; }
+/* Lecteur en attente du premier scan (accueil) : neutre, l'orange reste pour les silencieux. */
+.alerte-lecteur--attente { background: var(--zone); box-shadow: none; }
+.alerte-lecteur--attente > .ic,
+.alerte-lecteur--attente .alerte-lecteur-titre { color: var(--texte); }
+.attente-aide { margin-top: var(--e-2); }
 .tuile-lecteur--attention { color: var(--attention-texte); font-weight: 600; }
 .tuile--nouvelle { animation: mt-estompe var(--d-estompe) ease-out both; }
 
@@ -2147,7 +2206,7 @@ details.modifications > summary:hover { background: var(--voile); }
    -------------------------------------------------------------------------- */
 @media (max-width: 1100px) {
   .barre-interieur { gap: var(--e-4); }
-  .compte-nom { display: none; }
+
 }
 
 @media (max-width: 900px) {
@@ -2244,4 +2303,10 @@ details.modifications > summary:hover { background: var(--voile); }
   /* Correction qui vient d'être enregistrée : mise en évidence fixe, sans animation. */
   .frise-etape.nouveau .frise-contenu { border-color: var(--accent); background: var(--accent-doux); }
   /* Mouvement reçu en direct : le badge « Nouveau » suffit, sans fond animé. */
+  /* Tuile ou carte qui vient d'arriver (étape U6) : repère fixe à la place de l'animation. */
+  .tuile--nouvelle,
+  .puce-carte--nouvelle { background: var(--accent-doux); }
 }
+
+/* Notification sans action (seulement « Fermer ») : sur une seule ligne. */
+.toast:has(.toast-actions > .toast-fermer:only-child) { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }

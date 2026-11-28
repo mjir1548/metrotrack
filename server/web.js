@@ -809,8 +809,11 @@ function newReaderPage(ctx, req, res) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
   // ?poste=<id> : poste présélectionné (lien « Ajouter un lecteur » d'un poste, étape U6).
+  // Poste inexistant : « Pas de poste pour l'instant » reste coché.
   const preset = parseItemId(queryParam(req, 'poste') ?? '');
-  sendHtml(res, 200, readerFormPage(pageUser(ctx, session), { stations: listStations(ctx.db), selected: preset === null ? '' : String(preset) }));
+  const stations = listStations(ctx.db);
+  const known = preset !== null && stations.some((station) => String(station.id) === String(preset));
+  sendHtml(res, 200, readerFormPage(pageUser(ctx, session), { stations, selected: known ? String(preset) : '' }));
 }
 
 function createReaderAction(ctx, req, res) {
@@ -1253,7 +1256,9 @@ function currentSession(ctx, req) {
  */
 function pageUser(ctx, session) {
   if (!USERNAME_FORMAT.test(session.username)) throw new Error('identifiant de compte hors format');
-  return { username: session.username, csrf: csrfTokenFor(session.token), chips: ctx.chipsCounter.get() };
+  // direct : numéro du dernier événement du direct au moment de la page (étape U6) ; app.js ouvre
+  // le flux à partir de là (?depuis=), sans rien manquer entre l'affichage et la connexion.
+  return { username: session.username, csrf: csrfTokenFor(session.token), chips: ctx.chipsCounter.get(), direct: ctx.direct.lastId };
 }
 
 /** Première valeur d'un paramètre de la chaîne de requête, ou null. Décodage tolérant (jamais d'exception). */

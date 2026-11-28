@@ -201,6 +201,11 @@ export function createDirectHub({
       for (const client of [...clients]) if (client.token === token) end(client);
     },
 
+    /** Numéro du dernier événement publié (ou celui qui précède le premier). Un entier, rien d'autre. */
+    get lastId() {
+      return nextId - 1;
+    },
+
     /** Nombre de flux ouverts (tests, journal). */
     get size() {
       return clients.size;

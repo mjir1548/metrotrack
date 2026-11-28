@@ -778,3 +778,20 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
 - `dev` (U5 et U6) : coupé une fois par la limite d'usage, puis repris. Terminé : 678 tests (le test de durée `recherche-charge` est parfois instable sous charge). 20/20 contrôles réels dans Edge : une puce apparaît en 84 ms, le premier scan d'un lecteur est reconnu en 68 ms. → D-025.
 - Orchestrateur : 678/678 ; capture des postes en tuiles relue.
 - **U5 et U6 commitées et poussées** (voir git log). Démo relancée. Testeur et `revue-ux` lancés pour les finitions.
+- `revue-ux` (U5 et U6) : « À corriger » (retouches courtes).
+  - Bloquants : « Où est… ? » tronqué dans la barre ; la clé sous la ligne de flottaison sur la page de clé.
+  - Importants : remplacer la clé change aussi le numéro (à dire) ; aide si le premier scan n'arrive pas ; état « jamais utilisé » incohérent ; accords en genre ; aides inexactes ; cartes qui bougent pendant la saisie.
+  - Les retouches U4 sont vérifiées.
+  - Incident signalé par l'agent : un `taskkill` sur un PID périmé, réattribué à son propre shell transitoire. Consigne renforcée : vérifier l'appartenance d'un PID avant de l'arrêter.
+- Testeur (U5 et U6) : 75 contrôles réels, 695 tests. `recherche-charge` stabilisé (mesure du temps CPU et test structurel).
+  - Défauts : direct non rattrapé après un onglet caché quand aucun événement n'a été reçu (nombres faux sur les postes) ; `?poste=` inexistant.
+- Retour à `dev` (U5 et U6, aller-retour 2/3) : tous ces points.
+- `dev` (U5 et U6, aller-retour 2) : les 14 retours et la plupart des suggestions sont traités, 704 tests, 30/30 contrôles dans Edge.
+  - Barre : pastille de compte avec un petit menu, « Où est… ? » entier à 1280, 1440 et 1920 px.
+  - Page de clé : la clé est visible en 1280×720.
+  - Direct : reprise grâce au numéro du dernier événement inscrit dans la page.
+  - Orchestrateur : 704/704, capture de la page de clé relue.
+- **U5 et U6 (finitions) commitées et poussées** (voir git log). Démo relancée.
+- **Reste au plan** :
+  - U7, assistant de premier lancement : premier compte créé dans l'interface et nom du site, ce qui demande un petit changement de modèle ;
+  - U8 et U9 : `.exe` et signature, en attente de la décision de l'humain sur la signature.

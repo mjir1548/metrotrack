@@ -129,20 +129,17 @@ const supprimerFiche = encadre(html`<p>La suppression est définitive.</p>
 
 // ---------------------------------------------------------------- postes
 
-const postes = encadre(html`<p>Un poste est un lieu de travail : chaque tuile montre les objets qui s'y trouvent, le dernier arrivé et l'état de son lecteur.</p>
-<p>Un lecteur en orange n'a rien envoyé depuis plus de 24 heures : vérifiez qu'il est allumé et branché.</p>
+const postes = encadre(html`<p>Un poste est un lieu de travail : chaque tuile montre les objets qui s'y trouvent, la dernière arrivée et l'état de son lecteur.</p>
+<p>En orange, un lecteur n'a rien envoyé depuis plus de 24 heures : vérifiez qu'il est allumé, branché et à portée du réseau ; un lecteur neuf reste «&nbsp;en attente du premier scan&nbsp;».</p>
 <p>«&nbsp;Ajouter un poste&nbsp;» : un nom suffit ; ajoutez-lui ensuite un lecteur.</p>`);
 
 const poste = encadre(html`<p>La fiche montre d'abord les objets présents à ce poste et depuis quand, puis son lecteur et les dernières arrivées.</p>
 <p>«&nbsp;Renommer&nbsp;» change le nom du poste sans toucher à son passé.</p>
 <p>Un poste qui n'a jamais servi peut être supprimé ; sinon, renommez-le.</p>`);
 
-const nouveauPoste = encadre(html`<p>Donnez un nom au poste, puis cliquez sur «&nbsp;Créer le poste&nbsp;».</p>
-<ul>
-<li>Nom : obligatoire. Deux postes ne peuvent pas porter le même nom (majuscules et minuscules confondues).</li>
-<li>Description : facultative (emplacement, usage…).</li>
-<li>Ensuite, rattachez-lui un lecteur : rubrique «&nbsp;Lecteurs&nbsp;», puis «&nbsp;Nouveau lecteur&nbsp;», ou «&nbsp;Changer de poste&nbsp;» sur un lecteur existant.</li>
-</ul>`);
+const nouveauPoste = encadre(html`<p>Donnez un nom au poste, puis cliquez sur «&nbsp;Créer le poste&nbsp;» ; la description est facultative.</p>
+<p>Deux postes ne peuvent pas porter le même nom (majuscules et minuscules confondues).</p>
+<p>Ensuite, ajoutez-lui un lecteur depuis sa tuile ou la rubrique «&nbsp;Lecteurs&nbsp;».</p>`);
 
 const modifierPoste = encadre(html`<p>Modifiez le nom ou la description, puis cliquez sur «&nbsp;Enregistrer&nbsp;».</p>
 <ul>
@@ -160,28 +157,20 @@ const supprimerPoste = encadre(html`<p>Seul un poste sans historique peut être 
 // ---------------------------------------------------------------- lecteurs
 
 const lecteurs = encadre(html`<p>Un lecteur est le boîtier posé sur un poste : il lit la puce des objets et envoie chaque scan.</p>
-<p>«&nbsp;Silencieux&nbsp;» signale un lecteur qui n'a rien envoyé depuis plus de 24 heures ; les lecteurs désactivés sont rangés en bas de la page.</p>
-<p>«&nbsp;Ajouter un lecteur&nbsp;» crée sa clé, à copier une seule fois dans le boîtier.</p>`);
+<p>Les lecteurs à surveiller sont en tête : «&nbsp;silencieux&nbsp;» (rien depuis plus de 24 heures) ou «&nbsp;en attente du premier scan&nbsp;» ; les lecteurs désactivés sont rangés en bas.</p>
+<p>«&nbsp;Ajouter un lecteur&nbsp;» donne un numéro et une clé, à configurer une seule fois dans le boîtier.</p>`);
 
-const nouveauLecteur = encadre(html`<p>Donnez un nom au lecteur et choisissez son poste si vous le connaissez, puis cliquez sur «&nbsp;Créer le lecteur&nbsp;».</p>
-<ul>
-<li>Le nom est facultatif : il sert à reconnaître le boîtier, par exemple «&nbsp;Boîtier établi gauche&nbsp;». Sans nom, le lecteur est désigné par son poste, ou par son numéro s'il n'est rattaché à aucun poste. Vous pourrez le renommer depuis sa fiche.</li>
-<li>Le poste est facultatif : vous pourrez le rattacher plus tard.</li>
-<li>L'application crée le numéro du lecteur et sa clé secrète.</li>
-<li>La page suivante affiche la clé une seule fois. La personne qui prépare le boîtier doit l'y installer tout de suite, avec le numéro du lecteur.</li>
-<li>Si la clé est perdue, remplacez-la depuis la fiche du lecteur.</li>
-</ul>`);
+const nouveauLecteur = encadre(html`<p>Donnez un nom au lecteur si vous le souhaitez (par exemple «&nbsp;Boîtier établi gauche&nbsp;») et choisissez son poste, puis cliquez sur «&nbsp;Ajouter le lecteur&nbsp;».</p>
+<p>La page suivante affiche son numéro et sa clé, une seule fois : configurez-les tout de suite dans le boîtier.</p>
+<p>Clé perdue&nbsp;? Remplacez-la depuis la fiche du lecteur.</p>`);
 
 const lecteur = encadre(html`<p>La fiche montre l'état du lecteur, son poste, le numéro à configurer dans le boîtier et ses derniers scans.</p>
 <p>«&nbsp;Changer de poste&nbsp;» sert quand le boîtier est déplacé : les scans passés gardent leur poste.</p>
-<p>Clé perdue&nbsp;? «&nbsp;Remplacer la clé&nbsp;» en crée une nouvelle ; «&nbsp;Désactiver&nbsp;» retire définitivement le lecteur.</p>`);
+<p>Clé perdue&nbsp;? «&nbsp;Remplacer la clé&nbsp;» crée un nouveau numéro et une nouvelle clé ; «&nbsp;Désactiver&nbsp;» retire définitivement le lecteur.</p>`);
 
 const changerPoste = encadre(html`<p>Choisissez le poste où se trouve désormais le boîtier, puis cliquez sur «&nbsp;Enregistrer&nbsp;».</p>
-<ul>
-<li>Seuls les prochains scans seront rattachés au poste choisi.</li>
-<li>Les scans déjà enregistrés gardent leur poste : l'historique n'est pas réécrit.</li>
-<li>«&nbsp;Non affecté&nbsp;» détache le lecteur de tout poste : les objets qu'il scanne auront pour emplacement «&nbsp;lecteur non affecté&nbsp;».</li>
-</ul>`);
+<p>Seuls les prochains scans seront rattachés au poste choisi : l'historique n'est pas réécrit.</p>
+<p>«&nbsp;Pas de poste pour l'instant&nbsp;» détache le lecteur : les objets qu'il scanne auront pour emplacement «&nbsp;lecteur non affecté&nbsp;».</p>`);
 
 const renommerLecteur = encadre(html`<p>Saisissez le nom du boîtier, puis cliquez sur «&nbsp;Enregistrer&nbsp;».</p>
 <ul>
@@ -190,21 +179,13 @@ const renommerLecteur = encadre(html`<p>Saisissez le nom du boîtier, puis cliqu
 <li>Le numéro configuré dans le boîtier ne change pas : rien n'est à refaire sur le boîtier.</li>
 </ul>`);
 
-const desactiverLecteur = encadre(html`<p>Désactivez un lecteur hors service, perdu ou retiré.</p>
-<ul>
-<li>Ses scans sont refusés dès la confirmation.</li>
-<li>C'est définitif : pour remettre le boîtier en service, il faudra créer un nouveau lecteur.</li>
-<li>Ses scans passés et les emplacements qui en découlent sont conservés.</li>
-<li>Si seule la clé pose problème, préférez «&nbsp;Remplacer la clé&nbsp;».</li>
-</ul>`);
+const desactiverLecteur = encadre(html`<p>Désactivez un lecteur hors service, perdu ou retiré : il n'enverra plus de scans, et c'est définitif.</p>
+<p>Ses scans passés et les emplacements qui en découlent sont conservés.</p>
+<p>Si seule la clé pose problème, préférez «&nbsp;Remplacer la clé&nbsp;».</p>`);
 
 const remplacerCle = encadre(html`<p>Remplacez la clé si elle a été perdue ou a pu être vue.</p>
-<ul>
-<li>Un nouveau lecteur est créé au même poste et sous le même nom, avec un nouveau numéro et une nouvelle clé.</li>
-<li>L'ancien lecteur est désactivé définitivement : le boîtier ne fonctionne plus tant que la personne qui le prépare n'y a pas installé le nouveau numéro et la nouvelle clé.</li>
-<li>La nouvelle clé n'est affichée qu'une fois, sur la page suivante.</li>
-<li>Les scans passés sont conservés.</li>
-</ul>`);
+<p>Un nouveau numéro et une nouvelle clé sont créés, au même poste et sous le même nom ; l'ancien numéro cesse aussitôt de fonctionner.</p>
+<p>La page suivante les affiche une seule fois : configurez les deux dans le boîtier. Les scans passés sont conservés.</p>`);
 
 // ---------------------------------------------------------------- puces inconnues
 

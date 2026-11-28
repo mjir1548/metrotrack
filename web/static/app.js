@@ -705,7 +705,7 @@
     done.setAttribute('role', 'status');
     copy.addEventListener('click', () => {
       navigator.clipboard.writeText(keyBlock.textContent.trim()).then(() => {
-        copy.textContent = 'Copiée ✓';
+        copy.replaceChildren(icon('valide'), 'Clé copiée');
         done.textContent = 'Clé copiée.';
       }, () => {
         copy.textContent = 'Copie impossible : sélectionnez la clé';
@@ -1285,7 +1285,7 @@
     input.placeholder = 'Nom de l\'objet, puis Entrée';
     const submit = el('button', 'bouton bouton-petit');
     submit.type = 'submit';
-    submit.append(icon('ajouter'), 'Créer la fiche');
+    submit.append(icon('ajouter'), 'Créer une fiche');
     const more = el('a', 'lien-simple creation-complete', 'Plus de champs');
     more.href = `/chips/${uid}/new`;
     form.append(csrf, label, input, submit, more);
@@ -1326,12 +1326,25 @@
           refreshChips();
         } else if (response.status === 403) {
           quickError(form, 'La page a expiré : rechargez-la, puis recommencez.');
+        } else if (response.status === 400) {
+          // Nom refusé : le message du serveur (champ « Nom » de la page renvoyée), en texte.
+          return response.text().then((page) => {
+            const reason = /id="name-erreur">([^<]*)</.exec(page)?.[1];
+            quickError(form, reason ? `Ce nom n'est pas accepté : ${decodeText(reason)}` : 'Ce nom n\'est pas accepté. Essayez « Plus de champs ».');
+          });
         } else {
           quickError(form, 'La fiche n\'a pas été créée. Essayez « Plus de champs ».');
         }
+        return null;
       })
       .catch(() => quickError(form, 'La fiche n\'a pas été créée : la connexion a été perdue. Réessayez.'))
       .finally(() => { button.disabled = false; });
+  }
+
+  /** Texte d'une page HTML du serveur (entités du gabarit) → texte brut, affiché par textContent. */
+  function decodeText(text) {
+    const entities = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&nbsp;': NBSP };
+    return text.replace(/&(?:amp|lt|gt|quot|#39|nbsp);/g, (entity) => entities[entity]);
   }
 
   /** Fiche créée : la carte disparaît, une notification la nomme, le curseur passe à la suivante. */
@@ -1345,7 +1358,7 @@
     if (nextInput) nextInput.focus();
     const link = el('a', '', name);
     link.href = `/items/${id}`;
-    toast([link, ` créé · ${place}`], { actions: [linkButton('bouton bouton-secondaire bouton-petit', `/items/${id}`, null, 'Ouvrir la fiche')] });
+    toast(['Fiche créée : ', link, ` · ${place}`], { actions: [linkButton('bouton bouton-secondaire bouton-petit', `/items/${id}`, null, 'Ouvrir la fiche')] });
   }
 
   /** Carte d'une puce reçue en direct (même structure que views.js, chipCard). */
@@ -1387,13 +1400,56 @@
    * nouvelles sont insérées à leur rang (la plus récente en tête). Les cartes déjà là ne sont
    * pas reconstruites : une saisie en cours dans leur champ est conservée.
    */
-  function reconcileChips(chips, total) {
+  let pendingChips = null; // dernière liste reçue pendant une saisie, insérée sur « Afficher »
+
+  /** Une carte est en cours de saisie (champ qui a le focus, ou qui contient du texte). */
+  function chipsTyping() {
+    return [...chipCards.querySelectorAll('form.creation-rapide input[name="name"]')]
+      .some((input) => input === document.activeElement || input.value.trim() !== '');
+  }
+
+  /** Bandeau « 1 nouvelle puce · Afficher » (au-dessus de la liste), ou rien. */
+  function chipsNotice(count) {
+    let box = document.getElementById('puces-attente');
+    if (count === 0) {
+      box?.remove();
+      return;
+    }
+    if (!box) {
+      box = el('p', 'bandeau-direct');
+      box.id = 'puces-attente';
+      box.setAttribute('role', 'status');
+      chipCards.before(box);
+    }
+    const show = el('button', 'bouton-texte lien-simple', 'Afficher');
+    show.type = 'button';
+    show.addEventListener('click', () => {
+      const data = pendingChips;
+      pendingChips = null;
+      if (data) reconcileChips(data.chips, data.total, true);
+    });
+    box.replaceChildren(el('span', '', count > 1 ? `${count} nouvelles puces` : '1 nouvelle puce'), show);
+  }
+
+  function reconcileChips(chips, total, force = false) {
     const wanted = new Set(chips.map((chip) => chip.uid));
     const cards = new Map();
     for (const card of [...chipCards.children]) {
       if (!wanted.has(card.dataset.uid)) card.remove();
       else cards.set(card.dataset.uid, card);
     }
+    // Saisie en cours dans une carte : les nouvelles cartes ne s'insèrent pas sous le curseur ;
+    // un bandeau les annonce, « Afficher » les ajoute.
+    const fresh = chips.filter((chip) => !cards.has(chip.uid));
+    if (!force && fresh.length > 0 && chipsTyping()) {
+      pendingChips = { chips, total };
+      chipsNotice(fresh.length);
+      chipsTotal = total;
+      updateChipsState();
+      return;
+    }
+    pendingChips = null;
+    chipsNotice(0);
     let after = null; // carte précédente dans l'ordre du serveur
     for (const chip of chips) {
       let card = cards.get(chip.uid);
@@ -1543,28 +1599,37 @@
   // ---- page Postes (étape U6) : nombre d'objets, dernier arrivé et état du lecteur de chaque tuile
 
   const tiles = document.getElementById('tuiles-postes');
-  const tileOf = (id) => (isId(id) && tiles ? tiles.querySelector(`li[data-poste="${id}"]`) : null);
+  // Poste qui vient d'être ajouté (?ok=ajoute) : le focus va à sa tuile.
+  if (tiles && new URLSearchParams(window.location.search).get('ok') === 'ajoute') {
+    tiles.querySelector('.tuile--nouvelle .tuile-nom a')?.focus();
+  }
+  const tileOf =(id) => (isId(id) && tiles ? tiles.querySelector(`li[data-poste="${id}"]`) : null);
 
-  /** « 38 objets présents », « 1 objet présent », « 0 objet présent » (comme views.js, presentCount). */
+  /** « 38 objets présents », « 1 objet présent », « Aucun objet ici » (comme views.js, presentCount). */
   function setTileCount(tile, delta) {
     const line = tile.querySelector('.tuile-nombre');
-    const strong = line?.querySelector('[data-nombre]');
-    if (!line || !strong) return;
-    const before = Number(strong.textContent.replace(/[^0-9]/g, '')) || 0;
-    const n = Math.max(0, before + delta);
+    const current = line?.querySelector('[data-nombre]');
+    if (!line || !current) return;
+    const n = Math.max(0, (Number(current.dataset.nombre) || 0) + delta);
+    if (n === 0) {
+      const none = el('span', 'tuile-aucun', 'Aucun objet ici');
+      none.dataset.nombre = '0';
+      line.replaceChildren(none);
+      return;
+    }
     const count = el('strong', '', n.toLocaleString('fr-FR'));
-    count.dataset.nombre = '';
+    count.dataset.nombre = String(n);
     line.replaceChildren(count, ' ', el('span', '', n > 1 ? 'objets présents' : 'objet présent'));
   }
 
-  /** Ligne « dernier mouvement » d'une tuile : « Multimètre arrivé à l'instant » (ou « parti »). */
+  /** Ligne « dernier mouvement » d'une tuile : « Dernière arrivée : Multimètre · à l'instant » (ou « Départ vers … »). */
   function setTileLast(tile, e, verb) {
     const line = tile.querySelector('.tuile-dernier');
     if (!line) return;
     const name = el('a', 'tuile-lien', e.nom);
     name.href = `/items/${e.itemId}`;
     line.dataset.objet = String(e.itemId);
-    line.replaceChildren(name, ` ${verb} `, ageTag(e.iso));
+    line.replaceChildren(verb, name, ' · ', ageTag(e.iso));
   }
 
   /** Un scan est arrivé de ce lecteur : s'il était le dernier silencieux du poste, « Lecteur OK ». */
@@ -1590,12 +1655,12 @@
     if (from) {
       setTileCount(from, -1);
       const last = from.querySelector('.tuile-dernier');
-      if (last && last.dataset.objet === String(e.itemId)) setTileLast(from, e, `parti vers ${placeText(e)}`);
+      if (last && last.dataset.objet === String(e.itemId)) setTileLast(from, e, `Départ vers ${placeText(e)} : `);
     }
     const to = tileOf(e.posteId);
     if (to) {
       setTileCount(to, 1);
-      setTileLast(to, e, 'arrivé');
+      setTileLast(to, e, 'Dernière arrivée : ');
       to.classList.remove('tuile--nouvelle');
       void to.offsetWidth; // relance l'animation de mise en évidence
       to.classList.add('tuile--nouvelle');
@@ -1606,15 +1671,33 @@
 
   const waiting = document.getElementById('attente-lecteur');
   const waitingId = waiting ? Number(waiting.dataset.lecteur) : null;
+  const WAITING_HINT_MS = 60_000;
+  let waitingHint = null;
   if (waiting && isId(waitingId) && typeof EventSource === 'function') {
     waiting.hidden = false;
     for (const hint of document.querySelectorAll('.sans-script')) hint.hidden = true;
+    // Rien après une minute : les causes habituelles, en une phrase.
+    setTimeout(() => {
+      if (waiting.classList.contains('attente-lecteur--ok')) return;
+      waitingHint = el('p', 'texte-doux attente-aide', 'Rien ne vient ? Vérifiez le numéro, la clé, l\'alimentation et le réseau du boîtier.');
+      waiting.after(waitingHint);
+    }, WAITING_HINT_MS);
   }
 
   function readerFirstScan(e) {
     if (!waiting || e.type !== 'scan' || e.lecteur !== waitingId || waiting.classList.contains('attente-lecteur--ok')) return;
     waiting.classList.add('attente-lecteur--ok');
     waiting.replaceChildren(icon('valide'), el('span', '', `Ce lecteur fonctionne : premier scan reçu (${placeText(e)})`));
+    waitingHint?.remove();
+    // Suite logique : voir le poste (ou le lecteur, s'il n'est rattaché à aucun poste).
+    const next = linkButton('bouton', isId(e.posteId) ? `/stations/${e.posteId}` : `/readers/${waitingId}`, null, isId(e.posteId) ? 'Voir le poste' : 'Voir le lecteur');
+    const actions = document.querySelector('.actions-formulaire');
+    if (actions) {
+      for (const button of actions.querySelectorAll('.bouton')) button.classList.add('bouton-secondaire');
+      actions.prepend(next);
+    } else {
+      waiting.after(next);
+    }
   }
 
   // ---- un événement
@@ -1653,7 +1736,10 @@
   // ---- connexion
 
   let source = null;
-  let lastId = null;
+  // Dernier événement connu : celui que le serveur indique dans la page (étape U6). Le premier flux
+  // reprend donc depuis l'affichage de la page, et le retour d'un onglet caché aussi.
+  const pageEventId = document.getElementById('direct-depuis')?.dataset.depuis ?? '';
+  let lastId = EVENT_ID.test(pageEventId) ? pageEventId : null;
   let retryTimer = 0;
   let retryDelay = 3000;
 
@@ -1679,6 +1765,9 @@
     // Événements manqués au-delà de ce que le serveur garde : la page propose d'actualiser.
     stream.addEventListener('resynchro', () => {
       if (chipCards) refreshChips(); // la liste complète est relue : rien n'est manqué
+      // Pages qui affichent des nombres (postes, accueil) : rechargées si rien n'est en cours.
+      else if ((tiles || moves || guideScan) && pageIdle()) window.location.reload();
+      else if (tiles) banner('Des scans ont pu avoir lieu pendant la coupure.', '/stations');
       else if (moves || guideScan) banner('Des scans ont pu avoir lieu pendant la coupure.', '/');
       else if (currentItem !== null) banner('La fiche a pu changer pendant la coupure.', `/items/${currentItem}`);
     });

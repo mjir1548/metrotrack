@@ -158,7 +158,7 @@ test('U5 : avertissements d\'association en deux phrases au plus, numéro de puc
   assert.equal(res.status, 200);
   const panel = /<div class="panneau panneau-danger">\n<p>([\s\S]*?)<\/p>\n<p>([\s\S]*?)<\/p>/.exec(res.body);
   assert.ok(panel, 'deux paragraphes');
-  assert.equal(panel[1].replace(/<[^>]+>/g, ''), '«&nbsp;Oscilloscope&nbsp;» a déjà une puce. La nouvelle la remplacera, et l\'ancienne ne servira plus.');
+  assert.equal(panel[1].replace(/<[^>]+>/g, ''), '«&nbsp;Oscilloscope&nbsp;» a déjà une puce. La nouvelle la remplacera, et l\'ancienne redeviendra une puce inconnue.');
   assert.match(panel[2], /^L'objet sera localisé à Poste A, où la puce a été scannée <time/);
   assert.equal(res.body.split('AA 00 00 03').length - 1, 1, 'numéro de la nouvelle puce une seule fois');
   assert.ok(!res.body.includes('AA 00 00 02'), 'aucun numéro de l\'ancienne puce');
@@ -185,12 +185,12 @@ test('U6 : tuiles — objets présents, dernier arrivé, lecteur OK / silencieux
   assert.equal(res.status, 200);
   const tile = (id) => res.body.split(`<li class="tuile" data-poste="${id}">`)[1].split('</li>')[0];
   assert.ok(tile(2).includes('<h2 class="tuile-nom"><a href="/stations/2">Poste B</a></h2>'));
-  assert.ok(tile(2).includes('<p class="tuile-nombre"><strong data-nombre>1</strong> <span>objet présent</span></p>'));
-  assert.match(tile(2), /<p class="tuile-dernier" data-objet="\d+"><a class="tuile-lien" href="\/items\/\d+">Multimètre n° 8<\/a> arrivé <time/);
+  assert.ok(tile(2).includes('<p class="tuile-nombre"><strong data-nombre="1">1</strong> <span>objet présent</span></p>'));
+  assert.match(tile(2), /<p class="tuile-dernier" data-objet="\d+">Dernière arrivée : <a class="tuile-lien" href="\/items\/\d+">Multimètre n° 8<\/a> · <time/);
   assert.match(tile(2), /<p class="tuile-lecteur tuile-lecteur--ok" data-silencieux="">[\s\S]*Lecteur OK · dernier scan <time/);
   assert.ok(tile(3).includes('tuile-lecteur--attention" data-silencieux="3">'));
   assert.ok(tile(3).includes('<span>Aucun scan depuis 3 jours</span>'));
-  assert.ok(tile(4).includes('<p class="tuile-nombre"><strong data-nombre>0</strong> <span>objet présent</span></p>'));
+  assert.ok(tile(4).includes('<p class="tuile-nombre"><span class="tuile-aucun" data-nombre="0">Aucun objet ici</span></p>'));
   assert.ok(tile(4).includes('Aucun lecteur · <a class="tuile-lien" href="/readers/new?poste=4">Ajouter un lecteur</a>'));
   assert.ok(tile(1).includes('<p class="tuile-description">Réception</p>'));
   assert.ok(res.body.includes('id="direct-etat"'));
@@ -221,9 +221,9 @@ test('U6 : fiche poste — objets d\'abord, lecteur et son état, dernières arr
   assert.ok(order.every((n, i) => n > 0 && (i === 0 || n > order[i - 1])), 'objets, puis lecteur, puis arrivées');
   assert.ok(body.includes('<form class="renommer-sur-place" id="renommer-poste" data-titre="titre-poste" method="post" action="/stations/2/edit" hidden>'));
   assert.ok(body.includes('<a class="bouton bouton-secondaire" href="/stations/2/edit" data-sur-place="renommer-poste">'));
-  assert.match(body, /<li class="arrivee">[\s\S]*?Multimètre n° 8<\/a> <span class="texte-doux">arrivé<\/span>/);
+  assert.match(body, /<li class="arrivee">[\s\S]*?Multimètre n° 8<\/a> <span class="texte-doux">· scan<\/span>/);
   assert.ok(!body.includes('href="/readers/4"'), 'lecteur désactivé non listé');
-  assert.ok(body.includes('<p class="note-poste">Ce poste a un historique ; vous pouvez le renommer.</p>'));
+  assert.ok(!body.includes('Ce poste a un historique'), 'phrase seulement sur la page de suppression');
   assert.ok(!body.includes('/stations/2/delete'));
   // Renommer sur place : seul le nom est envoyé, la description est gardée.
   const renamed = await post('/stations/1/edit', { name: 'Poste A · Accueil' });
@@ -243,7 +243,8 @@ test('U6 : liste des lecteurs — état en mots, désactivés repliés dans « L
   assert.ok(folded.includes('href="/readers/4">Boîtier ancien</a>') && !active.includes('href="/readers/4"'));
   assert.ok(active.includes('etat-lecteur--ok') && active.includes('fonctionne</span>'));
   assert.ok(active.includes('silencieux depuis 3 jours</span>'));
-  assert.ok(active.includes('jamais utilisé</span>'));
+  assert.ok(active.includes('en attente du premier scan</span>'));
+  assert.ok(active.indexOf('silencieux depuis') < active.indexOf('fonctionne</span>'), 'à surveiller en tête');
   assert.ok(folded.includes('désactivé</span>'));
   assert.ok(res.body.includes('3 lecteurs en service') === false && res.body.includes('4 lecteurs en service'));
   assert.ok(!/<details[^>]*\sopen/.test(res.body), 'replié par défaut');
@@ -252,7 +253,7 @@ test('U6 : liste des lecteurs — état en mots, désactivés repliés dans « L
 test('U6 : actions sensibles expliquées en une phrase et confirmées (panneaux et pages sans script)', async () => {
   const sheet = (await page('/readers/2')).body;
   const deactivate = 'Ce lecteur n&#39;enverra plus de scans. Les scans passés restent dans l&#39;historique. C&#39;est définitif.';
-  const replace = 'Une nouvelle clé va être créée. L&#39;ancienne cessera de fonctionner tout de suite : pensez à mettre à jour le boîtier.';
+  const replace = 'Une nouvelle clé et un nouveau numéro vont être créés. L&#39;ancien cessera de fonctionner tout de suite : mettez à jour les deux dans le boîtier.';
   assert.ok(sheet.includes(`<p class="dialogue-intro">${deactivate}</p>`));
   assert.ok(sheet.includes(`<p class="dialogue-intro">${replace}</p>`));
   assert.ok(sheet.includes('<dialog class="dialogue" id="dialogue-poste"'));
@@ -275,7 +276,7 @@ test('U6 : « Ajouter un lecteur » depuis un poste : poste présélectionné ; 
   assert.equal(res.headers['cache-control'], 'no-store');
   assert.equal(res.headers.location, undefined, 'clé jamais dans une URL');
   const id = db.prepare("SELECT id FROM readers WHERE name = 'Boîtier quai'").get().id;
-  assert.ok(res.body.includes('<p>Copiez la clé dans le boîtier, puis scannez un objet pour vérifier.</p>'));
+  assert.ok(res.body.includes(`<p>Configurez le numéro ${id} et la clé dans le boîtier, puis scannez un objet pour vérifier.</p>`));
   assert.ok(res.body.includes(`<p class="attente-lecteur" id="attente-lecteur" data-lecteur="${id}" role="status" hidden><span class="direct-point" aria-hidden="true"></span><span>En attente du premier scan de ce lecteur…</span></p>`));
   assert.ok(res.body.includes(`<p class="texte-doux sans-script">Le premier scan apparaîtra sur <a href="/readers/${id}">la fiche du lecteur</a>.</p>`));
   const key = /<pre class="cle">([0-9a-f]{64})<\/pre>/.exec(res.body)[1];

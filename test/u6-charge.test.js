@@ -91,7 +91,7 @@ test(`/stations : ${STATIONS} tuiles (${ITEMS} objets, ${SCANS} scans), sous ${B
   t.diagnostic(`données des tuiles : ${median(data).toFixed(1)} ms ; GET /stations complet (HTTPS) : ${median(http).toFixed(1)} ms, ${Math.round(res.body.length / 1024)} Kio`);
   assert.equal(res.status, 200);
   assert.equal((res.body.match(/<li class="tuile[^"]*" data-poste=/g) ?? []).length, STATIONS);
-  const total = [...res.body.matchAll(/<strong data-nombre>(\d[\d  ]*)<\/strong>/g)].reduce((sum, m) => sum + Number(m[1].replace(/\D/g, '')), 0);
+  const total = [...res.body.matchAll(/data-nombre="(\d+)"/g)].reduce((sum, m) => sum + Number(m[1].replace(/\D/g, '')), 0);
   assert.equal(total, ITEMS, 'chaque objet compté une fois');
   assert.ok(median(http) < BOUND_MS, `${median(http)} ms`);
 });

@@ -156,7 +156,7 @@ test('parcours : remplacement de la puce d\'une fiche localisée ; la fiche suit
   const confirm = await page(`/chips/${NEW}/associate/1`);
   assert.equal(confirm.status, 200);
   assert.ok(confirm.body.includes('panneau-danger'));
-  assert.ok(confirm.body.includes('» a déjà une puce.</strong> La nouvelle la remplacera, et l\'ancienne ne servira plus.'));
+  assert.ok(confirm.body.includes('» a déjà une puce.</strong> La nouvelle la remplacera, et l\'ancienne redeviendra une puce inconnue.'));
   assert.ok(confirm.body.includes(`<input type="hidden" name="previous" value="${OLD}">`));
   assert.ok(confirm.body.includes('Labo'));
 

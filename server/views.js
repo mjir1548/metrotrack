@@ -228,7 +228,8 @@ ${icon('recherche')}
 ${SHORTCUT_HINT}
 </form>`
     : null;
-  return documentPage(title, 'page-app', html`<header class="barre">
+  return documentPage(title, 'page-app', html`${Number.isSafeInteger(user.direct) ? html`<span hidden id="direct-depuis" data-depuis="${user.direct}"></span>
+` : null}<header class="barre">
 <div class="barre-interieur">
 <a class="logo" href="/">${BRAND_CONTENT}</a>
 <nav class="nav" aria-label="Navigation principale">
@@ -240,12 +241,14 @@ ${NAV.map(([href, label, key]) => navLink(href, label, key === section, exact, k
 ${searchForm}
 </div>
 <div class="compte">
-<span class="avatar" aria-hidden="true">${initials(user.username)}</span>
-<span class="compte-nom"><span class="visuellement-cache">Connecté en tant que </span><strong>${user.username}</strong></span>
+<button class="compte-bouton" type="button" title="${user.username}" aria-label="Compte : ${user.username}"><span class="avatar" aria-hidden="true">${initials(user.username)}</span></button>
+<div class="menu-panneau compte-panneau">
+<p class="compte-nom"><span class="visuellement-cache">Connecté en tant que </span><strong>${user.username}</strong></p>
 <form method="post" action="/logout">
 <input type="hidden" name="csrf" value="${user.csrf}">
-<button class="bouton bouton-discret bouton-petit" type="submit">Se déconnecter</button>
+<button class="menu-item compte-sortie" type="submit">Se déconnecter</button>
 </form>
+</div>
 </div>
 </div>
 </header>
@@ -1150,10 +1153,18 @@ function stationLink(id, name, none = 'non affecté') {
  */
 function readerState(reader, now) {
   if (reader.active === 0) return { kind: 'desactive', text: 'désactivé' };
-  if (reader.last_scan_at === null || reader.last_scan_at === undefined) return { kind: 'jamais', text: 'jamais utilisé' };
+  // Retour UX U6 : un seul libellé, neutre, pour un lecteur qui n'a encore rien envoyé.
+  if (reader.last_scan_at === null || reader.last_scan_at === undefined) return { kind: 'jamais', text: 'en attente du premier scan' };
   const silence = now - Date.parse(reader.last_scan_at);
   if (silence > SILENT_READER_MS) return { kind: 'silencieux', text: `silencieux depuis ${silenceLength(silence)}` };
   return { kind: 'ok', text: 'fonctionne' };
+}
+
+/** Phrase sous l'état d'un lecteur actif (fiche du lecteur) : ce qu'il faut faire, s'il y a lieu. */
+function stateHint(kind) {
+  if (kind === 'silencieux') return 'Vérifiez qu\'il est allumé, branché et à portée du réseau.';
+  if (kind === 'jamais') return 'Configurez son numéro et sa clé dans le boîtier, puis scannez un objet.';
+  return 'Sa clé n\'est jamais réaffichée : si elle est perdue, remplacez la clé.';
 }
 
 /** Pastille d'état d'un lecteur : icône ET texte (le sens n'est pas porté par la couleur seule). */
@@ -1163,30 +1174,38 @@ function readerStateBadge(reader, now) {
   return html`<span class="etat-lecteur etat-lecteur--${kind}">${icon(iconName)}${text}</span>`;
 }
 
-/** « 38 objets présents », « 1 objet présent », « 0 objet présent » (tuile d'un poste, aussi dans app.js). */
-const presentCount = (n) => html`<strong data-nombre>${thousands(n)}</strong> <span>${n > 1 ? 'objets présents' : 'objet présent'}</span>`;
+/**
+ * « 38 objets présents », « 1 objet présent » ; sans objet : « Aucun objet ici », sans gros
+ * chiffre (tuile d'un poste, aussi dans app.js, setTileCount).
+ */
+const presentCount = (n) => (n === 0
+  ? html`<span class="tuile-aucun" data-nombre="0">Aucun objet ici</span>`
+  : html`<strong data-nombre="${n}">${thousands(n)}</strong> <span>${n > 1 ? 'objets présents' : 'objet présent'}</span>`);
 
 /**
- * Ligne « lecteur » d'une tuile de poste : « Lecteur OK · dernier scan il y a 4 min », en orange
- * « Aucun scan depuis 3 jours » (ou « Aucun scan reçu pour l'instant »), ou « Aucun lecteur ».
- * data-silencieux : numéros des lecteurs silencieux du poste ; app.js repasse la ligne en « OK »
- * quand ils ont tous scanné.
+ * Ligne « lecteur » d'une tuile de poste : « Lecteur OK · dernier scan il y a 4 min » ; en orange
+ * « Aucun scan depuis 3 jours » (silencieux, plus de 24 h) ; neutre « En attente du premier scan »
+ * (jamais utilisé) ; « Aucun lecteur », en attention : le poste ne peut rien scanner.
+ * data-silencieux : numéros des lecteurs silencieux ou en attente ; app.js repasse la ligne en
+ * « OK » quand ils ont tous scanné.
  */
 function tileReader(station, now) {
   const { readers } = station;
   if (readers.length === 0) {
-    return html`<p class="tuile-lecteur tuile-lecteur--aucun" data-silencieux="">${icon('lecteur')}<span>Aucun lecteur · <a class="tuile-lien" href="/readers/new?poste=${station.id}">Ajouter un lecteur</a></span></p>`;
+    return html`<p class="tuile-lecteur tuile-lecteur--attention" data-silencieux="">${icon('attention')}<span>Aucun lecteur · <a class="tuile-lien" href="/readers/new?poste=${station.id}">Ajouter un lecteur</a></span></p>`;
   }
-  const silent = readers.filter((reader) => readerState({ ...reader, active: 1 }, now).kind !== 'ok');
-  const ids = silent.map((reader) => reader.id).join(' ');
-  if (silent.length > 0) {
-    const first = silent[0];
-    const who = readers.length > 1 ? `${readerLabel({ ...first, station_id: station.id, station_name: station.name })} : ` : '';
-    const what = first.last_scan_at === null
-      ? 'aucun scan reçu pour l\'instant'
-      : `aucun scan depuis ${silenceLength(now - Date.parse(first.last_scan_at))}`;
-    const text = `${who}${what}`;
-    return html`<p class="tuile-lecteur tuile-lecteur--attention" data-silencieux="${ids}">${icon('silence')}<span>${text[0].toUpperCase()}${text.slice(1)}</span></p>`;
+  const states = readers.map((reader) => ({ reader, kind: readerState({ ...reader, active: 1 }, now).kind }));
+  const ids = states.filter((s) => s.kind !== 'ok').map((s) => s.reader.id).join(' ');
+  const who = (reader) => (readers.length > 1 ? `${readerLabel({ ...reader, station_id: station.id, station_name: station.name })} : ` : '');
+  const capital = (text) => `${text[0].toUpperCase()}${text.slice(1)}`;
+  const silent = states.find((s) => s.kind === 'silencieux');
+  if (silent) {
+    const text = `${who(silent.reader)}aucun scan depuis ${silenceLength(now - Date.parse(silent.reader.last_scan_at))}`;
+    return html`<p class="tuile-lecteur tuile-lecteur--attention" data-silencieux="${ids}">${icon('silence')}<span>${capital(text)}</span></p>`;
+  }
+  const waiting = states.find((s) => s.kind === 'jamais');
+  if (waiting) {
+    return html`<p class="tuile-lecteur tuile-lecteur--attente" data-silencieux="${ids}">${icon('lecteur')}<span>${capital(`${who(waiting.reader)}en attente du premier scan`)}</span></p>`;
   }
   const last = readers.map((reader) => reader.last_scan_at).sort().at(-1);
   return html`<p class="tuile-lecteur tuile-lecteur--ok" data-silencieux="">${icon('valide')}<span>Lecteur OK · dernier scan ${timeTag(last, now)}</span></p>`;
@@ -1195,12 +1214,13 @@ function tileReader(station, now) {
 /** Une tuile de poste (étape U6) : nom en grand, objets présents, dernier arrivé, état du lecteur. */
 function stationTile(station, now, fresh) {
   const last = station.last_arrival;
+  // Formulation neutre (« Dernière arrivée : Clé dynamométrique · il y a 1 h »). Arrivée bornée
+  // (D-016, « au moins ») : l'objet est là depuis plus longtemps encore.
   const lastLine = last === null
-    ? html`<p class="tuile-dernier" data-objet="">Aucun objet pour l'instant</p>`
-    // Arrivée bornée (D-016, « au moins ») : l'objet est là depuis plus longtemps encore.
-    : html`<p class="tuile-dernier" data-objet="${last.item_id}"><a class="tuile-lien" href="/items/${last.item_id}">${last.item_name}</a> ${last.bounded
-      ? html`présent <time datetime="${last.arrived_at}" title="${formatDateTime(last.arrived_at)}">${formatSince(last.arrived_at, now, true)}</time>`
-      : html`arrivé ${timeTag(last.arrived_at, now)}`}</p>`;
+    ? html`<p class="tuile-dernier" data-objet=""></p>`
+    : html`<p class="tuile-dernier" data-objet="${last.item_id}">Dernière arrivée : <a class="tuile-lien" href="/items/${last.item_id}">${last.item_name}</a> · ${last.bounded
+      ? html`<time datetime="${last.arrived_at}" title="${formatDateTime(last.arrived_at)}">${formatSince(last.arrived_at, now, true)}</time>`
+      : timeTag(last.arrived_at, now)}</p>`;
   return html`<li class="tuile${fresh ? ' tuile--nouvelle' : ''}" data-poste="${station.id}">
 <h2 class="tuile-nom"><a href="/stations/${station.id}">${station.name}</a></h2>
 ${station.description === '' ? null : html`<p class="tuile-description">${station.description}</p>\n`}<p class="tuile-nombre">${presentCount(station.items_here)}</p>
@@ -1218,10 +1238,16 @@ ${tileReader(station, now)}
  *   stations : stations.js, listStationSummaries ; added : poste qui vient d'être ajouté.
  */
 export function stationsPage(user, { stations, now = Date.now(), notice = null, added = null }) {
+  // État vide : son propre bouton (même champ en ligne avec le script), sans « 0 poste » ni « En direct ».
   const body = stations.length === 0
     ? emptyState('poste', html`<p>Aucun poste pour le moment.</p>
-<p class="texte-doux">Un poste par lieu de travail : établi, banc d'essais, magasin… Ajoutez le premier avec «&nbsp;Ajouter un poste&nbsp;».</p>`)
-    : html`<ul class="tuiles" id="tuiles-postes">
+<p class="texte-doux">Un poste par lieu de travail : établi, banc d'essais, magasin…</p>
+<a class="bouton bouton-secondaire" href="/stations/new" data-sur-place="ajout-poste">${icon('ajouter')}Ajouter le premier poste</a>`)
+    : html`<div class="section-entete">
+<p class="resultats">${plural(stations.length, 'poste', 'postes')}</p>
+<p class="direct-etat" id="direct-etat" role="status" hidden><span class="direct-point" aria-hidden="true"></span><span class="direct-texte">En direct</span></p>
+</div>
+<ul class="tuiles" id="tuiles-postes">
 ${stations.map((station) => stationTile(station, now, added !== null && station.id === added.id))}</ul>`;
   const noticeHtml = added === null
     ? noticeFor(STATION_LIST_NOTICES, notice)
@@ -1243,11 +1269,7 @@ ${AIDE.postes}<form class="carte ajout-en-ligne" id="ajout-poste" method="post" 
 <button class="lien-annuler bouton-texte" type="button" data-annuler>Annuler</button>
 </div>
 </form>
-<div class="section-entete">
-<p class="resultats">${plural(stations.length, 'poste', 'postes')}</p>
-<p class="direct-etat" id="direct-etat" role="status" hidden><span class="direct-point" aria-hidden="true"></span><span class="direct-texte">En direct</span></p>
-</div>
-${body}`, { ...stationsSection, exact: true, icons: ['valide', 'silence', 'lecteur'] });
+${body}`, { ...stationsSection, exact: true, icons: ['valide', 'silence', 'lecteur', 'attention'] });
 }
 
 /** Une arrivée à ce poste (fiche d'un poste) : l'objet, « arrivé » ou « corrigé à la main par … », l'heure. */
@@ -1255,7 +1277,7 @@ function stationMovementItem(move, now) {
   const manual = move.type === 'correction';
   return html`<li class="arrivee${manual ? ' arrivee--main' : ''}">
 <span class="arrivee-icone">${icon(manual ? 'main' : 'lecteur')}</span>
-<p class="arrivee-objet"><a href="/items/${move.item_id}">${move.item_name}</a> ${manual ? html`<span class="texte-doux">corrigé à la main par ${move.username ?? 'un compte inconnu'}</span>` : html`<span class="texte-doux">arrivé</span>`}</p>
+<p class="arrivee-objet"><a href="/items/${move.item_id}">${move.item_name}</a>${manual ? html` <span class="texte-doux">· correction à la main par ${move.username ?? 'un compte inconnu'}</span>` : html` <span class="texte-doux">· scan</span>`}</p>
 <p class="arrivee-quand">${timeTag(move.at, now)}</p>
 </li>
 `;
@@ -1326,8 +1348,7 @@ ${readerList}
 <h2 id="titre-arrivees" class="carte-titre">${icon('historique')}Dernières arrivées</h2>
 ${movementList}
 </section>
-</div>
-${deletable ? null : html`<p class="note-poste">Ce poste a un historique ; vous pouvez le renommer.</p>\n`}`, stationsSection);
+</div>`, stationsSection);
 }
 
 /**
@@ -1416,7 +1437,12 @@ ${AIDE.supprimerPoste}<div class="panneau panneau-danger">
  * @param {{readers: object[], now: number}} data
  */
 export function readersPage(user, { readers, now }) {
-  const active = readers.filter((reader) => reader.active === 1);
+  // Retour UX U6 : les lecteurs à surveiller (silencieux, puis en attente du premier scan) en tête.
+  const rank = { silencieux: 0, jamais: 1, ok: 2 };
+  const active = readers.filter((reader) => reader.active === 1)
+    .map((reader, index) => ({ reader, index, rank: rank[readerState(reader, now).kind] ?? 2 }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((entry) => entry.reader);
   const inactive = readers.filter((reader) => reader.active !== 1);
   // Étape U6 : nom, poste, état en mots ; le numéro du boîtier en secondaire.
   const table = (list, className) => html`<div class="panneau-tableau">
@@ -1434,7 +1460,8 @@ ${list.map((reader) => html`<tr>
   let body;
   if (readers.length === 0) {
     body = emptyState('lecteur', html`<p>Aucun lecteur pour le moment.</p>
-<p class="texte-doux">Un lecteur par poste : ajoutez-le, puis copiez sa clé dans le boîtier.</p>`);
+<p class="texte-doux">Un lecteur par poste : ajoutez-le, puis copiez sa clé dans le boîtier.</p>
+<a class="bouton bouton-secondaire" href="/readers/new">${icon('ajouter')}Ajouter le premier lecteur</a>`);
   } else {
     body = html`${active.length === 0 ? html`<p class="texte-doux">Aucun lecteur en service.</p>` : table(active, 'tableau-lecteurs-actifs')}
 ${inactive.length === 0 ? null : html`<details class="lecteurs-desactives">
@@ -1459,7 +1486,7 @@ ${body}`, { ...readersSection, exact: true, icons: ['valide', 'silence', 'lecteu
 // Phrases des actions sensibles d'un lecteur (étape U6), communes aux panneaux de la fiche et aux
 // pages de confirmation (sans script).
 const DEACTIVATE_TEXT = 'Ce lecteur n\'enverra plus de scans. Les scans passés restent dans l\'historique. C\'est définitif.';
-const REPLACE_TEXT = 'Une nouvelle clé va être créée. L\'ancienne cessera de fonctionner tout de suite : pensez à mettre à jour le boîtier.';
+const REPLACE_TEXT = 'Une nouvelle clé et un nouveau numéro vont être créés. L\'ancien cessera de fonctionner tout de suite : mettez à jour les deux dans le boîtier.';
 
 /**
  * Panneau de confirmation d'une action de la fiche d'un lecteur (<dialog>, ouvert par app.js ;
@@ -1545,7 +1572,7 @@ ${AIDE.lecteur}<div class="fiche">
 <h2 id="titre-etat" class="carte-titre">${icon('valide')}État</h2>
 <p>${readerStateBadge(reader, now)}</p>
 <p class="localisation-detail">${active
-    ? 'Sa clé n\'est jamais réaffichée : si elle est perdue, remplacez la clé.'
+    ? stateHint(readerState(reader, now).kind)
     : 'Désactivé définitivement : il n\'envoie plus de scans. Ses scans passés restent dans l\'historique.'}</p>
 </section>
 <section class="carte carte-corps" aria-labelledby="titre-identification">
@@ -1741,25 +1768,26 @@ export function readerKeyPage(user, { id, name, station, keyHex, oldId = null, h
 <h1>Clé du lecteur</h1>
 <p class="sous-titre-page">${readerSubtitle(reader)}</p>
 </div>
-<div class="panneau panneau-alerte" role="note">
-<p>Copiez cette clé dans le boîtier maintenant : elle ne sera plus affichée. Si vous la perdez, vous pourrez en créer une nouvelle.</p>
+<section class="carte carte-corps carte-cle" aria-labelledby="titre-numero">
+<div class="cle-numero">
+<h2 id="titre-numero" class="etiquette">Numéro à configurer dans le boîtier</h2>
+<p class="numero-lecteur">${id}</p>
 </div>
+<div class="cle-secret">
+<h2 id="titre-cle" class="etiquette">Clé secrète</h2>
+<pre class="cle">${keyHex}</pre>
+</div>
+<p class="cle-avertissement" role="note">${icon('attention')}<span>Copiez cette clé dans le boîtier maintenant : elle ne sera plus affichée. Si vous la perdez, vous pourrez en créer une nouvelle.</span></p>
+</section>
 <section class="carte carte-corps etape-suivante" aria-labelledby="titre-suite">
 <h2 id="titre-suite" class="carte-titre">${icon('lecteur')}Étape suivante</h2>
-<p>Copiez la clé dans le boîtier, puis scannez un objet pour vérifier.</p>
+<p>Configurez le numéro ${id} et la clé dans le boîtier, puis scannez un objet pour vérifier.</p>
 <p class="attente-lecteur" id="attente-lecteur" data-lecteur="${id}" role="status" hidden><span class="direct-point" aria-hidden="true"></span><span>En attente du premier scan de ce lecteur…</span></p>
 <p class="texte-doux sans-script">Le premier scan apparaîtra sur <a href="/readers/${id}">la fiche du lecteur</a>.</p>
 </section>
-<section class="carte carte-corps carte-cle" aria-labelledby="titre-numero">
-<h2 id="titre-numero" class="etiquette">Numéro à configurer dans le boîtier</h2>
-<p class="numero-lecteur">${id}</p>
-<h2 id="titre-cle" class="etiquette">Clé secrète</h2>
-<pre class="cle">${keyHex}</pre>
-<p class="aide">Un clic sur la clé la sélectionne en entier.</p>
-</section>
 <div class="actions-formulaire">
 ${home ? html`<a class="bouton" href="/">Continuer : retour à l'accueil</a>` : html`<a class="bouton" href="/readers">Retour aux lecteurs</a>`}
-</div>`, { ...readersSection, icons: ['valide'] });
+</div>`, { ...readersSection, icons: ['valide', 'attention'] });
 }
 
 // ---------------------------------------------------------------- puces inconnues (étape 7)
@@ -1954,7 +1982,7 @@ export function associateConfirmPage(user, { chip, item, now, changed = false, f
     : html`L'objet sera localisé à ${chip.station_name}, où la puce a été scannée ${timeTag(chip.received_at, now)}.`;
   if (correctionWins) where = html`L'objet reste à ${item.station_name}, où il a été corrigé à la main, jusqu'au prochain scan de la puce.`;
   const explanation = replacing
-    ? html`<p><strong>«&nbsp;<span class="nom-confirme">${item.name}</span>&nbsp;» a déjà une puce.</strong> La nouvelle la remplacera, et l'ancienne ne servira plus.</p>
+    ? html`<p><strong>«&nbsp;<span class="nom-confirme">${item.name}</span>&nbsp;» a déjà une puce.</strong> La nouvelle la remplacera, et l'ancienne redeviendra une puce inconnue.</p>
 <p>${where}</p>`
     : html`<p>La puce sera donnée à «&nbsp;<strong class="nom-confirme">${item.name}</strong>&nbsp;». ${where}</p>`;
 
@@ -2120,17 +2148,20 @@ function readersCard(readers, now) {
 <a class="bouton bouton-petit" href="/readers/new">${icon('ajouter')}Ajouter un lecteur</a>
 </div>`;
   }
+  // Retour UX U6 : un lecteur qui n'a encore rien envoyé est « en attente du premier scan », en
+  // neutre ; l'orange reste pour les silencieux (plus de 24 h).
   const silent = readers.silent.map((reader) => {
-    const since = reader.last_scan_at === null
-      ? 'aucun scan reçu pour l\'instant'
+    const waiting = reader.last_scan_at === null;
+    const since = waiting
+      ? 'en attente du premier scan'
       : `aucun scan depuis ${silenceLength(now - Date.parse(reader.last_scan_at))}`;
-    const hint = reader.last_scan_at === null
-      ? html`Vérifiez qu'il est branché et que sa clé est installée.`
-      : html`Dernier scan ${timeTag(reader.last_scan_at, now)}. Vérifiez qu'il est allumé et branché.`;
-    return html`<div class="alerte-lecteur" data-lecteur="${reader.id}">
-${icon('silence')}
+    const hint = waiting
+      ? html`Configurez son numéro et sa clé dans le boîtier, puis scannez un objet.`
+      : html`Dernier scan ${timeTag(reader.last_scan_at, now)}. Vérifiez qu'il est allumé, branché et à portée du réseau.`;
+    return html`<div class="alerte-lecteur${waiting ? ' alerte-lecteur--attente' : ''}" data-lecteur="${reader.id}">
+${icon(waiting ? 'lecteur' : 'silence')}
 <div>
-<p class="alerte-lecteur-titre"><span class="visuellement-cache">À surveiller : </span><a href="/readers/${reader.id}">${readerLabel(reader)}</a> : ${since}</p>
+<p class="alerte-lecteur-titre">${waiting ? null : html`<span class="visuellement-cache">À surveiller : </span>`}<a href="/readers/${reader.id}">${readerLabel(reader)}</a> : ${since}</p>
 <p>${hint}</p>
 </div>
 </div>

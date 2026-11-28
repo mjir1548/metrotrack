@@ -135,7 +135,7 @@ test('affichage : liste, fiche, fiche du poste, frise des scans de l\'objet ; nu
     assert.ok(res.body.includes('<p class="sous-titre-page">Boîtier établi gauche · Atelier</p>'), path);
     assert.ok(res.body.includes('<a href="/readers/1">Boîtier établi gauche</a>'), `${path} : fil d'Ariane`);
   }
-  assert.ok((await page('/readers/1/replace')).body.includes('<p>Une nouvelle clé va être créée.'));
+  assert.ok((await page('/readers/1/replace')).body.includes('<p>Une nouvelle clé et un nouveau numéro vont être créés.'));
 });
 
 test('renommer : CSRF et Origin exigés (403, rien n\'est écrit)', async () => {

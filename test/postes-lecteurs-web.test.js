@@ -413,7 +413,9 @@ test('création d\'un lecteur : page de clé unique (200, no-store, sans redirec
   assert.ok(res.body.includes('Copiez cette clé dans le boîtier maintenant : elle ne sera plus affichée. Si vous la perdez, vous pourrez en créer une nouvelle.'));
   // Étape U2 : avertissement réduit à cette seule phrase (le bouton « Copier la clé » est ajouté par app.js).
   assert.ok(!res.body.includes('Ne rechargez pas cette page'));
-  assert.ok(res.body.includes('<section class="carte carte-corps carte-cle" aria-labelledby="titre-numero">\n<h2 id="titre-numero" class="etiquette">Numéro à configurer dans le boîtier</h2>'));
+  // Retour UX U6 : numéro et clé en premier, côte à côte.
+  assert.ok(res.body.includes('<section class="carte carte-corps carte-cle" aria-labelledby="titre-numero">\n<div class="cle-numero">\n<h2 id="titre-numero" class="etiquette">Numéro à configurer dans le boîtier</h2>'));
+  assert.ok(res.body.indexOf('class="carte carte-corps carte-cle"') < res.body.indexOf('class="carte carte-corps etape-suivante"'));
   // Étape U1 : libellé sans jargon (« AES-256 », « hexadécimaux »).
   assert.ok(res.body.includes('<h2 id="titre-cle" class="etiquette">Clé secrète</h2>'));
   assert.ok(!res.body.includes('AES') && !res.body.includes('hexadécima'));
@@ -447,10 +449,10 @@ test('bout en bout : le simulateur, avec la clé affichée, est accepté (204) ;
 test('liste et fiche du lecteur : poste, état, dernier scan, derniers scans avec l\'objet ; ni compteur ni clé', async () => {
   const list = await page('/readers');
   // Étape U1 : la colonne « Dernier compteur » n'est plus affichée (terme technique).
-  // Étape U6 : nom, puis N° boîtier en secondaire ; état en mots (« fonctionne », « jamais utilisé »).
+  // Étape U6 : nom, puis N° boîtier en secondaire ; état en mots (« fonctionne », « en attente du premier scan »).
   assert.match(list.body, /<a class="lien-objet" href="\/readers\/2">Lecteur · Banc 2<\/a> <span class="numero-secondaire">N°&nbsp;boîtier&nbsp;<span class="numero-boitier">2<\/span><\/span><\/td>\n<td data-label="Poste"><a class="lien-simple" href="\/stations\/\d+">Banc 2<\/a><\/td>\n<td data-label="État"><span class="etat-lecteur etat-lecteur--ok"><svg class="ic" aria-hidden="true"><use href="#i-valide"><\/use><\/svg>fonctionne<\/span> <span class="texte-doux">· <time [^>]*>à l&#39;instant<\/time><\/span><\/td>/);
   assert.ok(!list.body.includes('ompteur'));
-  assert.match(list.body, /href="\/readers\/1">Lecteur · Atelier<\/a>[\s\S]*?jamais utilisé<\/span><\/td>/);
+  assert.match(list.body, /href="\/readers\/1">Lecteur · Atelier<\/a>[\s\S]*?en attente du premier scan<\/span><\/td>/);
   assertSafePage(list.body, 'liste des lecteurs');
   const sheet = await page('/readers/2');
   assert.equal(sheet.status, 200);
@@ -462,7 +464,7 @@ test('liste et fiche du lecteur : poste, état, dernier scan, derniers scans ave
   assert.ok(sheet.body.includes('<a class="bouton bouton-secondaire" href="/readers/2/replace" data-dialogue="cle">Remplacer la clé</a>'));
   assert.ok(sheet.body.includes('<a class="lien-danger" href="/readers/2/deactivate" data-dialogue="desactiver">Désactiver</a>'));
   assert.ok(sheet.body.includes('<p class="dialogue-intro">Ce lecteur n&#39;enverra plus de scans. Les scans passés restent dans l&#39;historique. C&#39;est définitif.</p>'));
-  assert.ok(sheet.body.includes('<p class="dialogue-intro">Une nouvelle clé va être créée. L&#39;ancienne cessera de fonctionner tout de suite : pensez à mettre à jour le boîtier.</p>'));
+  assert.ok(sheet.body.includes('<p class="dialogue-intro">Une nouvelle clé et un nouveau numéro vont être créés. L&#39;ancien cessera de fonctionner tout de suite : mettez à jour les deux dans le boîtier.</p>'));
   assert.match(sheet.body, /<td><a class="lien-simple" href="\/items\/1">Multimètre<\/a><\/td>\n<td data-label="Poste">/);
   assert.ok(!sheet.body.includes('ompteur') && !sheet.body.includes('trame'));
   assertSafePage(sheet.body, 'fiche du lecteur');
@@ -470,7 +472,7 @@ test('liste et fiche du lecteur : poste, état, dernier scan, derniers scans ave
   assert.ok(station.body.includes('<a class="lien-objet" href="/readers/2">Lecteur · Banc 2</a>'));
   assert.ok(station.body.includes('<a class="lien-objet" href="/items/1">Multimètre</a>'), 'objet présent au poste');
   assert.ok(!station.body.includes('class="lien-danger"'), 'poste avec historique : pas de lien Supprimer');
-  assert.ok(station.body.includes('Ce poste a un historique'));
+  assert.ok(!station.body.includes('Ce poste a un historique'), 'phrase retirée de la fiche (retour UX)');
   assertSafePage(station.body, 'fiche de poste');
 });
 
@@ -515,7 +517,7 @@ test('remplacement de clé : confirmation, puis page de la nouvelle clé ; ancie
   assert.equal(confirm.status, 200);
   assert.ok(confirm.body.includes('<form method="post" action="/readers/2/replace">'));
   assert.ok(confirm.body.includes('<button class="bouton bouton-danger" type="submit">Remplacer la clé</button>'));
-  assert.ok(confirm.body.includes('<p>Une nouvelle clé va être créée. L&#39;ancienne cessera de fonctionner tout de suite : pensez à mettre à jour le boîtier.</p>'));
+  assert.ok(confirm.body.includes('<p>Une nouvelle clé et un nouveau numéro vont être créés. L&#39;ancien cessera de fonctionner tout de suite : mettez à jour les deux dans le boîtier.</p>'));
   assert.ok(!confirm.body.includes(key2));
   assertSafePage(confirm.body, 'confirmation de remplacement');
 

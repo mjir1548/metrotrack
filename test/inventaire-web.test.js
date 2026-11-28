@@ -195,7 +195,7 @@ test('après un scan accepté (POST /api/frames), la nouvelle localisation appar
   assert.equal(sheet.status, 200);
   assertWebHeaders(sheet, 'fiche');
   assert.ok(sheet.body.includes('<span class="etat etat-poste">Poste 1</span>'));
-  assert.ok(sheet.body.includes('<span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>Scanné <time '));
+  assert.ok(sheet.body.includes('<span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>Scanné</span>'), 'arrivée = dernier scan : badge court (étape U4)');
   assert.ok(sheet.body.includes('<p class="frise-lieu"><a class="lien-simple lien-discret" href="/stations/1">Poste 1</a></p>'));
 
   // Second scan, ailleurs (via ingestFrame) : la localisation suit le dernier scan.
@@ -203,7 +203,7 @@ test('après un scan accepté (POST /api/frames), la nouvelle localisation appar
   const moved = await page('/inventaire');
   assert.ok(rowOf(moved.body, 1).includes('<span class="etat etat-poste">Atelier &lt;b&gt;&quot;A&quot;&lt;/b&gt; &amp; Cie</span>'));
   const movedSheet = await page('/items/1');
-  assert.ok(movedSheet.body.includes('<span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>Scanné <time '));
+  assert.ok(movedSheet.body.includes('<span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>Scanné</span>'));
   // Historique : le plus récent d'abord.
   const history = /<ol class="frise">([\s\S]*?)<\/ol>/.exec(movedSheet.body)[1];
   assert.deepEqual([...history.matchAll(/<p class="frise-lieu">([\s\S]*?)<\/p>/g)].map((m) => m[1].replace(/<[^>]+>/g, '')),

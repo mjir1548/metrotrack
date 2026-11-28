@@ -94,7 +94,7 @@ test(`accueil sur base chargée (${ITEMS} objets, ${SCANS} scans, ${UNKNOWN} puc
     http_ms.push(performance.now() - start);
   }
   assert.equal(res.status, 200);
-  assert.ok(res.body.includes(`Voir les ${(UNKNOWN).toLocaleString('fr-FR')} puces inconnues`));
+  assert.ok(res.body.includes(`Voir les ${(UNKNOWN).toLocaleString('fr-FR')} nouvelles puces`));
   t.diagnostic(`homeData : médiane ${median(server_ms).toFixed(1)} ms ; GET / (HTTPS complet) : médiane ${median(http_ms).toFixed(1)} ms`);
   assert.ok(median(server_ms) < BOUND_MS, `homeData ${median(server_ms)} ms`);
   assert.ok(median(http_ms) < BOUND_MS, `GET / ${median(http_ms)} ms`);

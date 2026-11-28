@@ -7,6 +7,7 @@ import { constants } from 'node:crypto';
 import { ingestFrame } from './ingest.js';
 import { handleWeb, sendInternalError, LOGIN_FAILURE_DELAY_MS } from './web.js';
 import { createDirectHub, scanEvent, MAX_DIRECT_CLIENTS, HEARTBEAT_MS } from './direct.js';
+import { createChipsCounter } from './chips.js';
 
 const FRAMES_PATH = '/api/frames';
 // Plafond de lecture du corps : une trame fait 36 octets. Au-delà, on cesse de lire
@@ -53,6 +54,8 @@ export function createFrameServer(db, {
 } = {}) {
   if (!tls?.cert || !tls?.key) throw new Error('certificat et clé TLS obligatoires');
   const direct = createDirectHub({ db, maxClients: maxDirectClients, heartbeatMs: directHeartbeatMs });
+  // Nombre de puces inconnues de la barre de navigation, mémorisé (server/chips.js).
+  const chipsCounter = createChipsCounter(db);
   const options = {
     cert: tls.cert,
     key: tls.key,
@@ -93,7 +96,7 @@ export function createFrameServer(db, {
         fail(err);
       }
     };
-    const web = { db, log, loginFailureDelayMs, guard, fail, direct };
+    const web = { db, log, loginFailureDelayMs, guard, fail, direct, chipsCounter };
     guard(handleRequest)(db, log, req, res, guard, web);
   });
   // Limite le temps laissé à un client pour envoyer sa requête complète.
@@ -163,6 +166,10 @@ function handleRequest(db, log, req, res, guard, web) {
     // direct (contrat inchangé, docs/protocole.md). Un échec est seulement journalisé.
     try {
       const event = scanEvent(db, result.scanId);
+      if (event?.inconnu) {
+        web.chipsCounter.invalidate();
+        event.puces = web.chipsCounter.get();
+      }
       if (event) web.direct.publish(event);
     } catch (err) {
       log(`scan ${result.scanId} accepté, mais diffusion en direct impossible : ${err.message}`);

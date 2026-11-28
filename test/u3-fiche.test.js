@@ -434,11 +434,13 @@ test('frise : toutes les puces successives, chacune pendant sa période ; repèr
   assert.ok(!frise(html).includes('Magasin'));
 });
 
-test('détails de présentation : en-tête « Scanné il y a … » ; panneau sans puce ; « Changer » à côté de la puce ; puce scannée à l\'instant', async () => {
+test('détails de présentation : en-tête « Scanné » (heure seulement si rescan) ; panneau sans puce ; « Changer » à côté de la puce ; puce scannée à l\'instant', async () => {
   const id = newItem('Tournevis', '0F000001');
   scanAt(1, 1, '0F000001', new Date(Date.now() - 4 * 60_000).toISOString());
   const sheet = (await page(`/items/${id}`)).body;
-  assert.match(sheet, /<span class="badge badge--ok"><svg[^>]*><use href="#i-lecteur"><\/use><\/svg>Scanné <time [^>]*>il y a 4 min<\/time><\/span>/);
+  assert.match(sheet, /<span class="badge badge--ok"><svg[^>]*><use href="#i-lecteur"><\/use><\/svg>Scanné<\/span>/);
+  scanAt(1, 1, '0F000001', new Date(Date.now() - 60_000).toISOString());
+  assert.match((await page(`/items/${id}`)).body, /<span class="badge badge--ok"><svg[^>]*><use href="#i-lecteur"><\/use><\/svg>Scanné <time [^>]*>il y a 1 min<\/time><\/span>/);
   assert.ok(sheet.includes(`<a class="lien-simple lien-discret" href="/stations/1"><span class="etat etat-poste">Poste A</span></a>`));
   assert.ok(sheet.includes(`<a class="lien-simple" href="/items/${id}/puce">Changer</a>`));
   assert.ok(sheet.includes('Le prochain scan de l&#39;objet la remplacera.'));

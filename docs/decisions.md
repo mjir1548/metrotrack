@@ -379,3 +379,16 @@ Les décisions qui touchent au contrat boîtier ↔ serveur doivent aussi être 
   - un retrait de puce avec « Garder l'emplacement » crée une correction au même poste, affichée comme « Corrigé à la main » dans les mouvements (la puce n'étant plus là, l'événement précédent n'est pas retrouvé) ;
   - le serveur reste en HTTP/1.1 : plus de 6 onglets visibles en même temps sur le même navigateur bloqueraient les requêtes suivantes.
 - **Alternatives écartées** : WebSocket (inutile, plus complexe) ; actualisation périodique (moins réactive, plus coûteuse) ; numéro de puce dans le flux (refusé par minimisation).
+
+### Compléments D-024 (U4, aller-retour 2, 2026-11-28)
+- **Démarrage guidé** : une liste cochée (postes, lecteur, premier scan attendu en direct) reste en tête de l'accueil tant qu'aucun objet n'a jamais été localisé. Pendant le démarrage, la création d'un poste ramène à l'accueil.
+- **Barre de navigation** : nombre de puces inconnues, affiché « 200+ » au-delà de 200. Le décompte est mémorisé côté serveur et recalculé au plus une fois par seconde. Il est aussi transmis dans le direct (champ `puces`, un nombre seulement).
+- **Accueil** :
+  - 5 mouvements, puis « Voir plus » ;
+  - « À traiter » passe au-dessus des mouvements quand il n'est pas vide ;
+  - pas de notification pour un mouvement sur l'accueil.
+- **Fiche ouverte** : elle se recharge seule quand l'objet est scanné, si rien n'est en cours (panneau, menu, saisie). Sinon, l'emplacement est grisé et le nouvel emplacement s'affiche avec « Actualiser ».
+- **Direct** :
+  - le plafond par session (fermeture du flux le plus ancien) s'applique avant le plafond total ;
+  - un flux dont le tampon est plein est fermé ; le navigateur se reconnecte avec Last-Event-ID.
+- **Vocabulaire** : « Nouvelle puce » partout ; jamais de « au » accordé devant un nom de poste.

@@ -95,6 +95,8 @@ const noInternalError = () => assert.ok(!logs.some((l) => l.startsWith('erreur i
 async function createStation(name, description = '') {
   const res = await post('/stations/new', { name, description });
   assert.equal(res.status, 303, `création de « ${name} »`);
+  // Démarrage guidé (étape U4) : tant qu'aucun objet n'est localisé, retour à l'accueil.
+  if (res.headers.location === '/?ok=poste') return db.prepare('SELECT max(id) AS id FROM stations').get().id;
   return Number(/^\/stations\/(\d+)\?ok=cree$/.exec(res.headers.location)[1]);
 }
 

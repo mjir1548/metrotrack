@@ -44,7 +44,7 @@ import {
   listUnknownChips, getChip, chipPreviousOwner, chipPreviousOwners, createItemForChip, associateChip, detachChip, MAX_ASSOCIATE_RESULTS,
   MAX_OFFERED_CHIPS, unknownChipsOverview,
 } from './chips.js';
-import { homeData } from './accueil.js';
+import { homeData, isOnboarding } from './accueil.js';
 import { itemEvent, parseEventId } from './direct.js';
 import {
   loginPage as loginView, forbiddenPage, errorPage, inventoryPage, itemPage as itemView, itemNotFoundPage, BUSY_MESSAGE,
@@ -276,7 +276,7 @@ function home(ctx, req, res) {
     return redirect(res, q === '' ? '/inventaire' : `/inventaire?${new URLSearchParams({ q })}`);
   }
   const now = Date.now();
-  sendHtml(res, 200, homeView(pageUser(session), { ...homeData(ctx.db, now), now }));
+  sendHtml(res, 200, homeView(pageUser(ctx, session), { ...homeData(ctx.db, now), now, notice: queryParam(req, 'ok') }));
 }
 
 // Liste de l'inventaire, avec recherche facultative (?q=).
@@ -285,7 +285,7 @@ function inventory(ctx, req, res) {
   if (!session) return redirect(res, '/login');
   const query = normalizeQuery(queryParam(req, 'q'));
   const items = listItems(ctx.db, query);
-  sendHtml(res, 200, inventoryPage(pageUser(session), { query, items, now: Date.now(), notice: queryParam(req, 'ok') }));
+  sendHtml(res, 200, inventoryPage(pageUser(ctx, session), { query, items, now: Date.now(), notice: queryParam(req, 'ok') }));
 }
 
 // Fiche d'un objet. La session est vérifiée AVANT l'identifiant : sans session, toute adresse
@@ -294,7 +294,7 @@ function inventory(ctx, req, res) {
 function itemPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const item = findItem(ctx, res, user, idText);
   if (!item) return;
   // Frise des déplacements (lectures bornées, server/timeline.js), autres modifications, et
@@ -311,7 +311,7 @@ function itemPage(ctx, req, res, idText) {
 function historyPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const item = findItem(ctx, res, user, idText);
   if (!item) return;
   const cursorText = queryParam(req, 'avant');
@@ -327,7 +327,7 @@ function historyPage(ctx, req, res, idText) {
 function giveChipPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const item = findItem(ctx, res, user, idText);
   if (!item) return;
   const { chips, more } = listUnknownChips(ctx.db, MAX_OFFERED_CHIPS);
@@ -341,7 +341,7 @@ function giveChipPage(ctx, req, res, idText) {
 function detachChipPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const item = findItem(ctx, res, user, idText);
   if (!item) return;
   sendHtml(res, 200, detachChipView(user, { item, fallback: lastCorrectionStation(ctx.db, item.id) }));
@@ -357,7 +357,7 @@ function lastCorrectionStation(db, itemId) {
 
 function detachChipAction(ctx, req, res, idText) {
   postForm(ctx, req, res, (session, form) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const id = parseItemId(idText);
     if (id === null) return sendHtml(res, 404, itemNotFoundPage(user));
     // previous : puce affichée sur la page de confirmation. Si la fiche a changé de puce
@@ -453,7 +453,10 @@ function directApi(ctx, req, res) {
 function publishItem(ctx, type, itemId, username) {
   try {
     const item = getItem(ctx.db, itemId);
-    if (item) ctx.direct.publish(itemEvent(type, item, username));
+    if (!item) return;
+    const event = itemEvent(type, item, username);
+    if (type === 'puce') event.puces = ctx.chipsCounter.refresh();
+    ctx.direct.publish(event);
   } catch (err) {
     ctx.log(`diffusion en direct impossible : ${err.message}`);
   }
@@ -494,12 +497,12 @@ function newItemPage(ctx, req, res) {
   // comme un nom saisi (cleanLine) et borné ; échappé par le gabarit ; rien n'est enregistré.
   const name = [...cleanLine(queryParam(req, 'nom'))].slice(0, MAX_NAME_CHARS).join('');
   const form = { name, notes: '', rows: [], blankRows: BLANK_ROWS };
-  sendHtml(res, 200, itemFormPage(pageUser(session), { item: null, form, errors: {} }));
+  sendHtml(res, 200, itemFormPage(pageUser(ctx, session), { item: null, form, errors: {} }));
 }
 
 function createItemAction(ctx, req, res) {
   postForm(ctx, req, res, (session, form) => {
-    const valid = submittedItem(ctx, res, pageUser(session), form, null);
+    const valid = submittedItem(ctx, res, pageUser(ctx, session), form, null);
     if (!valid) return;
     const id = createItem(ctx.db, session.userId, valid);
     ctx.log(`fiche ${id} créée par ${session.username}`);
@@ -510,7 +513,7 @@ function createItemAction(ctx, req, res) {
 function editItemPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const item = findItem(ctx, res, user, idText);
   if (!item) return;
   const rows = item.properties.map(([key, value]) => ({ key, value, error: null }));
@@ -520,7 +523,7 @@ function editItemPage(ctx, req, res, idText) {
 
 function updateItemAction(ctx, req, res, idText) {
   postForm(ctx, req, res, (session, form) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const item = findItem(ctx, res, user, idText);
     if (!item) return;
     const valid = submittedItem(ctx, res, user, form, item);
@@ -535,7 +538,7 @@ function updateItemAction(ctx, req, res, idText) {
 function deleteItemPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const item = findItem(ctx, res, user, idText);
   if (!item) return;
   sendHtml(res, 200, deleteView(user, { item }));
@@ -543,10 +546,11 @@ function deleteItemPage(ctx, req, res, idText) {
 
 function deleteItemAction(ctx, req, res, idText) {
   postForm(ctx, req, res, (session) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const id = parseItemId(idText);
     if (id === null || !deleteItem(ctx.db, session.userId, id)) return sendHtml(res, 404, itemNotFoundPage(user));
     ctx.log(`fiche ${id} supprimée par ${session.username}`);
+    ctx.chipsCounter.refresh(); // sa puce redevient inconnue
     redirect(res, '/inventaire?ok=supprime');
   });
 }
@@ -554,7 +558,7 @@ function deleteItemAction(ctx, req, res, idText) {
 function locationPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const item = findItem(ctx, res, user, idText);
   if (!item) return;
   sendHtml(res, 200, locationView(user, { item, stations: listStations(ctx.db) }));
@@ -562,7 +566,7 @@ function locationPage(ctx, req, res, idText) {
 
 function correctLocationAction(ctx, req, res, idText) {
   postForm(ctx, req, res, (session, form) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const item = findItem(ctx, res, user, idText);
     if (!item) return;
     // Identifiant de poste : même format strict qu'un identifiant de fiche (entier positif) ;
@@ -644,13 +648,13 @@ function withBlankRows(form, wanted) {
 function stationsList(ctx, req, res) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  sendHtml(res, 200, stationsPage(pageUser(session), { stations: listStationSummaries(ctx.db), notice: queryParam(req, 'ok') }));
+  sendHtml(res, 200, stationsPage(pageUser(ctx, session), { stations: listStationSummaries(ctx.db), notice: queryParam(req, 'ok') }));
 }
 
 function stationPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const station = findStation(ctx, res, user, idText);
   if (!station) return;
   sendHtml(res, 200, stationView(user, {
@@ -666,14 +670,14 @@ function stationPage(ctx, req, res, idText) {
 function newStationPage(ctx, req, res) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  sendHtml(res, 200, stationFormPage(pageUser(session), { station: null, form: { name: '', description: '' }, errors: {} }));
+  sendHtml(res, 200, stationFormPage(pageUser(ctx, session), { station: null, form: { name: '', description: '' }, errors: {} }));
 }
 
 const duplicateStationError = (existing) => `Un poste porte déjà ce nom : « ${existing} » (majuscules et minuscules confondues). Choisissez un autre nom.`;
 
 function createStationAction(ctx, req, res) {
   postForm(ctx, req, res, (session, form) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const result = validateStationInput({ name: form.get('name'), description: form.get('description') });
     if (!result.ok) return sendHtml(res, 400, stationFormPage(user, { station: null, form: result.form, errors: result.errors }));
     const outcome = createStation(ctx.db, session.userId, result.station);
@@ -681,14 +685,16 @@ function createStationAction(ctx, req, res) {
       return sendHtml(res, 400, stationFormPage(user, { station: null, form: result.form, errors: { name: duplicateStationError(outcome.duplicate) } }));
     }
     ctx.log(`poste ${outcome.id} créé par ${session.username}`);
-    redirect(res, `/stations/${outcome.id}?ok=cree`);
+    // Démarrage guidé (étape U4) : tant qu'aucun objet n'a été localisé, retour à l'accueil, qui
+    // montre l'étape suivante.
+    redirect(res, isOnboarding(ctx.db) ? '/?ok=poste' : `/stations/${outcome.id}?ok=cree`);
   });
 }
 
 function editStationPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const station = findStation(ctx, res, user, idText);
   if (!station) return;
   sendHtml(res, 200, stationFormPage(user, { station, form: { name: station.name, description: station.description }, errors: {} }));
@@ -696,7 +702,7 @@ function editStationPage(ctx, req, res, idText) {
 
 function updateStationAction(ctx, req, res, idText) {
   postForm(ctx, req, res, (session, form) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const station = findStation(ctx, res, user, idText);
     if (!station) return;
     const result = validateStationInput({ name: form.get('name'), description: form.get('description') });
@@ -714,7 +720,7 @@ function updateStationAction(ctx, req, res, idText) {
 function deleteStationPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const station = findStation(ctx, res, user, idText);
   if (!station) return;
   sendHtml(res, 200, deleteStationView(user, { station, history: stationHistory(ctx.db, station.id) }));
@@ -722,7 +728,7 @@ function deleteStationPage(ctx, req, res, idText) {
 
 function deleteStationAction(ctx, req, res, idText) {
   postForm(ctx, req, res, (session) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const station = findStation(ctx, res, user, idText);
     if (!station) return;
     const outcome = deleteStation(ctx.db, session.userId, station.id);
@@ -765,13 +771,13 @@ function stationChoice(form) {
 function readersList(ctx, req, res) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  sendHtml(res, 200, readersPage(pageUser(session), { readers: listReaders(ctx.db), now: Date.now() }));
+  sendHtml(res, 200, readersPage(pageUser(ctx, session), { readers: listReaders(ctx.db), now: Date.now() }));
 }
 
 function readerPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const reader = findReader(ctx, res, user, idText);
   if (!reader) return;
   sendHtml(res, 200, readerView(user, { reader, scans: readerScans(ctx.db, reader.id), now: Date.now(), notice: queryParam(req, 'ok') }));
@@ -780,12 +786,12 @@ function readerPage(ctx, req, res, idText) {
 function newReaderPage(ctx, req, res) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  sendHtml(res, 200, readerFormPage(pageUser(session), { stations: listStations(ctx.db) }));
+  sendHtml(res, 200, readerFormPage(pageUser(ctx, session), { stations: listStations(ctx.db) }));
 }
 
 function createReaderAction(ctx, req, res) {
   postForm(ctx, req, res, (session, form) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const name = validateReaderName(form.get('name'));
     const stationId = stationChoice(form);
     // Formulaire réaffiché en 400 avec les deux erreurs possibles (nom, poste) et la saisie
@@ -801,14 +807,15 @@ function createReaderAction(ctx, req, res) {
       return sendHtml(res, 409, readerIdsExhaustedPage(user));
     }
     ctx.log(`lecteur ${outcome.id} créé par ${session.username}`); // jamais la clé
-    sendKeyPage(res, user, outcome, null);
+    // Démarrage guidé : la page de clé reste affichée ; son bouton ramène à l'accueil.
+    sendKeyPage(res, user, outcome, null, isOnboarding(ctx.db));
   });
 }
 
 function readerStationForm(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const reader = findReader(ctx, res, user, idText);
   if (!reader) return;
   if (reader.active !== 1) return sendHtml(res, 200, readerInactivePage(user, { reader }));
@@ -817,7 +824,7 @@ function readerStationForm(ctx, req, res, idText) {
 
 function assignReaderAction(ctx, req, res, idText) {
   postForm(ctx, req, res, (session, form) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const reader = findReader(ctx, res, user, idText);
     if (!reader) return;
     if (reader.active !== 1) return sendHtml(res, 409, readerInactivePage(user, { reader }));
@@ -838,7 +845,7 @@ function assignReaderAction(ctx, req, res, idText) {
 function readerRenameForm(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const reader = findReader(ctx, res, user, idText);
   if (!reader) return;
   sendHtml(res, 200, readerRenamePage(user, { reader }));
@@ -846,7 +853,7 @@ function readerRenameForm(ctx, req, res, idText) {
 
 function renameReaderAction(ctx, req, res, idText) {
   postForm(ctx, req, res, (session, form) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const reader = findReader(ctx, res, user, idText);
     if (!reader) return;
     const name = validateReaderName(form.get('name'));
@@ -861,7 +868,7 @@ function renameReaderAction(ctx, req, res, idText) {
 function deactivateReaderPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const reader = findReader(ctx, res, user, idText);
   if (!reader) return;
   if (reader.active !== 1) return sendHtml(res, 200, readerInactivePage(user, { reader }));
@@ -870,7 +877,7 @@ function deactivateReaderPage(ctx, req, res, idText) {
 
 function deactivateReaderAction(ctx, req, res, idText) {
   postForm(ctx, req, res, (session) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const reader = findReader(ctx, res, user, idText);
     if (!reader) return;
     const outcome = deactivateReader(ctx.db, session.userId, reader.id);
@@ -884,7 +891,7 @@ function deactivateReaderAction(ctx, req, res, idText) {
 function replaceReaderPage(ctx, req, res, idText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const reader = findReader(ctx, res, user, idText);
   if (!reader) return;
   if (reader.active !== 1) return sendHtml(res, 200, readerInactivePage(user, { reader }));
@@ -893,7 +900,7 @@ function replaceReaderPage(ctx, req, res, idText) {
 
 function replaceReaderAction(ctx, req, res, idText) {
   postForm(ctx, req, res, (session) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const reader = findReader(ctx, res, user, idText);
     if (!reader) return;
     const outcome = replaceReader(ctx.db, session.userId, reader.id);
@@ -914,8 +921,8 @@ function replaceReaderAction(ctx, req, res, idText) {
  * contient), avec Cache-Control: no-store (sendHtml). Format : 64 caractères hexadécimaux en
  * minuscules, celui du fichier lu par tools/simulateur.js --key-file.
  */
-function sendKeyPage(res, user, created, oldId) {
-  sendHtml(res, 200, readerKeyPage(user, { id: created.id, name: created.name, station: created.station, keyHex: created.key.toString('hex'), oldId }));
+function sendKeyPage(res, user, created, oldId, home = false) {
+  sendHtml(res, 200, readerKeyPage(user, { id: created.id, name: created.name, station: created.station, keyHex: created.key.toString('hex'), oldId, home }));
 }
 
 /** Lecteur désigné par le segment d'URL, ou null après avoir répondu 404 (format invalide ou inexistant). */
@@ -936,7 +943,7 @@ function findReader(ctx, res, user, idText) {
 function chipsList(ctx, req, res) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  sendHtml(res, 200, chipsPage(pageUser(session), { ...listUnknownChips(ctx.db), now: Date.now() }));
+  sendHtml(res, 200, chipsPage(pageUser(ctx, session), { ...listUnknownChips(ctx.db), now: Date.now() }));
 }
 
 /**
@@ -985,7 +992,7 @@ function chipConflictAnswered(res, user, uid, outcome) {
 function newChipItemPage(ctx, req, res, uidText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const chip = findUnknownChip(ctx, res, user, uidText);
   if (!chip) return;
   const form = { name: '', notes: '', rows: [], blankRows: BLANK_ROWS };
@@ -994,7 +1001,7 @@ function newChipItemPage(ctx, req, res, uidText) {
 
 function createChipItemAction(ctx, req, res, uidText) {
   postForm(ctx, req, res, (session, form) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const chip = findUnknownChip(ctx, res, user, uidText);
     if (!chip) return;
     const valid = submittedItem(ctx, res, user, form, null, chip);
@@ -1021,7 +1028,7 @@ function associationCandidates(db, query) {
 function associateSearch(ctx, req, res, uidText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const chip = findUnknownChip(ctx, res, user, uidText);
   if (!chip) return;
   const query = normalizeQuery(queryParam(req, 'q'));
@@ -1034,7 +1041,7 @@ function associateSearch(ctx, req, res, uidText) {
 function associateConfirm(ctx, req, res, uidText, itemIdText) {
   const session = currentSession(ctx, req);
   if (!session) return redirect(res, '/login');
-  const user = pageUser(session);
+  const user = pageUser(ctx, session);
   const chip = findUnknownChip(ctx, res, user, uidText);
   if (!chip) return;
   const item = findItem(ctx, res, user, itemIdText);
@@ -1045,7 +1052,7 @@ function associateConfirm(ctx, req, res, uidText, itemIdText) {
 
 function associateChipAction(ctx, req, res, uidText, itemIdText) {
   postForm(ctx, req, res, (session, form) => {
-    const user = pageUser(session);
+    const user = pageUser(ctx, session);
     const uid = parseUid(uidText);
     const itemId = parseItemId(itemIdText);
     if (uid === null) return sendHtml(res, 404, chipNotFoundPage(user));
@@ -1214,13 +1221,14 @@ function currentSession(ctx, req) {
 }
 
 /**
- * Compte affiché dans le bandeau, avec le jeton CSRF du formulaire de déconnexion.
+ * Compte affiché dans le bandeau, avec le jeton CSRF du formulaire de déconnexion, et le nombre
+ * de puces inconnues du compteur de la barre (étape U4, mémorisé : server/chips.js).
  * Défense en profondeur : l'identifiant est échappé par le gabarit, mais il doit en plus
  * respecter le format imposé à la création (sinon exception → 500, rien n'est affiché).
  */
-function pageUser(session) {
+function pageUser(ctx, session) {
   if (!USERNAME_FORMAT.test(session.username)) throw new Error('identifiant de compte hors format');
-  return { username: session.username, csrf: csrfTokenFor(session.token) };
+  return { username: session.username, csrf: csrfTokenFor(session.token), chips: ctx.chipsCounter.get() };
 }
 
 /** Première valeur d'un paramètre de la chaîne de requête, ou null. Décodage tolérant (jamais d'exception). */

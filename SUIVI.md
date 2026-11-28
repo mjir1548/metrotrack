@@ -753,3 +753,11 @@ Prérequis : Node 26.13+, OpenSSL en ligne de commande, et `sh` (Git Bash sous W
   - Nouvelle route `GET /api/puces-inconnues`. → D-024.
 - Orchestrateur : 646/646 ; capture de l'accueil en direct relue (« Nouveau », notification).
 - **U4 commitée et poussée** (voir git log). Testeur et `revue-ux` lancés pour les finitions.
+- `revue-ux` (U4) : « À corriger » (retouches courtes).
+  - Bloquants : « au » collé devant tout nom de poste (« au Réception ») ; la fiche ouverte contredit le bandeau de direct.
+  - Importants : démarrage guidé qui disparaît dès le premier poste ; « À traiter » hors de la vue ; pas de bouton « Associer » dans la notification ; mouvements annoncés deux fois ; coupure peu signalée.
+  - Les retouches U3 sont vérifiées.
+- Testeur (U4) : aucun bug bloquant, 656 tests (ajout de `u4-verif`). Le retour d'un lecteur silencieux en « fonctionnent » est vérifié de bout en bout. Points relevés : l'ordre des plafonds du direct, et un flux non lu qui s'accumule en mémoire.
+- Retour à `dev` (U4, aller-retour 2/3) : tous ces points, plus un démarrage guidé en liste cochée jusqu'au premier objet localisé et un compteur de puces inconnues dans la navigation.
+- `dev` (U4, aller-retour 2) : les 9 retours sont traités ; un vrai bug corrigé au passage : l'événement d'une puce inconnue n'était pas publié. 661 tests. Orchestrateur : 661/661, capture du démarrage guidé relue. Compléments consignés dans D-024.
+- **U4 (finitions) commitée et poussée** (voir git log). Démo relancée.

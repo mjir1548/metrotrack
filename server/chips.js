@@ -116,6 +116,49 @@ export function unknownChipsOverview(db, limit) {
   return { chips, total };
 }
 
+// Compteur de la barre de navigation : au-delà, « 200+ » (le décompte s'arrête là).
+export const NAV_CHIPS_CAP = MAX_UNKNOWN_CHIPS;
+
+/** Nombre de puces inconnues, plafonné à cap + 1 (même parcours, arrêté dès cap + 1 trouvées). */
+export function unknownChipsCount(db, cap = NAV_CHIPS_CAP) {
+  return db.prepare(`${UNKNOWN_UIDS} SELECT count(*) AS n FROM (SELECT uid FROM unknown LIMIT ?)`).get(cap + 1).n;
+}
+
+/**
+ * Compteur mémorisé (étape U4) : le parcours des puces coûte jusqu'à quelques dizaines de ms sur
+ * une grosse base ; il n'est refait que si le nombre a pu changer (invalidate : scan d'une puce
+ * inconnue, association, retrait, suppression de fiche), au plus une fois par minIntervalMs, et
+ * au moins toutes les ttlMs. Entre deux calculs rapprochés, la valeur peut avoir une seconde de
+ * retard (limite acceptée : borne le coût si un lecteur envoie des puces inconnues en rafale).
+ * Mémoire du processus seulement : rien n'est stocké en base (D-006).
+ */
+export function createChipsCounter(db, { minIntervalMs = 1000, ttlMs = 30_000, now = Date.now } = {}) {
+  let value = null;
+  let at = 0;
+  let dirty = true;
+  return {
+    get() {
+      const t = now();
+      if (value === null || ((dirty || t - at > ttlMs) && t - at >= minIntervalMs)) {
+        value = unknownChipsCount(db);
+        at = t;
+        dirty = false;
+      }
+      return value;
+    },
+    invalidate() {
+      dirty = true;
+    },
+    /** Recalcul immédiat (action d'un utilisateur : association, retrait, suppression). */
+    refresh() {
+      value = unknownChipsCount(db);
+      at = now();
+      dirty = false;
+      return value;
+    },
+  };
+}
+
 /**
  * Dernière fiche qui a porté cette puce, d'après le journal des modifications, ou null si
  * aucune. Sert à avertir avant de RÉUTILISER une puce : ses scans d'alors, restés au journal,

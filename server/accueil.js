@@ -18,7 +18,10 @@
 import { listReaders } from './readers.js';
 import { unknownChipsOverview } from './chips.js';
 
-export const HOME_MOVEMENTS = 8;
+// Mouvements lus pour l'accueil : les HOME_VISIBLE_MOVEMENTS premiers sont affichés, les autres
+// derrière « Voir plus » (dépliage, sans script).
+export const HOME_MOVEMENTS = 20;
+export const HOME_VISIBLE_MOVEMENTS = 5;
 export const MOVEMENT_SCAN_WINDOW = 2000;
 export const MOVEMENT_CORRECTION_WINDOW = 200;
 export const HOME_CHIPS = 3;
@@ -140,13 +143,28 @@ export function readersHealth(db, now = Date.now()) {
   return { total: active.length, working, silent, lastScanAt };
 }
 
+/**
+ * Démarrage guidé (étape U4) : vrai tant qu'aucun objet n'a jamais été localisé (aucun scan
+ * d'une puce portée par une fiche, aucune correction). EXISTS s'arrête au premier trouvé ; au
+ * pire, une recherche d'index (scans_by_uid) par fiche portant une puce.
+ */
+export function isOnboarding(db) {
+  return db.prepare(
+    `SELECT NOT (EXISTS (SELECT 1 FROM location_corrections)
+                 OR EXISTS (SELECT 1 FROM items i WHERE i.uid_nfc IS NOT NULL
+                              AND EXISTS (SELECT 1 FROM scans s WHERE s.uid_nfc = i.uid_nfc))) AS onboarding`
+  ).get().onboarding === 1;
+}
+
 /** Tout ce que montre l'écran d'accueil (web.js, homePage). */
 export function homeData(db, now = Date.now()) {
   const counts = db.prepare(
-    'SELECT (SELECT count(*) FROM items) AS items, (SELECT count(*) FROM stations) AS stations, (SELECT count(*) FROM readers) AS readers'
+    `SELECT (SELECT count(*) FROM items) AS items, (SELECT count(*) FROM stations) AS stations,
+            (SELECT count(*) FROM readers) AS readers, EXISTS (SELECT 1 FROM scans) AS scans`
   ).get();
   return {
     counts,
+    onboarding: isOnboarding(db),
     movements: recentMovements(db),
     chips: unknownChipsOverview(db, HOME_CHIPS),
     readers: readersHealth(db, now),

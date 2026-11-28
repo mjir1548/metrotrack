@@ -104,6 +104,18 @@
   --largeur-menu: 240px;
   --largeur-panneau: 520px;
   --largeur-toast: 380px;
+  /* Accueil et direct (étape U4) */
+  --pastille: 40px;               /* icône ronde d'un mouvement, d'une puce */
+  --pastille-sm: 32px;            /* coche du démarrage guidé */
+  --ic-xl: 24px;
+  --point: 8px;                   /* point « En direct » */
+  --filet: 3px;                   /* filet coloré à gauche d'un encadré */
+  --hauteur-nombre: 22px;
+  --hauteur-recherche-heros: 68px;
+  --colonne-lieu-min: 180px;
+  --colonne-lieu: 15rem;
+  --colonne-quand: 9.5rem;
+  --d-pulsation: 2.4s;
 }
 
 /* Mode sombre : simple redéfinition des variables (contrastes vérifiés par le même test). */
@@ -1676,24 +1688,27 @@ details.modifications > summary:hover { background: var(--voile); }
 .pagination .lien-annuler { margin-right: auto; }
 
 /* --------------------------------------------------------------------------
-   15 bis. Écran d'accueil et direct (étape U4, maquette B accueil.html)
+   15 ter. Écran d'accueil et direct (étape U4, maquette B accueil.html)
+   Toutes les dimensions passent par les variables du bloc :root (section 1).
    -------------------------------------------------------------------------- */
 .heros { padding: var(--e-10) 0 var(--e-12); text-align: center; }
+.heros--compact { padding: var(--e-8) 0 var(--e-10); }
 .heros-surtitre { margin-bottom: var(--e-3); color: var(--texte-doux); font-size: var(--t-sm); }
 .heros-surtitre::first-letter { text-transform: uppercase; }
-.heros h1 {
+.heros-titre {
   margin-bottom: var(--e-8);
   font-size: var(--t-3xl);
   font-weight: 600;
   letter-spacing: -0.03em;
 }
+.heros--compact .heros-titre { margin-bottom: var(--e-5); font-size: var(--t-2xl); }
 .recherche--heros {
-  height: 68px;
+  height: var(--hauteur-recherche-heros);
   margin: 0 auto;
   padding: 0 var(--e-3) 0 var(--e-6);
   text-align: left;
 }
-.recherche--heros > .ic { width: 24px; height: 24px; }
+.recherche--heros > .ic { width: var(--ic-xl); height: var(--ic-xl); }
 .recherche--heros input { font-size: var(--t-lg); }
 /* Avec le script, un clic ou une frappe ouvre la palette : le bouton est inutile. */
 .js .recherche--heros > .bouton { display: none; }
@@ -1710,11 +1725,11 @@ details.modifications > summary:hover { background: var(--voile); }
 .section-entete h2 { font-size: var(--t-lg); }
 .section-lien { color: var(--texte-doux); font-size: var(--t-sm); font-weight: 500; }
 .section-lien:hover { color: var(--texte); }
-.compteur {
+.nombre-pastille {
   display: inline-grid;
   place-items: center;
-  min-width: 24px;
-  height: 22px;
+  min-width: var(--hauteur-nombre);
+  height: var(--hauteur-nombre);
   margin-left: var(--e-1);
   padding: 0 var(--e-2);
   border-radius: var(--r-pilule);
@@ -1723,15 +1738,17 @@ details.modifications > summary:hover { background: var(--voile); }
   font-family: var(--police-texte);
   font-size: var(--t-xs);
   font-weight: 700;
-  vertical-align: 2px;
+  line-height: 1;
+  vertical-align: middle;
 }
-.compteur[hidden] { display: none; }
+.nombre-pastille[hidden] { display: none; }
 .grille-2 {
   display: grid;
   grid-template-columns: minmax(0, 13fr) minmax(0, 10fr);
   gap: var(--e-6);
   align-items: start;
 }
+.grille-2--seule { grid-template-columns: minmax(0, 1fr); }
 
 /* Indicateur « En direct » : point ET texte (le sens n'est pas porté par la couleur seule). */
 .direct-etat {
@@ -1741,23 +1758,52 @@ details.modifications > summary:hover { background: var(--voile); }
   color: var(--accent);
   font-size: var(--t-sm);
   font-weight: 600;
+  text-align: right;
 }
 .direct-etat[hidden] { display: none; }
-.direct-point { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.direct-point { flex-shrink: 0; width: var(--point); height: var(--point); border-radius: 50%; background: currentColor; }
 .direct-etat--coupe { color: var(--attention-texte); }
-.direct-etat:not(.direct-etat--coupe) .direct-point { animation: direct-pulse 2.4s ease-in-out infinite; }
+.direct-etat:not(.direct-etat--coupe) .direct-point,
+.etape-attente .direct-point { animation: direct-pulse var(--d-pulsation) ease-in-out infinite; }
 @keyframes direct-pulse {
   0%, 100% { box-shadow: 0 0 0 0 var(--accent-doux); }
   50% { box-shadow: 0 0 0 var(--e-1) var(--accent-doux); }
 }
+/* Connexion perdue, sur la fiche et « Donner une puce » : icône ET texte. */
+.direct-coupure {
+  display: flex;
+  align-items: center;
+  gap: var(--e-2);
+  margin-bottom: var(--e-5);
+  padding: var(--e-3) var(--e-4);
+  border-radius: var(--r-md);
+  background: var(--attention-doux);
+  box-shadow: inset var(--filet) 0 0 var(--attention);
+  color: var(--attention-texte);
+  font-weight: 600;
+}
+.direct-coupure[hidden] { display: none; }
+.direct-coupure .ic { flex-shrink: 0; width: var(--ic-md); height: var(--ic-md); }
 
-/* Derniers mouvements. */
-.mouvements { margin: 0; padding: var(--e-2); list-style: none; }
-.mouvements[hidden] { display: none; }
+/* Derniers mouvements : 5 visibles, la suite derrière « Voir plus » (<details>, sans script). */
+.mouvements-carte { padding: var(--e-2); }
+.mouvements { margin: 0; padding: 0; list-style: none; }
+.mouvements[hidden],
+.mouvements-plus[hidden] { display: none; }
+.mouvements-plus > summary {
+  margin: var(--e-1) var(--e-4) var(--e-2);
+  padding: var(--e-2) 0 0;
+  border-top: 1px solid var(--bordure);
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.mouvements-plus[open] > summary { margin-bottom: var(--e-1); }
 .mouvement {
   position: relative;
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) minmax(180px, 15rem) 9.5rem;
+  grid-template-columns: var(--pastille) minmax(0, 1fr) minmax(var(--colonne-lieu-min), var(--colonne-lieu)) var(--colonne-quand);
   align-items: center;
   gap: var(--e-4);
   padding: var(--e-3) var(--e-4);
@@ -1767,7 +1813,7 @@ details.modifications > summary:hover { background: var(--voile); }
   content: "";
   position: absolute;
   top: 0;
-  left: calc(var(--e-4) + 40px + var(--e-4));
+  left: calc(var(--e-4) + var(--pastille) + var(--e-4));
   right: var(--e-4);
   height: 1px;
   background: var(--bordure);
@@ -1775,8 +1821,8 @@ details.modifications > summary:hover { background: var(--voile); }
 .mouvement-icone {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: var(--pastille);
+  height: var(--pastille);
   border-radius: 50%;
   background: var(--zone);
   color: var(--texte-doux);
@@ -1791,7 +1837,7 @@ details.modifications > summary:hover { background: var(--voile); }
   align-items: center;
   flex-wrap: wrap;
   gap: var(--e-2);
-  margin-top: 2px;
+  margin-top: calc(var(--e-1) / 2);
   color: var(--texte-doux);
   font-size: var(--t-sm);
 }
@@ -1815,7 +1861,7 @@ details.modifications > summary:hover { background: var(--voile); }
 .badge--nouveau { background: var(--accent); color: var(--sur-accent); }
 .mouvement--nouveau { animation: mt-apparition var(--d-lente) var(--courbe) both, mt-estompe var(--d-estompe) ease-out var(--d-lente) both; }
 @keyframes mt-apparition {
-  from { opacity: 0; transform: translateY(-8px); }
+  from { opacity: 0; transform: translateY(calc(-1 * var(--e-2))); }
   to { opacity: 1; transform: none; }
 }
 @keyframes mt-estompe {
@@ -1828,9 +1874,9 @@ details.modifications > summary:hover { background: var(--voile); }
 .carte-vide--action { padding: 0; }
 .carte-vide--action .bouton { margin-top: var(--e-3); }
 
-/* À traiter : puces inconnues, boutons sous le texte (colonne étroite). */
+/* À traiter : puces inconnues, boutons sous le texte. */
 .encart-liste { margin: 0; padding: 0; list-style: none; }
-.encart--empile { grid-template-columns: 40px minmax(0, 1fr); align-items: start; padding: 0; }
+.encart--empile { grid-template-columns: var(--pastille) minmax(0, 1fr); align-items: start; padding: 0; }
 .encart--empile .groupe-boutons { grid-column: 2; justify-content: flex-start; margin-top: calc(-1 * var(--e-2)); }
 .encart-liste > .encart + .encart { margin-top: var(--e-4); padding-top: var(--e-4); }
 .voir-tout { margin-top: var(--e-5); padding-top: var(--e-4); border-top: 1px solid var(--bordure); font-size: var(--t-sm); font-weight: 600; }
@@ -1840,58 +1886,59 @@ details.modifications > summary:hover { background: var(--voile); }
 /* Lecteurs : silencieux en orange (icône ET texte), puis ceux qui fonctionnent. */
 .alerte-lecteur {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-columns: var(--ic-xl) minmax(0, 1fr);
   gap: var(--e-3);
   padding: var(--e-4);
   border-radius: var(--r-md);
   background: var(--attention-doux);
-  box-shadow: inset 3px 0 0 var(--attention);
+  box-shadow: inset var(--filet) 0 0 var(--attention);
 }
 .alerte-lecteur + .alerte-lecteur { margin-top: var(--e-3); }
-.alerte-lecteur > .ic { width: 24px; height: 24px; color: var(--attention-texte); }
+.alerte-lecteur > .ic { width: var(--ic-xl); height: var(--ic-xl); color: var(--attention-texte); }
 .alerte-lecteur-titre { font-weight: 600; color: var(--attention-texte); overflow-wrap: anywhere; }
 .alerte-lecteur-titre a { color: inherit; }
-.alerte-lecteur p + p { margin-top: 2px; color: var(--texte-doux); font-size: var(--t-sm); }
+.alerte-lecteur p + p { margin-top: calc(var(--e-1) / 2); color: var(--texte-doux); font-size: var(--t-sm); }
 .etat-ok {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-columns: var(--ic-xl) minmax(0, 1fr);
   gap: var(--e-3);
   padding: var(--e-1) var(--e-4) 0;
 }
 .etat-ok[hidden] { display: none; }
 .alerte-lecteur + .etat-ok { margin-top: var(--e-4); }
 .etat-ok--seul { padding: 0; }
-.etat-ok > .ic { width: 24px; height: 24px; color: var(--accent); }
+.etat-ok > .ic { width: var(--ic-xl); height: var(--ic-xl); color: var(--accent); }
 .etat-ok-titre { font-weight: 600; }
 .etat-ok p + p { color: var(--texte-doux); font-size: var(--t-sm); }
 .etat-ok p[hidden] { display: none; }
 
-/* Base vide : bienvenue et premières étapes. */
-.bienvenue h1 { margin-bottom: var(--e-4); }
-.bienvenue-texte { color: var(--texte-doux); font-size: var(--t-md); }
-.bienvenue-etapes {
+/* Démarrage guidé : liste cochée en tête de l'accueil. */
+.demarrage { margin-bottom: var(--e-8); padding: var(--e-8); }
+.demarrage h1,
+.demarrage h2 { font-size: var(--t-2xl); letter-spacing: -0.02em; }
+.demarrage-intro { margin-top: var(--e-2); color: var(--texte-doux); font-size: var(--t-md); }
+.demarrage-etapes { display: grid; gap: var(--e-4); margin: var(--e-6) 0 0; padding: 0; list-style: none; }
+.etape { display: grid; grid-template-columns: var(--pastille-sm) minmax(0, 1fr); gap: var(--e-4); align-items: start; }
+.etape-coche {
   display: grid;
-  gap: var(--e-3);
-  max-width: 520px;
-  margin: var(--e-8) auto 0;
-  padding: 0;
-  list-style: none;
-  text-align: left;
-}
-.bienvenue-etapes li { display: flex; align-items: center; gap: var(--e-3); }
-.bienvenue-numero {
-  display: grid;
-  flex-shrink: 0;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: var(--pastille-sm);
+  height: var(--pastille-sm);
+  border: var(--trait-epais) solid var(--bordure-champ);
   border-radius: 50%;
-  background: var(--accent-doux);
   color: var(--accent);
-  font-family: var(--police-titre);
-  font-weight: 700;
 }
-.bienvenue-actions { justify-content: center; margin-top: var(--e-8); }
+.etape--faite .etape-coche { border-color: var(--accent); background: var(--accent-doux); }
+.etape-coche .ic { width: var(--ic-md); height: var(--ic-md); }
+.etape-titre { font-family: var(--police-titre); font-size: var(--t-md); font-weight: 600; line-height: var(--pastille-sm); }
+.etape--faite .etape-titre { color: var(--texte-doux); }
+.etape-detail { color: var(--texte-doux); font-size: var(--t-sm); }
+.etape-attente { display: flex; align-items: center; gap: var(--e-2); color: var(--accent); font-weight: 600; }
+.etape-corps .bouton { margin-top: var(--e-3); }
+.demarrage-autre { margin-top: var(--e-6); padding-top: var(--e-4); border-top: 1px solid var(--bordure); color: var(--texte-doux); font-size: var(--t-sm); }
+
+/* Compteur de la barre (« Puces inconnues ») : même pastille, en plus petit. */
+.nombre-pastille--nav { margin-left: var(--e-1); }
 
 /* Notifications du direct (toasts), en bas à droite ; elles disparaissent seules. */
 .toasts {
@@ -1904,24 +1951,23 @@ details.modifications > summary:hover { background: var(--voile); }
   width: min(var(--largeur-toast), calc(100vw - 2 * var(--e-4)));
 }
 .toast {
-  display: flex;
-  align-items: center;
-  gap: var(--e-2) var(--e-3);
+  display: grid;
+  gap: var(--e-2);
   padding: var(--e-3) var(--e-3) var(--e-3) var(--e-4);
   border: 1px solid var(--bordure);
   border-radius: var(--r-md);
   background: var(--carte);
-  box-shadow: var(--ombre-pilule), inset 3px 0 0 var(--accent);
+  box-shadow: var(--ombre-pilule), inset var(--filet) 0 0 var(--accent);
   animation: mt-apparition var(--d-normale) var(--courbe) both;
   overflow-wrap: anywhere;
 }
-.toast--puce { box-shadow: var(--ombre-pilule), inset 3px 0 0 var(--attention); }
-.toast-texte { flex: 1 1 auto; min-width: 0; font-weight: 500; }
+.toast--puce { box-shadow: var(--ombre-pilule), inset var(--filet) 0 0 var(--attention); }
+.toast-texte { font-weight: 500; }
 .toast-texte a { color: var(--texte); }
-.toast .bouton { flex-shrink: 0; }
-.toast-fermer { flex-shrink: 0; }
+.toast-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--e-2); }
+.toast-fermer { margin-left: auto; }
 
-/* Bandeau de la fiche d'un objet : il vient d'être scanné ailleurs. */
+/* Bandeau en tête de page (reprise après coupure). */
 .bandeau-direct {
   display: flex;
   align-items: center;
@@ -1935,10 +1981,25 @@ details.modifications > summary:hover { background: var(--voile); }
 }
 .bandeau-direct a { font-weight: 600; }
 
+/* Fiche d'un objet scanné ailleurs pendant une saisie : ancien emplacement grisé, nouveau en clair. */
+.emplacement--perime { opacity: 0.45; }
+.emplacement-nouveau {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--e-2);
+  margin-top: var(--e-3);
+  padding: var(--e-3) var(--e-4);
+  border-radius: var(--r-md);
+  background: var(--accent-doux);
+  font-weight: 600;
+}
+.emplacement-nouveau .ic { width: var(--ic-md); height: var(--ic-md); color: var(--accent); }
+
 /* Fenêtre basse (1280 × 720) : la recherche reste en tête, les mouvements remontent. */
 @media (max-height: 800px) {
   .heros { padding: var(--e-6) 0 var(--e-8); }
-  .heros h1 { margin-bottom: var(--e-5); }
+  .heros-titre { margin-bottom: var(--e-5); }
 }
 
 /* --------------------------------------------------------------------------
@@ -1960,7 +2021,7 @@ details.modifications > summary:hover { background: var(--voile); }
   .fiche > .carte-historique { order: -1; }
   .emplacement--xl { font-size: var(--t-3xl); }
   .grille-2 { grid-template-columns: minmax(0, 1fr); }
-  .mouvement { grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .mouvement { grid-template-columns: var(--pastille) minmax(0, 1fr) auto; }
   .mouvement-vers { grid-column: 2; grid-row: 2; }
   .mouvement-quand { grid-column: 3; grid-row: 1 / span 2; }
 }

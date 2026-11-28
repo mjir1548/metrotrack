@@ -15,6 +15,8 @@ import {
 import { MAX_STATION_NAME_CHARS, MAX_STATION_DESCRIPTION_CHARS, hasHistory } from './stations.js';
 import { MAX_READER_ID, MAX_READER_NAME_CHARS } from './readers.js';
 import { AIDE } from './aide.js';
+import { HOME_VISIBLE_MOVEMENTS } from './accueil.js';
+import { NAV_CHIPS_CAP } from './chips.js';
 import { icon, spriteFor } from './icones.js';
 
 export const BUSY_MESSAGE = 'Trop de connexions en cours. Réessayez dans un instant.';
@@ -184,14 +186,27 @@ const NAV = [
  * aria-current="true" sur ses sous-pages (fiche, formulaires). La feuille de style signale la
  * rubrique par un fond et une graisse, pas par la couleur seule.
  */
-function navLink(href, label, active, exact) {
+function navLink(href, label, active, exact, extra = null) {
   let current = null;
   if (active) current = exact ? html` aria-current="page"` : html` aria-current="true"`;
-  return html`<li><a href="${href}"${current}>${label}</a></li>`;
+  return html`<li><a href="${href}"${current}>${label}${extra}</a></li>`;
+}
+
+/**
+ * Nombre de « Puces inconnues » dans la barre (étape U4) : absent à zéro, « 200+ » au-delà du
+ * plafond du décompte (chips.js, NAV_CHIPS_CAP). app.js le met à jour à chaque événement du direct.
+ */
+function navChipsCounter(count) {
+  const n = Number.isSafeInteger(count) ? count : 0;
+  if (n === 0) return null; // app.js l'ajoute si une puce arrive
+  return html` <span class="nombre-pastille nombre-pastille--nav" id="nav-puces"><span data-nombre>${n > NAV_CHIPS_CAP ? `${NAV_CHIPS_CAP}+` : n}</span><span class="visuellement-cache"> à traiter</span></span>`;
 }
 
 // Initiales du compte pour la pastille (identifiant au format [A-Za-z0-9._-], D-011).
+// Identifiant en deux parties (« claire.martin », « jean-pierre_d ») : une lettre de chacune.
 function initials(username) {
+  const parts = username.split(/[._-]+/).filter((part) => /^[A-Za-z]/.test(part));
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   const letters = username.replace(/[^A-Za-z0-9]/g, '');
   return (letters === '' ? username : letters).slice(0, 2).toUpperCase();
 }
@@ -218,7 +233,7 @@ ${SHORTCUT_HINT}
 <a class="logo" href="/">${BRAND_CONTENT}</a>
 <nav class="nav" aria-label="Navigation principale">
 <ul>
-${NAV.map(([href, label, key]) => navLink(href, label, key === section, exact))}
+${NAV.map(([href, label, key]) => navLink(href, label, key === section, exact, key === SECTION_CHIPS ? navChipsCounter(user.chips) : null))}
 </ul>
 </nav>
 <div class="barre-recherche">
@@ -236,7 +251,7 @@ ${searchForm}
 </header>
 <main id="contenu" class="page">
 ${content}
-</main>`, true, icons);
+</main>`, true, ['fermer', 'attention', 'poste', ...icons]);
 }
 
 /**
@@ -440,7 +455,9 @@ function currentPlace(item, now) {
   }
   const badge = item.source === 'manual'
     ? html`<span class="badge badge--main">${icon('main')}Corrigé à la main par ${item.corrected_by ?? 'un compte inconnu'}</span>`
-    : html`<span class="badge badge--ok">${icon('lecteur')}Scanné ${timeTag(item.at, now)}</span>`;
+    // Heure du dernier scan seulement si elle diffère de l'arrivée (rescans au même poste) :
+    // sinon « depuis … » la donne déjà (étape U4, revue UX).
+    : html`<span class="badge badge--ok">${icon('lecteur')}Scanné${(item.arrived_at ?? item.at) === item.at ? null : html` ${timeTag(item.at, now)}`}</span>`;
   const unassigned = item.station_id === null;
   const place = unassigned
     ? html`<p class="emplacement emplacement--attention">${icon('attention')}${locationBadge(item)}</p>`
@@ -1535,7 +1552,7 @@ ${AIDE.remplacerCle}<div class="panneau panneau-danger">
  *   keyHex : 64 caractères hexadécimaux en minuscules, le format du fichier lu par
  *   tools/simulateur.js --key-file (comme dev/reader-1.key) ; oldId : lecteur remplacé.
  */
-export function readerKeyPage(user, { id, name, station, keyHex, oldId = null }) {
+export function readerKeyPage(user, { id, name, station, keyHex, oldId = null, home = false }) {
   const reader = { id, name, station_id: station?.id ?? null, station_name: station?.name ?? null };
   const label = readerLabel(reader);
   const done = oldId === null
@@ -1558,7 +1575,7 @@ export function readerKeyPage(user, { id, name, station, keyHex, oldId = null })
 <p class="aide">Un clic sur la clé la sélectionne en entier.</p>
 </section>
 <div class="actions-formulaire">
-<a class="bouton" href="/readers">Retour aux lecteurs</a>
+${home ? html`<a class="bouton" href="/">Continuer : retour à l'accueil</a>` : html`<a class="bouton" href="/readers">Retour aux lecteurs</a>`}
 </div>`, readersSection);
 }
 
@@ -1825,32 +1842,35 @@ function exactUnder(iso, now) {
 
 /**
  * Un mouvement de l'accueil (accueil.js, recentMovements). Même structure que celle produite par
- * app.js pour un mouvement reçu en direct.
+ * app.js pour un mouvement reçu en direct. Un scan n'a pas de mention (c'est le cas courant) ;
+ * une correction porte « Corrigé à la main par … » (icône ET texte).
  */
 function movementItem(move, now) {
   const manual = move.type === 'correction';
-  const detail = manual
-    ? html`<span class="badge badge--main">${icon('main')}Corrigé à la main</span>par ${move.username ?? 'un compte inconnu'}`
-    : 'Scanné';
+  const under = exactUnder(move.at, now);
   return html`<li class="mouvement${manual ? ' mouvement--main' : ''}">
 <span class="mouvement-icone">${icon(manual ? 'main' : 'lecteur')}</span>
 <div class="mouvement-objet">
 <a href="/items/${move.item_id}">${move.item_name}</a>
-<p class="mouvement-detail">${detail}</p>
-</div>
+${manual ? html`<p class="mouvement-detail"><span class="badge badge--main">${icon('main')}Corrigé à la main</span>par ${move.username ?? 'un compte inconnu'}</p>\n` : null}</div>
 <p class="mouvement-vers">${icon('poste')}<span><span class="visuellement-cache">Déplacé vers </span>${placeLink(move)}</span></p>
-<p class="mouvement-quand">${timeTag(move.at, now)}${exactUnder(move.at, now) === null ? null : html`<small>${exactUnder(move.at, now)}</small>`}</p>
+<p class="mouvement-quand">${timeTag(move.at, now)}${under === null ? null : html`<small>${under}</small>`}</p>
 </li>
 `;
 }
 
-/** Une puce inconnue de « À traiter » (même structure que celle produite par app.js). */
+/** Lieu d'une puce inconnue, en texte : nom du poste, ou « lecteur non affecté ». */
+const chipWhere = (chip) => (chip.station_id === null ? 'lecteur non affecté' : chip.station_name);
+
+/**
+ * Une puce inconnue de « À traiter » (même structure que celle produite par app.js) :
+ * « Nouvelle puce · Réception », sans préposition devant le nom du poste (« au Réception »).
+ */
 function chipToDo(chip, now) {
-  const place = chip.station_id === null ? 'un lecteur non affecté' : chip.station_name;
   return html`<li class="encart encart--empile">
 <span class="encart-icone">${icon('puce')}</span>
 <div class="encart-corps">
-<p class="encart-texte">Puce inconnue scannée ${chip.station_id === null ? 'sur ' : 'au '}<strong>${place}</strong></p>
+<p class="encart-texte">Nouvelle puce · <strong>${chipWhere(chip)}</strong></p>
 <p class="encart-meta">${timeTag(chip.received_at, now)}</p>
 </div>
 <div class="groupe-boutons">
@@ -1871,7 +1891,7 @@ ${icon('valide')}
   }
   return html`<ul class="encart-liste">
 ${chips.map((chip) => chipToDo(chip, now))}</ul>
-<p class="voir-tout"><a href="/chips">${total === 1 ? 'Voir la puce inconnue' : `Voir les ${thousands(total)} puces inconnues`}${icon('chevron')}</a></p>`;
+<p class="voir-tout"><a href="/chips">${total === 1 ? 'Voir la nouvelle puce' : `Voir les ${thousands(total)} nouvelles puces`}${icon('chevron')}</a></p>`;
 }
 
 const okReaders = (n) => (n === 1 ? '1 lecteur fonctionne' : `${n} lecteurs fonctionnent`);
@@ -1912,41 +1932,102 @@ ${icon('valide')}
 /** Surtitre : « Bonjour Claire · jeudi 27 novembre », ou la date seule. */
 const surtitle = (greeting, today) => (greeting === null ? today : `Bonjour ${greeting} · ${today}`);
 
-/** Accueil d'une base vide : par où commencer. */
-function welcome(user, greeting, today) {
-  return appLayout(user, 'Accueil', html`<section class="heros bienvenue" aria-labelledby="titre-bienvenue">
-<p class="heros-surtitre">${surtitle(greeting, today)}</p>
-<h1 id="titre-bienvenue">Bienvenue&nbsp;!</h1>
-<p class="bienvenue-texte">Commencez par créer vos postes et vos lecteurs, puis scannez un objet.</p>
-<ol class="bienvenue-etapes">
-<li><span class="bienvenue-numero" aria-hidden="true">1</span><span>Créez un poste pour chaque lieu de travail.</span></li>
-<li><span class="bienvenue-numero" aria-hidden="true">2</span><span>Ajoutez un lecteur à chaque poste et installez sa clé dans le boîtier.</span></li>
-<li><span class="bienvenue-numero" aria-hidden="true">3</span><span>Scannez un objet : sa puce apparaîtra ici, prête à recevoir une fiche.</span></li>
-</ol>
-<div class="groupe-boutons bienvenue-actions">
-<a class="bouton" href="/stations/new">${icon('ajouter')}Créer un poste</a>
-<a class="bouton bouton-secondaire" href="/readers/new">${icon('ajouter')}Ajouter un lecteur</a>
+/** Étape du démarrage guidé : coche (icône ET texte caché « fait » / « à faire »), titre, suite. */
+function guideStep(done, title, body, id = null) {
+  return html`<li class="etape${done ? ' etape--faite' : ''}"${id === null ? null : html` id="${id}"`}>
+<span class="etape-coche">${done ? icon('valide') : null}<span class="visuellement-cache">${done ? 'Fait : ' : 'À faire : '}</span></span>
+<div class="etape-corps">
+<p class="etape-titre">${title}</p>
+${body}
+</div>
+</li>
+`;
+}
+
+/**
+ * Démarrage guidé (étape U4), en tête de l'accueil tant qu'aucun objet n'a été localisé : postes,
+ * lecteurs, premier scan. L'étape « scan » attend en direct (app.js) ; une puce déjà reçue
+ * propose « Créer sa fiche ». main : la section porte le titre principal de la page (h1).
+ */
+function startGuide({ counts, chips, greeting, today, main }) {
+  const stations = counts.stations > 0;
+  const readers = counts.readers > 0;
+  const chip = chips.chips[0] ?? null;
+  const heading = main
+    ? html`<h1 id="titre-demarrage">Bienvenue&nbsp;! Préparons MetroTrack</h1>`
+    : html`<h2 id="titre-demarrage">Bienvenue&nbsp;! Préparons MetroTrack</h2>`;
+  const stationStep = stations
+    ? html`<p class="etape-detail">${plural(counts.stations, 'poste créé', 'postes créés')} · <a href="/stations/new">Ajouter un autre poste</a></p>`
+    : html`<p class="etape-detail">Un poste par lieu de travail : établi, banc d'essais, magasin…</p>
+<a class="bouton bouton-petit" href="/stations/new">${icon('ajouter')}Créer un poste</a>`;
+  const readerStep = readers
+    ? html`<p class="etape-detail">${plural(counts.readers, 'lecteur ajouté', 'lecteurs ajoutés')} · <a href="/readers/new">Ajouter un autre lecteur</a></p>`
+    : html`<p class="etape-detail">Un lecteur par poste ; sa clé s'installe dans le boîtier.</p>
+<a class="bouton${stations ? '' : ' bouton-secondaire'} bouton-petit" href="/readers/new">${icon('ajouter')}Ajouter un lecteur</a>`;
+  const scanStep = chip === null
+    ? html`<p class="etape-detail etape-attente" id="etape-scan-detail"><span class="direct-point" aria-hidden="true"></span>On attend votre premier scan…</p>`
+    : html`<p class="etape-detail" id="etape-scan-detail">Nouvelle puce · <strong>${chipWhere(chip)}</strong> · ${timeTag(chip.received_at, Date.now())}</p>
+<a class="bouton bouton-petit" href="/chips/${chip.uid}/new">${icon('ajouter')}Créer sa fiche</a>`;
+  return html`<section class="carte demarrage" id="demarrage" aria-labelledby="titre-demarrage">
+${main ? html`<p class="heros-surtitre">${surtitle(greeting, today)}</p>\n` : null}${heading}
+<p class="demarrage-intro">Trois étapes pour localiser votre premier objet.</p>
+<ol class="demarrage-etapes">
+${guideStep(stations, 'Créer vos postes', stationStep)}${guideStep(readers, 'Ajouter un lecteur', readerStep)}${guideStep(chip !== null, 'Scanner un premier objet', scanStep, 'etape-scan')}</ol>
+<p class="demarrage-autre">Pas encore de puce sous la main&nbsp;? <a href="/items/new">Créez une fiche</a> : un nom suffit.</p>
+</section>
+`;
+}
+
+/** Message après une action qui ramène à l'accueil (démarrage guidé : ?ok=poste). */
+function homeNotice(notice, counts) {
+  if (notice !== 'poste') return null;
+  const text = counts.readers === 0 ? 'Poste créé. Étape suivante : ajoutez un lecteur.' : 'Poste créé.';
+  return html`<p class="succes" role="status">${text}</p>\n`;
+}
+
+/** Section « À traiter ». */
+function toDoSection(chips, now) {
+  return html`<section id="traiter" aria-labelledby="titre-puces">
+<div class="section-entete">
+<h2 id="titre-puces">À traiter <span class="nombre-pastille" id="puces-nombre"${chips.total === 0 ? html` hidden` : null}>${thousands(chips.total)}</span></h2>
+</div>
+<div class="carte carte-corps" id="a-traiter">
+${chipsToDo(chips, now)}
 </div>
 </section>
-${AIDE.accueil}`, { section: SECTION_HOME, exact: true, search: false });
+`;
 }
 
 /**
  * Écran d'accueil (maquette B). Les sections portent des identifiants que web/static/app.js
- * met à jour en direct (mouvements, À traiter, lecteurs) ; sans script, la page est complète.
- * @param {{counts: {items, stations, readers}, movements: object[], chips: {chips, total},
- *   readers: object, now: number}} data accueil.js, homeData
+ * met à jour en direct (mouvements, À traiter, lecteurs, démarrage) ; sans script, la page est
+ * complète. « À traiter » passe au-dessus des mouvements quand il n'est pas vide.
+ * @param {{counts: {items, stations, readers, scans}, onboarding: boolean, movements: object[],
+ *   chips: {chips, total}, readers: object, now: number, notice?: string|null}} data accueil.js, homeData
  */
-export function homePage(user, { counts, movements, chips, readers, now }) {
+export function homePage(user, { counts, onboarding, movements, chips, readers, now, notice = null }) {
   const greeting = greetingName(user.username);
   const today = formatLongDay(now);
-  if (counts.items === 0 && counts.stations === 0 && counts.readers === 0) return welcome(user, greeting, today);
+  const options = {
+    section: SECTION_HOME, exact: true, search: false,
+    icons: ['lecteur', 'main', 'poste', 'puce', 'ajouter', 'associer', 'valide', 'chevron'],
+  };
+  const noticeHtml = homeNotice(notice, counts);
+  // Base vide : seulement le démarrage guidé (rien à chercher ni à voir encore).
+  if (counts.items === 0 && counts.stations === 0 && counts.readers === 0) {
+    return appLayout(user, 'Accueil', html`${noticeHtml}${startGuide({ counts, chips, greeting, today, main: true })}${AIDE.accueil}`, options);
+  }
   const placeholder = counts.items === 0
     ? 'Un objet, un n° de série…'
     : `Un objet, un n° de série… parmi ${thousands(counts.items)} ${counts.items > 1 ? 'objets' : 'objet'}`;
-  return appLayout(user, 'Accueil', html`<section class="heros" aria-labelledby="titre-recherche">
-<p class="heros-surtitre">${surtitle(greeting, today)}</p>
-<h1 id="titre-recherche">Où est…&nbsp;?</h1>
+  const shown = movements.slice(0, HOME_VISIBLE_MOVEMENTS);
+  const more = movements.slice(HOME_VISIBLE_MOVEMENTS);
+  const searchTitle = onboarding
+    ? html`<h2 id="titre-recherche" class="heros-titre">Où est…&nbsp;?</h2>`
+    : html`<h1 id="titre-recherche" class="heros-titre">Où est…&nbsp;?</h1>`;
+  const toDoFirst = chips.total > 0;
+  return appLayout(user, 'Accueil', html`${noticeHtml}${onboarding ? startGuide({ counts, chips, greeting, today, main: true }) : null}<section class="heros${onboarding ? ' heros--compact' : ''}" aria-labelledby="titre-recherche">
+${onboarding ? null : html`<p class="heros-surtitre">${surtitle(greeting, today)}</p>\n`}${searchTitle}
 <form class="recherche recherche--heros" method="get" action="/inventaire" role="search">
 ${icon('recherche')}
 <label class="visuellement-cache" for="recherche-accueil">Rechercher un objet par nom, propriété ou numéro de puce</label>
@@ -1955,28 +2036,24 @@ ${SHORTCUT_HINT}
 <button class="bouton" type="submit">Rechercher</button>
 </form>
 </section>
-<div class="pile">
-<section aria-labelledby="titre-mouvements">
+<div class="pile" id="accueil-pile">
+${toDoFirst ? toDoSection(chips, now) : null}<section id="mouvements-section" aria-labelledby="titre-mouvements">
 <div class="section-entete">
 <h2 id="titre-mouvements">Derniers mouvements</h2>
-<p class="direct-etat" id="direct-etat" hidden><span class="direct-point" aria-hidden="true"></span><span class="direct-texte">En direct</span></p>
+<p class="direct-etat" id="direct-etat" role="status" hidden><span class="direct-point" aria-hidden="true"></span><span class="direct-texte">En direct</span></p>
 </div>
-<ol class="carte mouvements" id="mouvements"${movements.length === 0 ? html` hidden` : null}>
-${movements.map((move) => movementItem(move, now))}</ol>
-${movements.length === 0 ? html`<div class="carte carte-vide" id="mouvements-vide">
-<p>Aucun mouvement pour l'instant. Scannez un objet à un poste.</p>
-</div>` : null}
+<div class="carte mouvements-carte">
+<ol class="mouvements" id="mouvements" aria-live="polite"${shown.length === 0 ? html` hidden` : null}>
+${shown.map((move) => movementItem(move, now))}</ol>
+<details class="mouvements-plus" id="mouvements-plus"${more.length === 0 ? html` hidden` : null}>
+<summary>Voir plus</summary>
+<ol class="mouvements" id="mouvements-suite">
+${more.map((move) => movementItem(move, now))}</ol>
+</details>
+${shown.length === 0 ? html`<p class="carte-vide" id="mouvements-vide">Aucun mouvement pour l'instant. Scannez un objet à un poste.</p>\n` : null}</div>
 </section>
-<div class="grille-2">
-<section aria-labelledby="titre-puces">
-<div class="section-entete">
-<h2 id="titre-puces">À traiter <span class="compteur" id="puces-compteur"${chips.total === 0 ? html` hidden` : null}>${thousands(chips.total)}</span></h2>
-</div>
-<div class="carte carte-corps" id="a-traiter">
-${chipsToDo(chips, now)}
-</div>
-</section>
-<section aria-labelledby="titre-lecteurs">
+<div class="grille-2${toDoFirst ? ' grille-2--seule' : ''}" id="accueil-grille">
+${toDoFirst ? null : toDoSection(chips, now)}<section aria-labelledby="titre-lecteurs">
 <div class="section-entete">
 <h2 id="titre-lecteurs">Lecteurs</h2>
 <a class="section-lien" href="/readers">Tous les lecteurs</a>
@@ -1986,8 +2063,5 @@ ${readersCard(readers, now)}
 </div>
 </section>
 </div>
-${AIDE.accueil}</div>`, {
-    section: SECTION_HOME, exact: true, search: false,
-    icons: ['lecteur', 'main', 'poste', 'puce', 'ajouter', 'associer', 'valide', 'chevron'],
-  });
+${AIDE.accueil}</div>`, options);
 }

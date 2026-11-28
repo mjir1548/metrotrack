@@ -548,7 +548,7 @@ test('correction : postes triés par nom ; poste inexistant, vide ou forgé → 
 
 test('correction : 303 ?ok=corrige, localisation changée (liste et fiche, « correction manuelle par alice ») ; un scan ultérieur reprend la main', async () => {
   assert.equal(scan(1, UID).ok, true);
-  assert.ok((await page('/items/1')).body.includes('<span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>Scanné <time '));
+  assert.ok((await page('/items/1')).body.includes('<span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>Scanné</span>'));
 
   const auditBefore = count('audit_log');
   const res = await post('/items/1/location', { station: '3' });
@@ -572,7 +572,7 @@ test('correction : 303 ?ok=corrige, localisation changée (liste et fiche, « co
   assert.equal(scan(2, UID).ok, true);
   const after = await page('/items/1');
   assert.ok(after.body.includes('<a class="lien-etat" href="/readers/2"><span class="etat etat-inconnue">lecteur non affecté</span></a>'));
-  assert.ok(after.body.includes('<span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>Scanné <time '));
+  assert.ok(after.body.includes('<span class="badge badge--ok"><svg class="ic" aria-hidden="true"><use href="#i-lecteur"></use></svg>Scanné</span>'));
 });
 
 // ---------------------------------------------------------------- messages de confirmation

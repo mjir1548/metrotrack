@@ -115,6 +115,8 @@ function detailText(inner) {
   const m = /^<span>(<time datetime="([^"]+)"[^>]*>[^<]*<\/time>)(?: · [^<]*)?<\/span>([\s\S]*)$/.exec(inner);
   if (!m) return inner;
   const [, arrival, arrivedAt, badge] = m;
+  // Étape U4 : badge court « Scanné » quand le dernier scan est l'arrivée.
+  if (/^<span class="badge badge--ok">[\s\S]*?Scanné<\/span>$/.test(badge)) return `${arrival} · scanné`;
   const scanned = /^<span class="badge badge--ok">[\s\S]*?Scanné (<time datetime="([^"]+)"[^>]*>[^<]*<\/time>)<\/span>$/.exec(badge);
   if (scanned) return scanned[2] === arrivedAt ? `${arrival} · scanné` : `${arrival} · dernier scan ${scanned[1]}`;
   const manual = /Corrigé à la main (par [^<]*)<\/span>$/.exec(badge);

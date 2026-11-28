@@ -25,6 +25,7 @@ import { DUMMY_HASH } from '../server/password.js';
 import { createSession, csrfTokenFor } from '../server/sessions.js';
 import { MAX_READER_ID } from '../server/readers.js';
 import { makeTestCerts } from './tls-fixture.js';
+import { isOnboarding } from '../server/accueil.js';
 import { withoutAppScript } from './app-script.js';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -285,7 +286,7 @@ test('bandeau : « Postes » et « Lecteurs » sont deux rubriques ; rubrique co
 
 // ---------------------------------------------------------------- postes
 
-test('création d\'un poste : 303 vers sa fiche avec ?ok=cree, audit station.create, journal, fiche affichée', async () => {
+test('création d\'un poste : 303 vers l\'accueil pendant le démarrage guidé (aucun objet localisé), sinon vers sa fiche avec ?ok=cree, audit station.create, journal, fiche affichée', async () => {
   const form = await page('/stations/new');
   assert.equal(form.status, 200);
   assert.ok(form.body.includes('<form class="formulaire-page" method="post" action="/stations/new">'));
@@ -295,10 +296,10 @@ test('création d\'un poste : 303 vers sa fiche avec ?ok=cree, audit station.cre
   const res = await post('/stations/new', { name: '  Banc 2 ', description: 'Mesures\r\nélectriques' });
   assert.equal(res.status, 303);
   const id = stationId('Banc 2');
-  assert.equal(res.headers.location, `/stations/${id}?ok=cree`);
+  assert.equal(res.headers.location, isOnboarding(db) ? '/?ok=poste' : `/stations/${id}?ok=cree`);
   assert.deepEqual(lastAudit(), { user_id: aliceId, action: 'station.create', entity_id: id, details: { name: 'Banc 2', description: 'Mesures\nélectriques' } });
   assert.ok(logs.includes(`poste ${id} créé par alice`));
-  const sheet = await page(res.headers.location);
+  const sheet = await page(`/stations/${id}?ok=cree`);
   assert.equal(sheet.status, 200);
   assert.ok(sheet.body.includes('<p class="succes" role="status">Poste créé.</p>'));
   assert.ok(sheet.body.includes('<h1>Banc 2</h1>'));
@@ -415,7 +416,8 @@ test('création d\'un lecteur : page de clé unique (200, no-store, sans redirec
   assert.ok(!res.body.includes('AES') && !res.body.includes('hexadécima'));
   // Page de production : aucune procédure de développement (simulateur, fichier de clé, chemins dev/).
   for (const absent of ['simulateur', '--key-file', '.key', 'dev/', 'fichier']) assert.ok(!res.body.includes(absent), absent);
-  assert.ok(res.body.includes('<a class="bouton" href="/readers">Retour aux lecteurs</a>'));
+  // Démarrage guidé (étape U4) : la page de clé ramène à l'accueil.
+  assert.ok(res.body.includes(isOnboarding(db) ? '<a class="bouton" href="/">Continuer : retour à l\'accueil</a>' : '<a class="bouton" href="/readers">Retour aux lecteurs</a>'));
   assert.equal(res.body.split(key2).length - 1, 1, 'clé affichée une seule fois dans la page');
   assertSafePage(res.body, 'page de clé');
   assert.deepEqual(lastAudit(), { user_id: aliceId, action: 'reader.create', entity_id: 2, details: { id: 2, name: '', station: { id: banc, name: 'Banc 2' } } });

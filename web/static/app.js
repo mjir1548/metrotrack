@@ -825,29 +825,36 @@
   //
   // Pages connectées seulement : un flux GET /api/direct (EventSource, même serveur ; session
   // vérifiée par le serveur). Chaque événement est un petit objet JSON (server/direct.js) :
-  // {type, itemId, nom, poste, posteId, lecteur, iso, inconnu, deplacement, par}, jamais de
-  // numéro de puce. Quand une puce inconnue arrive, la page demande la liste à jour à
-  // GET /api/puces-inconnues (même serveur, session), au plus une fois par seconde.
+  // {type, itemId, nom, poste, posteId, lecteur, iso, inconnu, deplacement, par, puces}, jamais
+  // de numéro de puce. Quand une puce inconnue arrive, les pages qui en ont besoin (accueil,
+  // « Donner une puce », notification) demandent la liste à jour à GET /api/puces-inconnues
+  // (même serveur, session), au plus une fois par seconde.
   // Le flux est fermé quand l'onglet est masqué (un navigateur n'ouvre que six connexions par
   // site : des onglets cachés ne doivent pas les occuper), puis rouvert avec ?depuis= : le
   // serveur renvoie les événements manqués.
   //
-  // Mises à jour : accueil (mouvement en tête, « À traiter », lecteurs), fiche de l'objet
-  // concerné (bandeau « Actualiser »), « Donner une puce » (la puce scannée apparaît en tête),
-  // et partout une notification brève.
+  // Mises à jour : accueil (mouvement en tête, « À traiter », lecteurs, démarrage guidé),
+  // compteur « Puces inconnues » de la barre, fiche de l'objet concerné (rechargée, ou emplacement
+  // signalé périmé), « Donner une puce » (la puce scannée apparaît en tête), notifications brèves
+  // hors de l'accueil, et indicateur de connexion perdue.
 
   const DIRECT_API = '/api/direct';
   const CHIPS_API = '/api/puces-inconnues';
   const UID_FORMAT = /^(?:[0-9A-F]{8}|[0-9A-F]{14}|[0-9A-F]{20})$/; // = UID_FORMAT de server/inventory.js
   const EVENT_ID = /^[0-9]{1,16}$/;
-  const MAX_MOVES = 8; // = HOME_MOVEMENTS de server/accueil.js
+  const VISIBLE_MOVES = 5; // = HOME_VISIBLE_MOVEMENTS de server/accueil.js
+  const MAX_MOVES = 20; // = HOME_MOVEMENTS
+  const NAV_CHIPS_CAP = 200; // = NAV_CHIPS_CAP de server/chips.js
   const TOAST_MS = 7000;
+  const CHIP_TOAST_MS = 15_000;
   const MAX_TOASTS = 3;
   const FRESH_MS = 120_000; // événement rejoué plus ancien : pas de notification
   const NEW_BADGE_MS = 60_000;
+  const OFFLINE_TEXT = 'Connexion perdue : les nouveaux scans s\'afficheront au retour. Reconnexion…';
 
   const isText = (value) => typeof value === 'string';
   const textOrNull = (value) => value === null || isText(value);
+  const countOrNull = (value) => value === null || (Number.isSafeInteger(value) && value >= 0);
 
   /** Événement reçu bien formé (sinon ignoré). */
   function validEvent(e) {
@@ -859,6 +866,7 @@
       && (e.lecteur === null || isId(e.lecteur))
       && isText(e.iso) && Number.isFinite(Date.parse(e.iso))
       && typeof e.inconnu === 'boolean' && typeof e.deplacement === 'boolean'
+      && countOrNull(e.puces ?? null)
       && (e.inconnu || e.itemId !== null) && (e.itemId === null || isText(e.nom));
   }
 
@@ -867,9 +875,12 @@
   const currentItem = itemMatch && !itemMatch[2] ? Number(itemMatch[1]) : null;
   const giveChipItem = itemMatch && itemMatch[2] ? Number(itemMatch[1]) : null;
   const moves = document.getElementById('mouvements');
+  const movesMore = document.getElementById('mouvements-suite');
   const toDo = document.getElementById('a-traiter');
   const offered = document.getElementById('puces-offertes');
   const liveState = document.getElementById('direct-etat');
+  const guideScan = document.getElementById('etape-scan');
+  const onHome = window.location.pathname === '/';
 
   // Zone des notifications : créée au chargement (une zone role="status" doit exister avant
   // qu'on y ajoute du texte pour être annoncée).
@@ -881,23 +892,35 @@
     document.body.append(toastBox);
   }
 
+  /** Bouton-lien d'une notification ou d'une étape. */
+  function linkButton(className, href, iconName, text) {
+    const link = el('a', className);
+    link.href = href;
+    if (iconName) link.append(icon(iconName));
+    link.append(text);
+    return link;
+  }
+
   /** Notification brève : textNodes (texte et liens), actions (boutons-liens) ; disparaît seule. */
-  function toast(textNodes, actions = [], kind = '') {
+  function toast(textNodes, { actions = [], kind = '', duration = TOAST_MS } = {}) {
     if (!toastBox) return;
     const box = el('div', kind === 'puce' ? 'toast toast--puce' : 'toast');
     const text = el('p', 'toast-texte');
     text.append(...textNodes);
-    const close = el('button', 'bouton bouton-discret bouton-petit toast-fermer', '×');
+    const close = el('button', 'bouton bouton-discret bouton-petit bouton-icone toast-fermer');
     close.type = 'button';
     close.setAttribute('aria-label', 'Fermer la notification');
+    close.append(icon('fermer'));
     close.addEventListener('click', () => box.remove());
-    box.append(text, ...actions, close);
+    const buttons = el('div', 'toast-actions');
+    buttons.append(...actions, close);
+    box.append(text, buttons);
     toastBox.append(box);
     while (toastBox.children.length > MAX_TOASTS) toastBox.firstElementChild.remove();
     // Survol ou focus : la notification reste le temps de la lire.
-    let timer = setTimeout(() => box.remove(), TOAST_MS);
+    let timer = setTimeout(() => box.remove(), duration);
     const hold = () => clearTimeout(timer);
-    const release = () => { timer = setTimeout(() => box.remove(), TOAST_MS); };
+    const release = () => { timer = setTimeout(() => box.remove(), duration); };
     box.addEventListener('mouseenter', hold);
     box.addEventListener('mouseleave', release);
     box.addEventListener('focusin', hold);
@@ -919,10 +942,10 @@
     return el('span', '', e.poste ?? 'lecteur non affecté');
   }
 
+  // Lieu en texte, sans préposition (« Nouvelle puce · Réception », jamais « au Réception »).
   const placeText = (e) => e.poste ?? 'lecteur non affecté';
-  const atPlace = (e) => (e.poste === null ? 'sur un lecteur non affecté' : `au ${e.poste}`);
 
-  /** Bandeau en tête de page (fiche, accueil) : texte et lien « Actualiser » (même page). */
+  /** Bandeau en tête de page : texte et lien « Actualiser » (même page). */
   function banner(text, href) {
     const main = document.getElementById('contenu');
     if (!main) return;
@@ -939,7 +962,26 @@
     box.replaceChildren(el('span', '', text), refresh);
   }
 
-  // ---- accueil : derniers mouvements
+  // ---- barre : compteur « Puces inconnues »
+
+  function setNavChips(count) {
+    let counter = document.getElementById('nav-puces');
+    if (!counter) {
+      const link = document.querySelector('.nav a[href="/chips"]');
+      if (!link || count === 0) return;
+      counter = el('span', 'nombre-pastille nombre-pastille--nav');
+      counter.id = 'nav-puces';
+      counter.append(el('span', '', ''), el('span', 'visuellement-cache', ' à traiter'));
+      counter.firstChild.dataset.nombre = '';
+      link.append(' ', counter);
+    }
+    const number = counter.querySelector('[data-nombre]');
+    if (!number) return;
+    number.textContent = count > NAV_CHIPS_CAP ? `${NAV_CHIPS_CAP}+` : String(count);
+    counter.hidden = count === 0;
+  }
+
+  // ---- accueil : derniers mouvements (5 visibles, les suivants derrière « Voir plus »)
 
   function movementNode(e) {
     const manual = e.type === 'correction';
@@ -956,8 +998,6 @@
       const badge = el('span', 'badge badge--main');
       badge.append(icon('main'), 'Corrigé à la main');
       detail.append(badge, `par ${e.par ?? 'un compte inconnu'}`);
-    } else {
-      detail.append('Scanné');
     }
     what.append(name, detail);
     const where = el('p', 'mouvement-vers');
@@ -969,7 +1009,8 @@
     when.append(ageTag(e.iso), el('small', '', dayText(ms, Date.now())));
     li.append(pictogram, what, where, when);
     setTimeout(() => {
-      fresh.remove();
+      if (manual) fresh.remove();
+      else detail.remove();
       li.classList.remove('mouvement--nouveau');
     }, NEW_BADGE_MS);
     return li;
@@ -980,7 +1021,11 @@
     moves.prepend(movementNode(e));
     moves.hidden = false;
     document.getElementById('mouvements-vide')?.remove();
-    while (moves.children.length > MAX_MOVES) moves.lastElementChild.remove();
+    if (moves.children.length > VISIBLE_MOVES && movesMore) {
+      movesMore.prepend(moves.lastElementChild);
+      document.getElementById('mouvements-plus').hidden = false;
+      while (movesMore.children.length > MAX_MOVES - VISIBLE_MOVES) movesMore.lastElementChild.remove();
+    }
   }
 
   // ---- accueil : lecteurs (un lecteur silencieux qui scanne repasse « fonctionne »)
@@ -1004,11 +1049,37 @@
     }
   }
 
-  // ---- puces inconnues (accueil « À traiter », « Donner une puce », lien des notifications)
+  // ---- accueil : démarrage guidé (étape « Scanner un premier objet »)
+
+  function guideDone(nodes) {
+    if (!guideScan) return;
+    guideScan.classList.add('etape--faite');
+    const check = guideScan.querySelector('.etape-coche');
+    if (check) check.replaceChildren(icon('valide'), el('span', 'visuellement-cache', 'Fait : '));
+    const body = guideScan.querySelector('.etape-corps');
+    const title = guideScan.querySelector('.etape-titre');
+    if (body && title) body.replaceChildren(title, ...nodes);
+  }
+
+  function guideKnownScan(e) {
+    const text = el('p', 'etape-detail');
+    const name = el('a', '', e.nom);
+    name.href = `/items/${e.itemId}`;
+    text.append(name, ` · ${placeText(e)} · `, ageTag(e.iso));
+    guideDone([text]);
+  }
+
+  function guideChip(chip) {
+    const text = el('p', 'etape-detail', 'Nouvelle puce · ');
+    text.append(el('strong', '', chip.poste ?? 'lecteur non affecté'), ' · ', ageTag(chip.iso));
+    guideDone([text, linkButton('bouton bouton-petit', `/chips/${chip.uid}/new`, 'ajouter', 'Créer sa fiche')]);
+  }
+
+  // ---- puces inconnues (accueil « À traiter », « Donner une puce », notifications, démarrage)
 
   let chipsBusy = false;
   let chipsAgain = false;
-  let chipLinks = []; // boutons « Créer une fiche » des notifications, en attente du numéro
+  let chipToasts = []; // boutons des notifications, en attente du numéro de la puce
 
   function validChip(chip) {
     return chip !== null && typeof chip === 'object' && isText(chip.uid) && UID_FORMAT.test(chip.uid)
@@ -1020,25 +1091,22 @@
     const pictogram = el('span', 'encart-icone');
     pictogram.append(icon('puce'));
     const body = el('div', 'encart-corps');
-    const text = el('p', 'encart-texte', chip.poste === null ? 'Puce inconnue scannée sur ' : 'Puce inconnue scannée au ');
-    text.append(el('strong', '', chip.poste ?? 'un lecteur non affecté'));
+    const text = el('p', 'encart-texte', 'Nouvelle puce · ');
+    text.append(el('strong', '', chip.poste ?? 'lecteur non affecté'));
     const meta = el('p', 'encart-meta');
     meta.append(ageTag(chip.iso));
     body.append(text, meta);
     const buttons = el('div', 'groupe-boutons');
-    const create = el('a', 'bouton bouton-petit');
-    create.href = `/chips/${chip.uid}/new`;
-    create.append(icon('ajouter'), 'Créer une fiche');
-    const associate = el('a', 'bouton bouton-secondaire bouton-petit');
-    associate.href = `/chips/${chip.uid}/associate`;
-    associate.append(icon('associer'), 'Associer à une fiche existante');
-    buttons.append(create, associate);
+    buttons.append(
+      linkButton('bouton bouton-petit', `/chips/${chip.uid}/new`, 'ajouter', 'Créer une fiche'),
+      linkButton('bouton bouton-secondaire bouton-petit', `/chips/${chip.uid}/associate`, 'associer', 'Associer à une fiche existante'),
+    );
     li.append(pictogram, body, buttons);
     return li;
   }
 
   function renderToDo(chips, total) {
-    const counter = document.getElementById('puces-compteur');
+    const counter = document.getElementById('puces-nombre');
     if (counter) {
       counter.textContent = total.toLocaleString('fr-FR');
       counter.hidden = total === 0;
@@ -1054,11 +1122,18 @@
     const list = el('ul', 'encart-liste');
     list.append(...chips.map(chipToDo));
     const all = el('p', 'voir-tout');
-    const link = el('a', '', total === 1 ? 'Voir la puce inconnue' : `Voir les ${total.toLocaleString('fr-FR')} puces inconnues`);
+    const link = el('a', '', total === 1 ? 'Voir la nouvelle puce' : `Voir les ${total.toLocaleString('fr-FR')} nouvelles puces`);
     link.href = '/chips';
     link.append(icon('chevron'));
     all.append(link);
     toDo.replaceChildren(list, all);
+    // « À traiter » non vide passe au-dessus des mouvements.
+    const section = document.getElementById('traiter');
+    const movesSection = document.getElementById('mouvements-section');
+    if (section && movesSection && section.nextElementSibling !== movesSection) {
+      movesSection.before(section);
+      document.getElementById('accueil-grille')?.classList.add('grille-2--seule');
+    }
   }
 
   /** « Donner une puce » : les puces nouvellement scannées en tête, avec « Choisir cette puce ». */
@@ -1078,10 +1153,7 @@
       body.append(text, meta);
       const buttons = el('div', 'groupe-boutons');
       // Toujours la page de confirmation (avertissements de remplacement ou de réutilisation).
-      const choose = el('a', 'bouton bouton-petit');
-      choose.href = `/chips/${chip.uid}/associate/${giveChipItem}?depuis=fiche`;
-      choose.append(icon('associer'), 'Choisir cette puce');
-      buttons.append(choose);
+      buttons.append(linkButton('bouton bouton-petit', `/chips/${chip.uid}/associate/${giveChipItem}?depuis=fiche`, 'associer', 'Choisir cette puce'));
       li.append(pictogram, body, buttons);
       offered.prepend(li);
       added = true;
@@ -1096,11 +1168,18 @@
 
   function applyChips(data) {
     const chips = data.puces.filter(validChip);
+    setNavChips(data.total);
     if (toDo) renderToDo(chips.slice(0, 3), data.total);
     if (offered && giveChipItem !== null) offerChips(chips);
     const first = chips[0];
-    if (first) for (const link of chipLinks) link.href = `/chips/${first.uid}/new`;
-    chipLinks = [];
+    if (first) {
+      if (guideScan && !guideScan.classList.contains('etape--faite')) guideChip(first);
+      for (const { create, associate } of chipToasts) {
+        create.href = `/chips/${first.uid}/new`;
+        associate.href = `/chips/${first.uid}/associate`;
+      }
+    }
+    chipToasts = [];
   }
 
   /** Liste à jour des puces inconnues : une requête à la fois, au plus une par seconde. */
@@ -1128,32 +1207,106 @@
       });
   }
 
+  // ---- fiche de l'objet concerné : elle ne doit jamais contredire le direct
+
+  /** Rien n'est en cours sur la page (panneau, menu, palette, saisie) : on peut la recharger. */
+  function pageIdle() {
+    if (document.querySelector('dialog[open], details.menu[open]')) return false;
+    return !isEditable(document.activeElement);
+  }
+
+  /**
+   * L'objet affiché vient de changer : la fiche est rechargée (à la même position) si rien n'est
+   * en cours ; sinon l'emplacement affiché est grisé, avec le nouvel emplacement et « Actualiser ».
+   */
+  function itemChanged(e) {
+    const href = `/items/${currentItem}`;
+    if (pageIdle()) {
+      window.history.replaceState({ defilement: window.scrollY }, '');
+      window.location.reload();
+      return;
+    }
+    const head = document.querySelector('.fiche-entete');
+    if (!head) return;
+    for (const node of head.querySelectorAll('.emplacement, .localisation-detail')) node.classList.add('emplacement--perime');
+    let note = head.querySelector('.emplacement-nouveau');
+    if (!note) {
+      note = el('p', 'emplacement-nouveau');
+      note.setAttribute('role', 'status');
+      const anchor = head.querySelector('.localisation-detail') ?? head.querySelector('.emplacement');
+      if (anchor) anchor.after(note);
+      else head.append(note);
+    }
+    const refresh = el('a', '', 'Actualiser');
+    refresh.href = href;
+    let text = 'La puce de cet objet a changé';
+    if (e.type === 'scan') text = e.deplacement ? `Nouvel emplacement : ${placeText(e)} (à l'instant)` : `Scanné à l'instant : ${placeText(e)}`;
+    else if (e.type === 'correction') text = `Nouvel emplacement : ${placeText(e)} (corrigé à la main${e.par ? ` par ${e.par}` : ''})`;
+    note.replaceChildren(icon('poste'), el('span', '', `${text} · `), refresh);
+  }
+
+  // Après un rechargement automatique : même position dans la page.
+  if (currentItem !== null && Number.isFinite(window.history.state?.defilement)) {
+    window.scrollTo(0, window.history.state.defilement);
+    window.history.replaceState(null, '');
+  }
+
+  // ---- indicateur de connexion (accueil : à côté des mouvements ; fiche et « Donner une
+  // puce » : en tête de page)
+
+  let offlineBox = null;
+  if (appPage && !liveState && (currentItem !== null || giveChipItem !== null)) {
+    offlineBox = el('p', 'direct-coupure');
+    offlineBox.setAttribute('role', 'status');
+    offlineBox.hidden = true;
+    const main = document.getElementById('contenu');
+    const anchor = main?.querySelector('.fil');
+    if (anchor) anchor.after(offlineBox);
+    else main?.prepend(offlineBox);
+  }
+
+  function setLive(on) {
+    if (liveState) {
+      liveState.hidden = false;
+      liveState.classList.toggle('direct-etat--coupe', !on);
+      const text = liveState.querySelector('.direct-texte');
+      if (text) text.textContent = on ? 'En direct' : OFFLINE_TEXT;
+    }
+    if (offlineBox) {
+      offlineBox.hidden = on;
+      if (on) offlineBox.replaceChildren();
+      else offlineBox.replaceChildren(icon('attention'), el('span', '', OFFLINE_TEXT));
+    }
+  }
+
   // ---- un événement
 
   function handleEvent(e) {
     const recent = Date.now() - Date.parse(e.iso) < FRESH_MS;
-    const mine = currentItem !== null && e.itemId === currentItem;
+    const move = (e.type === 'scan' && !e.inconnu && e.deplacement) || e.type === 'correction';
+    if (Number.isSafeInteger(e.puces)) setNavChips(e.puces);
     if (e.type === 'scan') readerAlive(e);
-    if ((e.type === 'scan' && !e.inconnu && e.deplacement) || e.type === 'correction') addMovement(e);
-    if (e.inconnu || e.type === 'puce') refreshChips();
+    if (move) addMovement(e);
+    if (guideScan && e.type === 'scan' && !e.inconnu) guideKnownScan(e);
+    if ((e.inconnu || e.type === 'puce') && (toDo || offered || guideScan)) refreshChips();
 
-    if (mine) {
-      const href = `/items/${currentItem}`;
-      if (e.type === 'scan') banner(`L'objet vient d'être scanné ${atPlace(e)}.`, href);
-      else if (e.type === 'correction') banner(`L'emplacement vient d'être corrigé à la main${e.par ? ` par ${e.par}` : ''} : ${placeText(e)}.`, href);
-      else banner('La puce de cet objet vient de changer.', href);
+    if (currentItem !== null && e.itemId === currentItem) {
+      itemChanged(e);
       return;
     }
-    if (!recent) return;
+    // Accueil : la ligne « Nouveau » et « À traiter » suffisent, pas de notification.
+    if (!recent || onHome) return;
     if (e.type === 'scan' && e.inconnu && giveChipItem === null) {
-      const create = el('a', 'bouton bouton-petit', 'Créer une fiche');
-      create.href = '/chips'; // remplacé par /chips/<numéro>/new dès que la liste à jour arrive
-      chipLinks.push(create);
-      toast([`Nouvelle puce scannée ${atPlace(e)}`], [create], 'puce');
-    } else if ((e.type === 'scan' && !e.inconnu && e.deplacement) || e.type === 'correction') {
+      // Liens vers la liste tant que le numéro n'est pas connu, puis vers la puce elle-même.
+      const create = linkButton('bouton bouton-petit', '/chips', null, 'Créer une fiche');
+      const associate = linkButton('bouton bouton-secondaire bouton-petit', '/chips', null, 'Associer');
+      chipToasts.push({ create, associate });
+      refreshChips();
+      toast([`Nouvelle puce · ${placeText(e)}`], { actions: [create, associate], kind: 'puce', duration: CHIP_TOAST_MS });
+    } else if (move) {
       const name = el('a', '', e.nom);
       name.href = `/items/${e.itemId}`;
-      toast([name, ` → ${placeText(e)}${e.type === 'correction' ? ' (corrigé à la main)' : ''}`]);
+      toast([name, ` déplacé vers ${placeText(e)}${e.type === 'correction' ? ' (corrigé à la main)' : ''}`]);
     }
   }
 
@@ -1163,14 +1316,6 @@
   let lastId = null;
   let retryTimer = 0;
   let retryDelay = 3000;
-
-  function setLive(on) {
-    if (!liveState) return;
-    liveState.hidden = false;
-    liveState.classList.toggle('direct-etat--coupe', !on);
-    const text = liveState.querySelector('.direct-texte');
-    if (text) text.textContent = on ? 'En direct' : 'Hors ligne, nouvel essai…';
-  }
 
   function connect() {
     if (source !== null || document.hidden) return;
@@ -1193,7 +1338,7 @@
     });
     // Événements manqués au-delà de ce que le serveur garde : la page propose d'actualiser.
     stream.addEventListener('resynchro', () => {
-      if (moves) banner('Des mouvements ont pu avoir lieu pendant la coupure.', '/');
+      if (moves || guideScan) banner('Des scans ont pu avoir lieu pendant la coupure.', '/');
       else if (currentItem !== null) banner('La fiche a pu changer pendant la coupure.', `/items/${currentItem}`);
     });
     stream.addEventListener('error', () => {

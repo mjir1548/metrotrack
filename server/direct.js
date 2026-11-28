@@ -45,7 +45,9 @@ const encode = (value) => JSON.stringify(value).replace(JSON_ESCAPED, (c) => `\\
 
 /**
  * Événement d'un scan accepté (server/http.js, après le COMMIT et la réponse au boîtier), ou null.
- * {type: 'scan', itemId, nom, poste, posteId, lecteur, iso, inconnu, deplacement}
+ * {type: 'scan', itemId, nom, poste, posteId, lecteur, iso, inconnu, deplacement, par, puces}
+ *   puces : nombre de puces inconnues (compteur de la barre), posé par l'appelant pour un scan de
+ *   puce inconnue et pour un événement « puce » ; null sinon.
  *   poste null : lecteur non affecté ; deplacement : l'objet arrive à un autre lieu (accueil.js).
  */
 export function scanEvent(db, scanId) {
@@ -63,6 +65,7 @@ export function scanEvent(db, scanId) {
     inconnu: !known,
     deplacement: row.move,
     par: null,
+    puces: null,
   };
 }
 
@@ -84,6 +87,7 @@ export function itemEvent(type, item, par, iso = new Date().toISOString()) {
     inconnu: false,
     deplacement: type === 'correction',
     par,
+    puces: null,
   };
 }
 
@@ -120,6 +124,16 @@ export function createDirectHub({
     client.res.end();
   }
 
+  // Écriture sur un flux. Si le tampon d'envoi est plein (write renvoie false : navigateur qui ne
+  // lit plus, réseau saturé), le flux est fermé au lieu d'empiler en mémoire : le navigateur se
+  // reconnecte et récupère les événements manqués par Last-Event-ID (reprise, voir plus haut).
+  function send(client, text) {
+    if (!client.res.write(text)) {
+      remove(client);
+      client.res.destroy();
+    }
+  }
+
   // Battement de cœur (commentaire SSE, ignoré par EventSource) : garde la connexion ouverte à
   // travers les équipements réseau, et revérifie la session de chaque flux.
   function beat() {
@@ -128,7 +142,7 @@ export function createDirectHub({
         end(client);
         continue;
       }
-      client.res.write(': battement\n\n');
+      send(client, ': battement\n\n');
     }
   }
 
@@ -138,9 +152,12 @@ export function createDirectHub({
      * atteint. lastId : dernier numéro reçu par le navigateur (reprise), ou null.
      */
     open(req, res, token, lastId) {
-      if (clients.size >= maxClients) return false;
+      // Réutilisation d'abord : une session au plafond par session, ou qui rouvre un onglet quand
+      // le plafond total est atteint, ferme son flux le plus ancien (ordre d'insertion du Set)
+      // au lieu d'être refusée. Une session sans flux ouvert est refusée au plafond total.
       const mine = [...clients].filter((client) => client.token === token);
-      if (mine.length >= maxPerSession) end(mine[0]); // le plus ancien (ordre d'insertion du Set)
+      if (mine.length >= maxPerSession || (clients.size >= maxClients && mine.length > 0)) end(mine[0]);
+      if (clients.size >= maxClients) return false;
       const client = { res, token };
       clients.add(client);
       req.socket.setTimeout(0);
@@ -170,7 +187,7 @@ export function createDirectHub({
       const text = `id: ${id}\ndata: ${encode(event)}\n\n`;
       history.push({ id, text });
       if (history.length > HISTORY_EVENTS) history.shift();
-      for (const client of clients) client.res.write(text);
+      for (const client of [...clients]) send(client, text);
     },
 
     /** Ferme les flux d'une session (déconnexion). */

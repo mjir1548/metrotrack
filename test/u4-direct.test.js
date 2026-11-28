@@ -46,7 +46,9 @@ before(() => {
   }));
 });
 
+const openedStreams = [];
 after(() => {
+  for (const stream of openedStreams) stream.close(); // un test en échec ne bloque pas la fin
   server.closeAllConnections();
   server.close();
   db.close();
@@ -112,6 +114,7 @@ function openStream({ path = '/api/direct', headers = { Cookie: sessionCookie() 
         })();
       });
       stream.close = () => { req.destroy(); };
+      openedStreams.push(stream);
       resolve(stream);
     });
     req.on('error', reject);
@@ -167,7 +170,7 @@ test('scan accepté → événement léger (objet, poste, heure, déplacement), 
   await stream.waitFor((s) => messages(s).length === 1);
   const [event] = messages(stream);
   const item = db.prepare("SELECT id FROM items WHERE uid_nfc = '04A1B2C3D4E5F6'").get().id;
-  assert.deepEqual(Object.keys(event).sort(), ['deplacement', 'inconnu', 'iso', 'itemId', 'lecteur', 'nom', 'par', 'poste', 'posteId', 'type']);
+  assert.deepEqual(Object.keys(event).sort(), ['deplacement', 'inconnu', 'iso', 'itemId', 'lecteur', 'nom', 'par', 'poste', 'posteId', 'puces', 'type']);
   assert.equal(event.type, 'scan');
   assert.equal(event.itemId, item);
   assert.equal(event.nom, 'Multimètre <Fluke> "87V"');
@@ -202,6 +205,7 @@ test('puce inconnue → « inconnu », sans nom ni numéro de puce', async () =>
   assert.equal(event.nom, null);
   assert.equal(event.poste, 'Poste A');
   assert.equal(event.deplacement, false);
+  assert.equal(event.puces, 1, 'compteur de la barre : nombre de puces inconnues, sans numéro');
   assert.ok(!/DEADBEEF|DE AD/i.test(stream.raw));
   stream.close();
   await waitClients(0);
@@ -234,7 +238,7 @@ test('correction manuelle et association → événements « correction » et «
   assert.equal((await send({ method: 'POST', path: `/items/${item}/location`, headers, body })).status, 303);
   await stream.waitFor((s) => messages(s).length === 1);
   assert.deepEqual({ ...messages(stream)[0], iso: 'x' }, {
-    type: 'correction', itemId: item, nom: 'Multimètre <Fluke> "87V"', poste: 'Poste A', posteId: 1, lecteur: null, iso: 'x', inconnu: false, deplacement: true, par: 'alice',
+    type: 'correction', itemId: item, nom: 'Multimètre <Fluke> "87V"', poste: 'Poste A', posteId: 1, lecteur: null, iso: 'x', inconnu: false, deplacement: true, par: 'alice', puces: null,
   });
   // Fiche créée depuis la puce inconnue DEADBEEF.
   const created = form({ name: 'Caméra' });
@@ -246,6 +250,7 @@ test('correction manuelle et association → événements « correction » et «
   assert.equal(puce.type, 'puce');
   assert.equal(puce.nom, 'Caméra');
   assert.equal(puce.poste, 'Poste A');
+  assert.equal(puce.puces, 0, 'la puce a reçu sa fiche : plus aucune puce inconnue');
   assert.ok(!stream.raw.includes('DEADBEEF'));
   // Refus CSRF : rien n'est publié.
   const { body: b3, ...h3 } = form({ station: '2' });
@@ -311,17 +316,25 @@ test('plafond de flux : au-delà, 503 JSON sans flux ; /api/frames continue de r
   await waitClients(0);
 });
 
+// Réponse factice : write renvoie full === false (tampon plein) si demandé.
+const fakeResponse = () => {
+  const listeners = {};
+  return {
+    ended: false, destroyed: false, written: '', full: false,
+    on(name, fn) { listeners[name] = fn; },
+    writeHead() {},
+    write(t) { this.written += t; return !this.full; },
+    end() { this.ended = true; listeners.close?.(); },
+    destroy() { this.destroyed = true; listeners.close?.(); },
+  };
+};
+const fakeReq = { socket: { setTimeout() {}, setNoDelay() {} } };
+const someEvent = () => itemEvent('puce', { id: 1, name: 'x', at: null, station_id: null, station_name: null }, 'alice', '2026-01-01T00:00:00.000Z');
+
 test('plafond par session : le flux le plus ancien de la session est fermé', () => {
   const hub = createDirectHub({ db, maxClients: 10, maxPerSession: 2, heartbeatMs: 60_000 });
-  const fake = () => {
-    const listeners = {};
-    return {
-      ended: false, written: '',
-      on(name, fn) { listeners[name] = fn; },
-      writeHead() {}, write(t) { this.written += t; }, end() { this.ended = true; listeners.close?.(); },
-    };
-  };
-  const req = { socket: { setTimeout() {}, setNoDelay() {} } };
+  const fake = fakeResponse;
+  const req = fakeReq;
   const [a, b, c] = [fake(), fake(), fake()];
   assert.ok(hub.open(req, a, token, null));
   assert.ok(hub.open(req, b, token, null));
@@ -332,6 +345,34 @@ test('plafond par session : le flux le plus ancien de la session est fermé', ()
   assert.ok(b.written.includes('"type":"puce"') && !a.written.includes('"type":"puce"'));
   hub.closeAll();
   assert.equal(hub.size, 0);
+});
+
+test('plafond total : une session qui a déjà un flux ferme son plus ancien au lieu d\'être refusée ; une nouvelle session est refusée', () => {
+  const hub = createDirectHub({ db, maxClients: 2, maxPerSession: 8, heartbeatMs: 60_000 });
+  const [a, b, c, d] = [fakeResponse(), fakeResponse(), fakeResponse(), fakeResponse()];
+  assert.ok(hub.open(fakeReq, a, 'session-1', null));
+  assert.ok(hub.open(fakeReq, b, 'session-2', null));
+  assert.equal(hub.open(fakeReq, c, 'session-3', null), false, 'nouvelle session au plafond : refus');
+  assert.equal(c.written, '');
+  assert.ok(hub.open(fakeReq, d, 'session-1', null), 'onglet rechargé : accepté');
+  assert.equal(a.ended, true);
+  assert.equal(hub.size, 2);
+  hub.closeAll();
+});
+
+test('tampon plein (write renvoie false) : le flux est fermé au lieu d\'empiler ; les autres continuent', () => {
+  const hub = createDirectHub({ db, maxClients: 10, maxPerSession: 8, heartbeatMs: 60_000 });
+  const [slow, ok] = [fakeResponse(), fakeResponse()];
+  assert.ok(hub.open(fakeReq, slow, 'session-1', null));
+  assert.ok(hub.open(fakeReq, ok, 'session-2', null));
+  slow.full = true;
+  hub.publish(someEvent());
+  assert.equal(slow.destroyed, true);
+  assert.equal(hub.size, 1);
+  hub.publish(someEvent());
+  assert.equal((ok.written.match(/"type":"puce"/g) ?? []).length, 2);
+  assert.equal((slow.written.match(/"type":"puce"/g) ?? []).length, 1);
+  hub.closeAll();
 });
 
 test('reprise : Last-Event-ID ou ?depuis= renvoient les événements manqués ; numéro trop ancien → « resynchro »', async () => {

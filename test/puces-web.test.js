@@ -304,7 +304,8 @@ test('« Créer une fiche » : formulaire de l\'étape 5 avec l\'UID en lecture 
   assert.ok(res.body.includes('value="lignes"'));
   assert.ok(!/name="uid/.test(res.body));
   assert.ok(res.body.includes('<nav class="fil" aria-label="Fil d\'Ariane">\n<a href="/chips">Puces inconnues</a>'));
-  assert.ok(res.body.includes('<li><a href="/chips" aria-current="true">Puces inconnues</a></li>'));
+  // Étape U4 : le nombre de puces inconnues peut suivre le libellé.
+  assert.match(res.body, /<li><a href="\/chips" aria-current="true">Puces inconnues(?: <span class="nombre-pastille nombre-pastille--nav" id="nav-puces">[\s\S]*?<\/span><\/span>)?<\/a><\/li>/);
   // Lecteur non affecté : lien vers le lecteur.
   assert.ok((await page(`/chips/${LOOSE}/new`)).body.includes('Dernier scan : <a class="lien-simple" href="/readers/2">lecteur non affecté</a>'));
 });
